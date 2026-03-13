@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # 1. 시그널 통신 및 캐싱용 Redis
+  redis:
+    image: redis:latest
+    container_name: ew-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ew-network
+
+  # 2. 유저 및 주문 데이터 저장용 MySQL
+  db:
+    image: mysql:8.0
+    container_name: ew-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: earning_whisperer
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-init:/docker-entrypoint-initdb.d # 초기 스키마 자동 생성용
+    networks:
+      - ew-network
+
+networks:
+  ew-network:
+    driver: bridge
