@@ -20,3 +20,6 @@ out/
 .vscode/
 .DS_Store
 *.swp
+
+# Personal Learning Notes (not for repository)
+learning/
