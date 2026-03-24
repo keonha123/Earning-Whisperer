@@ -22,6 +22,9 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+ema:
+  window-size: 10  # EMA 계산 윈도우 크기 (클수록 노이즈에 둔감)
+
 management:
   endpoints:
     web:
