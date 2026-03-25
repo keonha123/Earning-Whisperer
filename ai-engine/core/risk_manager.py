@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/risk_manager.py
 # ATR 기반 손절/익절 + Half-Kelly 포지션 사이징
 # 수익비 목표: MODERATE=1:1.67, STRONG=1:2.0
-# ═══════════════════════════════════════════════════════════════════════════
 from typing import Optional
 from config import settings
 
