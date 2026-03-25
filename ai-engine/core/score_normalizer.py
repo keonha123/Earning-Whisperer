@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/score_normalizer.py
 # Gemini 출력(direction/magnitude/confidence/euphemisms) → raw_score (-1~+1)
 # 논문 근거: Tetlock(2007) negative_word_ratio 패널티 포함
-# ═══════════════════════════════════════════════════════════════════════════
 from typing import List
 
 
