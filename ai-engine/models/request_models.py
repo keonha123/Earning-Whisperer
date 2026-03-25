@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # models/request_models.py
 # POST /api/v1/analyze 요청 바디 구조 정의
 # Data Pipeline → AI 엔진으로 오는 데이터 계약 (Contract 1)
-# ═══════════════════════════════════════════════════════════════════════════
 from pydantic import BaseModel, Field
 from typing import Optional
 
