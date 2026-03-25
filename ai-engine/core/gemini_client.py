@@ -1,14 +1,12 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/gemini_client.py
 # Gemini 3 Flash 클라이언트
 #
-# ⚠️  Gemini 3 주요 변경사항 (2.x와 다름):
+#   Gemini 3 주요 변경사항 (2.x와 다름):
 #   1. 모델명: gemini-3-flash-preview
 #   2. temperature 낮게 설정 금지 → 루프/성능 저하 유발
 #      대신 thinking_level="minimal" 로 일관된 출력 유도
 #   3. Thought signatures: 멀티턴 대화 시 필수 반환
 #   4. SDK: google-genai (from google import genai)
-# ═══════════════════════════════════════════════════════════════════════════
 import json
 import re
 import asyncio
@@ -31,7 +29,7 @@ class GeminiClient:
         self.model  = settings.gemini_model          # "gemini-3-flash-preview"
 
         # ── Gemini 3 생성 설정 ─────────────────────────────────────────────
-        # ⚠️  temperature 미설정 (Gemini 3 기본값 1.0 사용)
+        #  temperature 미설정 (Gemini 3 기본값 1.0 사용)
         #     낮게 설정하면 루프/성능 저하 → 공식 문서 권고사항
         # thinking_level="minimal": 빠른 응답 + 일관된 JSON 구조화 출력
         self.gen_config = types.GenerateContentConfig(
