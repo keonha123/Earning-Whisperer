@@ -1,4 +1,3 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/five_gate_filter.py
 # 5-Gate Signal Confluence Filter — 승률 51%+ 달성의 핵심
 # 5개 게이트 모두 PASS해야만 거래 실행
@@ -10,7 +9,6 @@
 #   Gate 3: Jegadeesh & Titman(1993) — 기술적 모멘텀 일치
 #   Gate 4: Chan(2003) — 뉴스 있는 거래량 폭발
 #   Gate 5: Baker & Wurgler(2006) — 시장 국면 필터
-# ═══════════════════════════════════════════════════════════════════════════
 from dataclasses import dataclass
 from typing import Optional
 from config import settings
