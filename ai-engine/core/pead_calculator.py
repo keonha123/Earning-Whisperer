@@ -1,4 +1,3 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/pead_calculator.py
 # PEAD (Post-Earnings Announcement Drift) 전략 — SUE 점수 계산
 # 논문: Bernard & Thomas (1992), Ball & Brown (1968)
@@ -9,7 +8,6 @@
 #
 # 승률 기여: 방향 일치 시 +3~5%p
 # PEAD 진입 조건: |SUE| > 2.0 + 감성 방향 일치
-# ═══════════════════════════════════════════════════════════════════════════
 from typing import Optional
 
 
