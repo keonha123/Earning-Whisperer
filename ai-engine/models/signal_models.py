@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # models/signal_models.py
 # Redis trading-signals 채널로 발행하는 출력 페이로드 구조
 # Contract 2: AI Engine → Backend
-# ═══════════════════════════════════════════════════════════════════════════
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
