@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/redis_publisher.py
 # Redis trading-signals 채널 발행
 # Contract 2: AI Engine → Backend
-# ═══════════════════════════════════════════════════════════════════════════
 import logging
 import redis.asyncio as aioredis
 from models.signal_models import TradingSignalV3
