@@ -1,8 +1,6 @@
-# ═══════════════════════════════════════════════════════════════════════════
 # core/context_manager.py
 # 슬라이딩 윈도우 컨텍스트 관리
 # 어닝콜 중 이전 발언 내용을 기억해 Gemini가 문맥을 이해할 수 있게 함
-# ═══════════════════════════════════════════════════════════════════════════
 from collections import deque
 from dataclasses import dataclass, field
 from config import settings
