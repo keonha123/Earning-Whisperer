@@ -1,6 +1,7 @@
 package com.earningwhisperer.infrastructure.redis;
 
-import com.earningwhisperer.domain.signal.EmaService;
+import com.earningwhisperer.domain.signal.ProcessedSignal;
+import com.earningwhisperer.domain.signal.SignalService;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalMessage;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Component;
  *
  * 처리 흐름:
  * 1. JSON 메시지 → TradingSignalMessage 역직렬화
- * 2. EmaService.process()로 EMA 계산
+ * 2. SignalService.processSignal() — EMA 계산 + 룰 엔진 판단 + SignalHistory 저장
  * 3. LiveSignalPublisher로 WebSocket 브로드캐스트
  *
  * 파싱 실패 시: 에러 로그만 출력하고 예외를 삼킨다 (서버 중단 방지).
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class TradingSignalSubscriber {
 
-    private final EmaService emaService;
+    private final SignalService signalService;
     private final ObjectMapper objectMapper;
     private final LiveSignalPublisher liveSignalPublisher;
 
@@ -42,22 +43,18 @@ public class TradingSignalSubscriber {
             return;
         }
 
-        double emaScore = emaService.process(signal.getTicker(), signal.getRawScore());
+        ProcessedSignal processed = signalService.processSignal(signal);
 
-        // TODO(Phase 4): action을 룰 엔진 결과로 교체
         LiveSignalMessage liveMessage = LiveSignalMessage.builder()
                 .ticker(signal.getTicker())
                 .textChunk(signal.getTextChunk())
                 .rawScore(signal.getRawScore())
-                .emaScore(emaScore)
+                .emaScore(processed.emaScore())
                 .rationale(signal.getRationale())
-                .action("HOLD")
+                .action(processed.action().name())
                 .executedQty(0)
                 .build();
 
         liveSignalPublisher.publish(liveMessage);
-
-        log.info("[TradingSignal] ticker={} rawScore={} emaScore={} action=HOLD",
-                signal.getTicker(), signal.getRawScore(), emaScore);
     }
 }

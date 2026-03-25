@@ -40,6 +40,9 @@ dependencies {
     // WebSocket (STOMP)
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
 
+    // Validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
     // Actuator (health check)
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
