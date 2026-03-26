@@ -25,6 +25,14 @@ spring:
 ema:
   window-size: 10  # EMA 계산 윈도우 크기 (클수록 노이즈에 둔감)
 
+broker:
+  kis:
+    base-url: https://openapivts.koreainvestment.com:29443  # 모의투자 URL
+    app-key: ${KIS_APP_KEY:}
+    app-secret: ${KIS_APP_SECRET:}
+    account-no: ${KIS_ACCOUNT_NO:}
+    account-product-code: "01"
+
 management:
   endpoints:
     web:
