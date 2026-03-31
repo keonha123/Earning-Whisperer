@@ -46,7 +46,7 @@ class TradingSignalSubscriberTest {
     void 정상_메시지_처리_순서_검증() {
         // Arrange
         when(signalService.processSignal(any())).thenReturn(new ProcessedSignal(0.8, TradeAction.BUY));
-        when(tradeService.execute(anyString(), any())).thenReturn(1);
+        when(tradeService.createPendingTrade(anyString(), any())).thenReturn(1L);
 
         // Act
         subscriber.handleMessage(VALID_MESSAGE);
@@ -54,21 +54,22 @@ class TradingSignalSubscriberTest {
         // Assert — 호출 순서 검증
         InOrder inOrder = inOrder(signalService, tradeService, liveSignalPublisher);
         inOrder.verify(signalService).processSignal(any());
-        inOrder.verify(tradeService).execute("NVDA", TradeAction.BUY);
+        inOrder.verify(tradeService).createPendingTrade("NVDA", TradeAction.BUY);
         inOrder.verify(liveSignalPublisher).publish(any());
     }
 
     @Test
-    @DisplayName("정상 메시지 수신 시 LiveSignalPublisher.publish()가 1회 호출된다")
-    void 정상_메시지_수신시_WebSocket_브로드캐스트가_호출된다() {
+    @DisplayName("HOLD 액션이면 TradeService가 호출되고 Publisher도 호출된다")
+    void HOLD_액션이면_TradeService_호출_후_Publisher도_호출된다() {
         // Arrange
-        when(signalService.processSignal(any())).thenReturn(new ProcessedSignal(0.8, TradeAction.HOLD));
-        when(tradeService.execute(anyString(), any())).thenReturn(0);
+        when(signalService.processSignal(any())).thenReturn(new ProcessedSignal(0.3, TradeAction.HOLD));
+        when(tradeService.createPendingTrade(anyString(), any())).thenReturn(null);
 
         // Act
         subscriber.handleMessage(VALID_MESSAGE);
 
         // Assert
+        verify(tradeService).createPendingTrade("NVDA", TradeAction.HOLD);
         verify(liveSignalPublisher).publish(any());
     }
 
@@ -80,7 +81,7 @@ class TradingSignalSubscriberTest {
 
         // Assert
         verify(signalService, never()).processSignal(any());
-        verify(tradeService, never()).execute(anyString(), any());
+        verify(tradeService, never()).createPendingTrade(anyString(), any());
         verify(liveSignalPublisher, never()).publish(any());
     }
 
@@ -92,7 +93,7 @@ class TradingSignalSubscriberTest {
 
         // Assert
         verify(signalService, never()).processSignal(any());
-        verify(tradeService, never()).execute(anyString(), any());
+        verify(tradeService, never()).createPendingTrade(anyString(), any());
         verify(liveSignalPublisher, never()).publish(any());
     }
 }

@@ -5,25 +5,23 @@ import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
-import com.earningwhisperer.infrastructure.broker.BrokerApiClient;
-import com.earningwhisperer.infrastructure.broker.BrokerApiException;
-import com.earningwhisperer.infrastructure.broker.BrokerOrderRequest;
-import com.earningwhisperer.infrastructure.broker.BrokerOrderResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 매매 주문 실행 서비스.
+ * 매매 명령 생성 서비스.
  *
- * @Transactional 없음 — DB 커넥션이 외부 HTTP 구간에 물리지 않도록
- * tradeRepository.save()의 자체 트랜잭션만 활용한다.
+ * 백엔드는 KIS 증권사 API를 직접 호출하지 않는다.
+ * 역할: PENDING Trade 생성 → Trading Terminal로 매매 명령 라우팅
+ * 실제 주문 실행은 Trading Terminal(데스크톱 앱)이 담당하며,
+ * 체결 결과는 콜백 API(POST /api/v1/trades/{tradeId}/callback)로 수신한다.
  *
  * 처리 흐름:
- * 1. HOLD 또는 AUTO_PILOT 외 모드 → 즉시 0 반환 (주문 없음)
- * 2. Trade(PENDING) 생성 후 save() → 트랜잭션 완료, 커넥션 반환
- * 3. BrokerApiClient.placeOrder() 호출 (DB 커넥션 없는 상태)
- * 4. 성공: trade.executed() → save() / 실패: trade.failed() → save()
+ * 1. HOLD → 즉시 null 반환 (명령 생성 없음)
+ * 2. AUTO_PILOT 외 모드 → 즉시 null 반환
+ * 3. Trade(PENDING) 생성 후 save() → tradeId 반환
+ * 4. TradingSignalSubscriber가 tradeId를 Private WebSocket으로 라우팅
  */
 @Slf4j
 @Service
@@ -38,20 +36,22 @@ public class TradeService {
     private final TradeRepository tradeRepository;
     private final UserRepository userRepository;
     private final PortfolioSettingsService portfolioSettingsService;
-    private final BrokerApiClient brokerApiClient;
 
     /**
-     * @return 체결 수량 (주문하지 않은 경우 0)
+     * PENDING 상태의 Trade를 생성하고 tradeId를 반환한다.
+     * Trading Terminal이 이 tradeId를 받아 주문을 실행하고 콜백으로 결과를 보고한다.
+     *
+     * @return 생성된 Trade ID (주문 생성하지 않은 경우 null)
      */
-    public int execute(String ticker, TradeAction action) {
+    public Long createPendingTrade(String ticker, TradeAction action) {
         if (action == TradeAction.HOLD) {
-            return 0;
+            return null;
         }
 
         TradingMode mode = portfolioSettingsService.getSettings(SYSTEM_USER_ID).getTradingMode();
         if (mode != TradingMode.AUTO_PILOT) {
-            log.debug("[TradeService] 자동매매 비활성화 모드({}) — 주문 건너뜀", mode);
-            return 0;
+            log.debug("[TradeService] 자동매매 비활성화 모드({}) — 명령 생성 건너뜀", mode);
+            return null;
         }
 
         User user = userRepository.findById(SYSTEM_USER_ID)
@@ -67,23 +67,8 @@ public class TradeService {
                 .price(0.0)
                 .build();
 
-        trade = tradeRepository.save(trade); // Transaction 1 종료 → 커넥션 반환
-
-        try {
-            BrokerOrderRequest request = new BrokerOrderRequest(ticker, action, FIXED_ORDER_QTY);
-            BrokerOrderResponse response = brokerApiClient.placeOrder(request); // DB 커넥션 없는 상태
-
-            trade.executed(response.executedQty(), response.brokerOrderId());
-            tradeRepository.save(trade); // Transaction 2 종료
-            log.info("[TradeService] 주문 체결 - ticker={} action={} orderId={}",
-                    ticker, action, response.brokerOrderId());
-            return response.executedQty();
-
-        } catch (BrokerApiException e) {
-            trade.failed();
-            tradeRepository.save(trade); // Transaction 3 종료
-            log.error("[TradeService] 주문 실패 - ticker={} error={}", ticker, e.getMessage());
-            return 0;
-        }
+        Trade saved = tradeRepository.save(trade);
+        log.info("[TradeService] PENDING 거래 생성 - tradeId={} ticker={} action={}", saved.getId(), ticker, action);
+        return saved.getId();
     }
 }
