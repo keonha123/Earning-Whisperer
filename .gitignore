@@ -23,3 +23,7 @@ out/
 
 # Personal Learning Notes (not for repository)
 learning/
+
+# Claude Code (개인 설정, 팀원과 공유하지 않음)
+CLAUDE.md
+**/CLAUDE.md

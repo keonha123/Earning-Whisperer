@@ -1,15 +1,19 @@
 # 📢 EarningWhisperer API & Data Contract Specification
 
-이 문서는 EarningWhisperer 프로젝트의 서비스 간 데이터 통신 규격을 정의합니다. 
-모든 팀원은 본 명세에 정의된 필드명과 데이터 타입을 엄격하게 준수하여 시스템 간 결합 시 발생할 수 있는 파싱 에러를 원천 차단해야 합니다.
+이 문서는 EarningWhisperer 프로젝트의 마이크로서비스 및 하이브리드 아키텍처(SaaS Web + Trading Terminal) 간 데이터 통신 규격을 정의합니다. 
+모든 팀원은 본 명세에 정의된 필드명, 데이터 타입, 통신 주체를 엄격하게 준수하여 분산 시스템 환경에서 발생할 수 있는 파싱 에러와 상태 불일치를 원천 차단해야 합니다.
 
 ---
 
 ## 1. 전체 데이터 흐름도 (Data Pipeline)
-1. **Data Pipeline** (Python) → `[HTTP POST 비동기]` → **AI Engine** (Python)
-2. **AI Engine** (Python) → `[Redis Pub/Sub]` → **Backend** (Java Spring Boot)
-3. **Backend** (Java) → `[HTTP REST]` → **증권사 모의투자 API**
-4. **Backend** (Java) → `[WebSocket STOMP]` → **Frontend** (React/Next.js)
+
+
+1. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **AI Engine** (Python)
+2. **AI Engine** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java Spring Boot)
+3. **Backend** (Java) ➔ `[WebSocket /user/queue]` ➔ **Trading Terminal** (Electron/Node.js) : 개인화된 매매 명령 하달
+4. **Backend** (Java) ➔ `[WebSocket /topic/live]` ➔ **Frontend Web** (Next.js) : 라이브 데모 시각화
+5. **Trading Terminal** ➔ `[HTTP REST]` ➔ **증권사 KIS API** : 실제 주문 실행 (Client-side)
+6. **Trading Terminal** ➔ `[HTTP POST Callback]` ➔ **Backend** (Java) : 체결 결과 보고 및 장부 동기화
 
 ---
 
@@ -26,75 +30,88 @@
 | `timestamp` | Long | Y | 오디오 캡처 기준 발생 시점 (Unix Epoch Second) |
 | `is_final` | Boolean | Y | 해당 어닝콜 세션의 완전 종료 여부 |
 
-**Request Body Example:**
-```json
-{
-  "ticker": "NVDA",
-  "text_chunk": "Our data center revenue grew by 400% compared to last year, driven by strong AI demand...",
-  "sequence": 12,
-  "timestamp": 1741827000,
-  "is_final": false
-}
-```
-
 ---
 
 ## 3. [Contract 2] AI Engine ➔ Backend (Raw Signal)
 - **통신 방식:** Redis Pub/Sub
 - **Redis Channel:** `trading-signals`
-- **설명:** AI 서버(Stateless)가 텍스트를 분석하여 도출한 **순수 감성 점수(Raw Score)**와 해설, 그리고 프론트엔드 중계를 위한 원문을 백엔드로 브로드캐스팅합니다.
+- **설명:** AI 서버(Stateless)가 텍스트를 분석하여 도출한 **순수 감성 점수(Raw Score)**와 해설을 백엔드로 브로드캐스팅합니다.
 
 | 필드명 | 타입 | 필수 | 설명 |
 | :--- | :--- | :---: | :--- |
 | `ticker` | String | Y | 분석 대상 종목 심볼 |
 | `raw_score` | Double | Y | 감성 방향 및 강도 (-1.0[강한 매도] ~ +1.0[강한 매수]) |
-| `rationale` | String | Y | LLM이 생성한 분석 근거 (UI 노출용) |
-| `text_chunk` | String | Y | 분석에 사용된 원문 텍스트 (UI 실시간 타이핑용) |
+| `rationale` | String | Y | LLM이 생성한 분석 근거 |
+| `text_chunk` | String | Y | 분석에 사용된 원문 텍스트 |
 | `timestamp` | Long | Y | 분석 완료 시점 (Unix Epoch Second) |
 
-**Message Payload Example:**
-```json
-{
-  "ticker": "NVDA",
-  "raw_score": 0.85,
-  "rationale": "CEO가 데이터 센터 매출의 400% 성장을 언급하며 매우 강한 긍정적 시그널이 감지되었습니다.",
-  "text_chunk": "Our data center revenue grew by 400% compared to last year, driven by strong AI demand...",
-  "timestamp": 1741827005
-}
-```
-
 ---
 
-## 4. [Contract 3] Backend ➔ Frontend (Live Broadcasting)
-- **통신 방식:** WebSocket (STOMP)
-- **Topic:** `/topic/live/{ticker}` (예: `/topic/live/NVDA`)
-- **설명:** 백엔드가 AI의 데이터와 자신이 계산한 `ema_score`, 그리고 최종 매매(체결) 결과를 조합하여 프론트엔드 라이브 트레이딩 룸으로 쏴주는 종합 데이터 팩입니다.
+## 4. [Contract 3] Backend ➔ Clients (WebSocket Signaling)
+백엔드는 목적에 따라 두 가지 방식의 웹소켓 채널을 운영합니다.
+
+### 4.1. Public Broadcast (Frontend Web 데모용)
+- **Topic:** `/topic/live/{ticker}`
+- **설명:** 웹 대시보드 접속자 모두에게 시각화용 데이터(STT 텍스트, 게이지바 수치)를 동일하게 뿌려줍니다. (주문 명령 없음)
+
+### 4.2. Private Routing (Trading Terminal 주문 지시용)
+- **Queue:** `/user/{userId}/queue/signals`
+- **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
 
 | 필드명 | 타입 | 필수 | 설명 |
 | :--- | :--- | :---: | :--- |
-| `text_chunk` | String | Y | 라이브 스크립트 렌더링용 원문 |
-| `raw_score` | Double | Y | 텐션 미터기(게이지) 애니메이션용 점수 |
-| `ema_score` | Double | Y | 백엔드가 계산한 추세선 차트용 점수 |
-| `rationale` | String | Y | AI 시그널 피드용 텍스트 |
-| `action` | String | Y | 백엔드 룰 엔진의 최종 결정 (`BUY`, `SELL`, `HOLD`) |
-| `executed_qty` | Integer | N | 실제 체결(또는 주문)된 수량 (`action`이 HOLD면 0 또는 null) |
+| `trade_id` | String | Y | 백엔드가 DB에 생성한 `PENDING` 상태의 고유 거래 ID |
+| `action` | String | Y | 최종 매매 방향 (`BUY`, `SELL`) |
+| `target_qty` | Integer | Y | 룰 엔진이 계산한 목표 주문 수량 |
+| `ticker` | String | Y | 종목 심볼 |
+| `ema_score` | Double | Y | 최종 결정에 사용된 EMA 점수 |
 
 ---
 
-## 5. [Contract 4] Backend ➔ Broker API (참고용)
-- **통신 방식:** HTTP REST (증권사 모의투자 망)
-- **설명:** 백엔드 룰 엔진을 통과한 최종 주문 포맷입니다. (한국투자증권 모의투자 API 규격 참고)
+## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
+로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
 
-| 필드명 | 타입 | 필수 | 설명 |
-| :--- | :--- | :---: | :--- |
-| `order_type` | String | Y | 주문 종류 (`00`: 지정가, `01`: 시장가) |
-| `order_qty` | Integer | Y | 포트폴리오 룰 엔진을 거쳐 산출된 최종 수량 |
-| `price` | Double | N | 주문 단가 (시장가 주문 시 0) |
+### 5.1. 매매 체결 결과 보고 (Callback)
+- **엔드포인트:** `POST /api/v1/trades/{tradeId}/callback`
+- **설명:** KIS API 호출 후 받은 체결 결과를 백엔드로 쏘아 올려 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다.
+
+    {
+      "status": "EXECUTED",
+      "broker_order_id": "ODNO_123456789",
+      "executed_price": 125.50,
+      "executed_qty": 10,
+      "error_message": null
+    }
+
+### 5.2. 실제 계좌 장부 동기화 (Sync)
+- **엔드포인트:** `POST /api/v1/portfolio/sync`
+- **설명:** Trading Terminal이 기동되거나 매매가 완료된 직후, 실제 KIS 계좌 잔고를 백엔드에 덮어씌워 룰 엔진의 오차를 교정합니다.
+
+    {
+      "total_cash": 15000000,
+      "holdings": [
+        { "ticker": "NVDA", "qty": 15, "avg_price": 120.00 }
+      ]
+    }
 
 ---
 
-## 6. 공통 개발 가이드라인 (Common Rules)
+## 6. [Contract 5] Frontend Web ➔ Backend (User Settings)
+- **통신 방식:** HTTP PUT
+- **엔드포인트:** `PUT /api/v1/users/settings`
+- **설명:** SaaS 웹 대시보드(또는 Terminal 설정창)에서 유저가 수정한 리스크 관리 룰을 백엔드 DB에 저장합니다.
+
+    {
+      "trading_mode": "AUTO",
+      "max_buy_ratio": 0.2,
+      "max_holding_ratio": 0.5,
+      "cooldown_minutes": 5
+    }
+
+---
+
+## 7. 공통 개발 가이드라인 (Common Rules)
 1. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
-2. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 수신 후 로컬 브라우저 시간으로 변환합니다.
-3. **문자 인코딩:** 시스템의 모든 텍스트 통신은 `UTF-8`을 기본으로 합니다.
-4. **Fallback (안전망):** 백엔드는 수신된 AI 시그널 파싱에 실패하거나 Redis 통신이 끊길 경우, 유저 보호를 위해 해당 종목의 진행 상태를 무조건 `HOLD(관망 및 매매 중지)`로 전환하고 관리자 로그를 남겨야 합니다.
+2. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.
+3. **무상태성 및 단일 진실 공급원:** 백엔드는 API 키를 가지지 않으며, 모든 '최종' 자산 상태는 Trading Terminal이 쏘아주는 Sync 데이터를 '단일 진실 공급원(Single Source of Truth)'으로 취급하여 덮어씁니다.
+4. **Fallback (안전망):** Trading Terminal은 백엔드 웹소켓 연결이 끊기거나 비정상적인 데이터가 수신될 경우, 즉시 매매 모드를 `MANUAL(수동)`로 강제 전환하고 유저에게 OS 네이티브 알림을 띄워야 합니다.

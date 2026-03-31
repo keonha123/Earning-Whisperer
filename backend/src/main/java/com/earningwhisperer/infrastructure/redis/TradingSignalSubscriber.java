@@ -2,6 +2,7 @@ package com.earningwhisperer.infrastructure.redis;
 
 import com.earningwhisperer.domain.signal.ProcessedSignal;
 import com.earningwhisperer.domain.signal.SignalService;
+import com.earningwhisperer.domain.trade.TradeService;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalMessage;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,12 +11,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Redis trading-signals 채널 구독자.
+ * Redis trading-signals 채널 구독자 — Facade(오케스트레이터) 역할.
+ *
+ * @Transactional 없음. 각 서비스의 트랜잭션이 독립적으로 커밋된 후 다음 단계를 실행한다.
  *
  * 처리 흐름:
- * 1. JSON 메시지 → TradingSignalMessage 역직렬화
- * 2. SignalService.processSignal() — EMA 계산 + 룰 엔진 판단 + SignalHistory 저장
- * 3. LiveSignalPublisher로 WebSocket 브로드캐스트
+ * 1. JSON → TradingSignalMessage 역직렬화
+ * 2. SignalService.processSignal() — EMA + 룰 엔진 + SignalHistory 저장 [트랜잭션 종료]
+ * 3. TradeService.createPendingTrade() — PENDING Trade 생성 [트랜잭션 종료]
+ *    (실제 주문 실행은 Trading Terminal이 담당. 체결 결과는 콜백 API로 수신)
+ * 4. LiveSignalPublisher.publish() — WebSocket 브로드캐스트 (Frontend 데모용)
  *
  * 파싱 실패 시: 에러 로그만 출력하고 예외를 삼킨다 (서버 중단 방지).
  */
@@ -25,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class TradingSignalSubscriber {
 
     private final SignalService signalService;
+    private final TradeService tradeService;
     private final ObjectMapper objectMapper;
     private final LiveSignalPublisher liveSignalPublisher;
 
@@ -43,8 +49,19 @@ public class TradingSignalSubscriber {
             return;
         }
 
+        // Step 2: DB 전용 트랜잭션 — 완료 후 커넥션 즉시 반환
         ProcessedSignal processed = signalService.processSignal(signal);
 
+        // Step 3: PENDING Trade 생성 — Trading Terminal로 매매 명령 라우팅 예정
+        // TODO: Private WebSocket 구현 후 tradeId를 /user/{userId}/queue/signals 로 라우팅
+        Long tradeId = tradeService.createPendingTrade(signal.getTicker(), processed.action());
+        if (tradeId != null) {
+            log.info("[TradingSignal] 매매 명령 생성 - tradeId={} ticker={} action={}",
+                    tradeId, signal.getTicker(), processed.action());
+        }
+
+        // Step 4: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)
+        // executedQty는 Trading Terminal 콜백 수신 후 확정되므로 여기서는 0
         LiveSignalMessage liveMessage = LiveSignalMessage.builder()
                 .ticker(signal.getTicker())
                 .textChunk(signal.getTextChunk())
