@@ -8,7 +8,7 @@
 프로젝트의 기획 배경, 상세한 아키텍처 설계 및 각 모듈별 요구사항은 아래 문서들을 참고해 주세요.
 
 **📌 기획 및 시스템 설계 (Docs)**
-* [📑 프로젝트 상세 기획서 (배경, 타겟, 포지셔닝)](./docs/project_proposal.md)
+* [📑 프로젝트 상세 기획서 (배경, 타겟, 포지셔닝)](./docs/project-proposal.md)
 * [🔌 API 명세서 (API Specification)](./docs/api-spec.md)
 * [🏗️ 시스템 아키텍처 (System Architecture)](./docs/architecture.md) *(작성 예정)*
 * [🗄️ 데이터베이스 스키마 (DB Schema)](./docs/db-schema.md) *(작성 예정)*

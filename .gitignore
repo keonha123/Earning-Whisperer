@@ -21,9 +21,9 @@ out/
 .DS_Store
 *.swp
 
-# Personal Learning Notes (not for repository)
+# Personal 
 learning/
 
-# Claude Code (개인 설정, 팀원과 공유하지 않음)
+# Claude 
 CLAUDE.md
 **/CLAUDE.md
