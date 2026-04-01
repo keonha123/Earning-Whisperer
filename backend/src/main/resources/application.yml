@@ -25,6 +25,11 @@ spring:
 ema:
   window-size: 10  # EMA 계산 윈도우 크기 (클수록 노이즈에 둔감)
 
+jwt:
+  # 운영 환경에서는 반드시 환경변수로 주입. 최소 32자(256-bit) 이상.
+  secret: ${JWT_SECRET:earning-whisperer-dev-secret-key-minimum-32-chars}
+  expiration-ms: 86400000  # 24시간 (ms)
+
 management:
   endpoints:
     web:
