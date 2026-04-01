@@ -54,15 +54,26 @@
 - **Topic:** `/topic/live/{ticker}`
 - **설명:** 웹 대시보드 접속자 모두에게 시각화용 데이터(STT 텍스트, 게이지바 수치)를 동일하게 뿌려줍니다. (주문 명령 없음)
 
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `ticker` | String | Y | 종목 심볼 |
+| `text_chunk` | String | Y | 실시간 STT 원문 텍스트 (타이핑 효과 렌더링용) |
+| `raw_score` | Double | Y | AI 순수 감성 점수 — 텐션 미터기(게이지) 표시용 |
+| `ema_score` | Double | Y | 백엔드 계산 EMA 추세 점수 — 추세선 차트 표시용 |
+| `rationale` | String | Y | LLM 분석 근거 — 시그널 피드 텍스트 표시용 |
+| `action` | String | Y | 룰 엔진 최종 판단 (`BUY`, `SELL`, `HOLD`) |
+| `timestamp` | Long | Y | 신호 발생 시점 (Unix Epoch Second, UTC) |
+
 ### 4.2. Private Routing (Trading Terminal 주문 지시용)
 - **Queue:** `/user/{userId}/queue/signals`
 - **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
+- **수량 처리 원칙:** 백엔드는 자체 장부(Ledger) 기준으로 `target_qty`를 산출하여 전송합니다. Trading Terminal은 주문 직전 실제 KIS 증권사 잔고를 조회하여 수량을 보정(예: 예수금 부족 시 하향 조정)한 뒤 매매를 실행합니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고하여 백엔드 장부의 오차를 교정합니다.
 
 | 필드명 | 타입 | 필수 | 설명 |
 | :--- | :--- | :---: | :--- |
 | `trade_id` | String | Y | 백엔드가 DB에 생성한 `PENDING` 상태의 고유 거래 ID |
 | `action` | String | Y | 최종 매매 방향 (`BUY`, `SELL`) |
-| `target_qty` | Integer | Y | 룰 엔진이 계산한 목표 주문 수량 |
+| `target_qty` | Integer | Y | 백엔드 장부(Ledger) 기준으로 산출한 목표 주문 수량. Terminal이 실제 잔고 조회 후 보정할 수 있음 |
 | `ticker` | String | Y | 종목 심볼 |
 | `ema_score` | Double | Y | 최종 결정에 사용된 EMA 점수 |
 
@@ -73,7 +84,7 @@
 
 ### 5.1. 매매 체결 결과 보고 (Callback)
 - **엔드포인트:** `POST /api/v1/trades/{tradeId}/callback`
-- **설명:** KIS API 호출 후 받은 체결 결과를 백엔드로 쏘아 올려 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다.
+- **설명:** Trading Terminal이 실제 KIS 잔고를 조회하여 수량을 보정한 뒤 주문을 실행하고, 체결 결과를 백엔드로 보고하여 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. `executed_qty`는 백엔드가 산출한 `target_qty`와 다를 수 있으며, 이 값으로 자체 장부(Ledger)의 오차를 교정합니다.
 
     {
       "status": "EXECUTED",

@@ -18,7 +18,7 @@ AI 엔진(Python)은 상태를 기억하지 않고 순수 점수만 산출하므
 
 ### [Feature 3] 프라이빗 신호 라우팅 및 상태 동기화 콜백(Callback)
 - 결정된 매매 신호(`BUY`/`SELL`)를 전체 브로드캐스트가 아닌, 대상 사용자 전용의 **프라이빗 WebSocket 채널**(`/user/{userId}/queue/signals`)로 라우팅하여 발송한다.
-- **결과 수신 (REST API):** 로컬 에이전트가 증권사 API를 통해 실제 주문을 처리한 뒤 전송하는 체결 결과(주문 번호, 성공 여부 등) 및 최신 잔고 데이터를 수신하기 위한 콜백 엔드포인트(`POST /api/trades/callback`, `POST /api/portfolio/sync`)를 제공한다.
+- **결과 수신 (REST API):** 로컬 에이전트가 증권사 API를 통해 실제 주문을 처리한 뒤 전송하는 체결 결과(주문 번호, 성공 여부 등) 및 최신 잔고 데이터를 수신하기 위한 콜백 엔드포인트(`POST /api/v1/trades/{tradeId}/callback`, `POST /api/v1/portfolio/sync`)를 제공한다.
 - 수신된 데이터를 바탕으로 DB의 거래 상태를 `EXECUTED` 또는 `FAILED`로 최종 업데이트하고 장부를 동기화한다.
 
 ### [Feature 4] 프론트엔드 웹 실시간 중계 (WebSocket)

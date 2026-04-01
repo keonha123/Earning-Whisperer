@@ -59,11 +59,11 @@
 
 ### [기능 2] KIS OpenAPI 통신 클라이언트 (Order Executor)
 - **토큰 관리:** KIS API 호출을 위한 Access Token을 발급받고 로컬 메모리에 캐싱하며, 만료 전 선제적으로 갱신한다. (기존 백엔드의 `KisTokenManager` 로직 이식)
-- **주문 실행:** 암호화된 API 키를 복호화하여 KIS 서버로 매수/매도 HTTP POST 요청을 전송한다. (Rate Limit 및 Timeout 예외 처리 포함)
+- **수량 보정 후 주문 실행:** 백엔드로부터 수신한 `target_qty`(장부 기준 목표 수량)를 참고하되, 주문 직전 실제 KIS 잔고 API를 호출하여 예수금/보유 수량을 확인하고 필요 시 수량을 하향 보정한다. 보정된 수량으로 매수/매도 HTTP POST 요청을 전송한다. (Rate Limit 및 Timeout 예외 처리 포함)
 
 ### [기능 3] 체결 결과 및 잔고 콜백 (Sync API)
-- **결과 보고:** KIS 서버로부터 주문 응답(증권사 주문번호, 체결 상태)을 받으면, 이 결과를 Spring Boot 백엔드의 콜백 API(`POST /api/trades/callback`)로 쏘아 올려 중앙 DB의 거래 상태(`PENDING` ➔ `EXECUTED` / `FAILED`)를 업데이트한다.
-- **장부 동기화:** 실제 증권사 계좌의 잔고 및 보유 종목 정보를 조회하여 백엔드(`POST /api/portfolio/sync`)로 전송함으로써, 백엔드의 논리적 룰 엔진이 사용하는 '자체 추정 장부(Internal Ledger)'의 오차를 교정한다.
+- **결과 보고:** KIS 서버로부터 주문 응답(증권사 주문번호, 체결 상태)을 받으면, 실제 체결 수량(`executed_qty`)을 포함한 결과를 백엔드 콜백 API(`POST /api/v1/trades/{tradeId}/callback`)로 전송하여 중앙 DB의 거래 상태(`PENDING` ➔ `EXECUTED` / `FAILED`)를 업데이트한다. 백엔드는 이 `executed_qty`로 자체 장부(Ledger)의 `target_qty` 기반 추정값 오차를 교정한다.
+- **장부 동기화:** 실제 증권사 계좌의 잔고 및 보유 종목 정보를 조회하여 백엔드(`POST /api/v1/portfolio/sync`)로 전송함으로써, 백엔드의 논리적 룰 엔진이 사용하는 '자체 추정 장부(Internal Ledger)'의 오차를 교정한다.
 
 ## 4. Electron 특화 아키텍처 (IPC 통신)
 본 모듈은 철저한 보안과 성능을 위해 Electron의 프로세스 분리 아키텍처를 따른다.
