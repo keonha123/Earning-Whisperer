@@ -10,6 +10,8 @@ AI 엔진(Python)은 상태를 기억하지 않고 순수 점수만 산출하므
 ### [Feature 1] 시그널 수신 및 EMA(지수이동평균) 상태 연산 (핵심)
 - Redis의 `trading-signals` 채널을 구독하여 AI 서버가 발행하는 JSON(`raw_score`, `rationale`)을 비동기적으로 수신한다.
 - **상태 유지 연산:** 단순히 `raw_score`에 반응하는 것이 아니라, DB 또는 캐시에 저장된 이전 점수들을 바탕으로 **EMA(Exponential Moving Average)**를 계산하여 단기적인 노이즈를 필터링한 `ema_score`를 도출한다.
+- **⚠️ 현재 구현의 한계 (추후 개선 예정):** EMA 이전 상태값은 현재 서버 메모리(`InMemoryEmaStateStore`)에만 보관된다. 서버 재시작 시 ticker별 EMA 상태가 초기화되는 문제가 있으며, 프로젝트 중후반에 MySQL 또는 Redis Persistent 저장 방식으로 전환하여 해결할 예정이다.
+- **⚠️ 현재 구현의 한계 (추후 개선 예정):** Redis Pub/Sub 특성상 백엔드가 일시적으로 다운된 후 복구되면 그 사이 AI Engine이 발행한 신호가 유실될 수 있다. 프로젝트 중후반에 **Redis Streams** 또는 **Kafka** 도입을 검토하여 메시지 내구성을 확보할 예정이다.
 
 ### [Feature 2] 포트폴리오 룰 엔진 및 장부(Ledger) 기반 리스크 관리
 - 로컬 에이전트가 주기적으로 동기화해 주는 계좌 정보를 바탕으로 서버 내에 유저별 **자체 추정 장부(Internal Ledger)**를 구축 및 관리한다.
