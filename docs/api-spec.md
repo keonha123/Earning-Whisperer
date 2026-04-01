@@ -48,11 +48,30 @@
 ---
 
 ## 4. [Contract 3] Backend ➔ Clients (WebSocket Signaling)
-백엔드는 목적에 따라 두 가지 방식의 웹소켓 채널을 운영합니다.
+백엔드는 목적에 따라 세 가지 방식의 웹소켓 채널을 운영합니다.
 
-### 4.1. Public Broadcast (Frontend Web 데모용)
+### 4.1. Demo Replay Broadcast (Frontend Web 쇼케이스 데모룸용)
+- **Topic:** `/topic/live/demo`
+- **설명:** 회원가입 없이 서비스를 체험할 수 있는 **쇼케이스 데모룸** 전용 채널입니다. 실제 AI 분석을 24시간 운영하는 대신, 과거 주요 어닝콜(예: NVDA 2024 Q4)을 미리 분석해 저장한 스크립트 파일을 재생하여 라이브 느낌을 연출합니다.
+- **재생 방식 (라디오 방송국 모델):** 서버 기동 시부터 `DemoReplayService`가 스크립트를 처음부터 끝까지 무한 반복 재생합니다. 유저는 접속 시점의 진행 구간부터 수신하며, 실제 라이브 룸에 중간 입장한 것과 동일한 경험을 얻습니다.
+- **스크립트 파일 위치:** `src/main/resources/data/mock-{ticker}-replay.json` (JSON 배열)
+- **재생 간격:** 이벤트 간 `timestamp` 차이를 기반으로 자연스러운 속도로 재생합니다. MVP에서는 고정 2~3초 간격으로 시작하며, 이후 타임스탬프 기반 재생으로 개선 예정입니다.
+- **루프 전환 처리:** 스크립트 마지막 이벤트 발행 후 `is_session_end: true` 이벤트를 한 번 발행하여 프론트엔드가 "세션 종료 — 재시작" UI를 표시할 수 있도록 합니다. 이후 짧은 대기 시간 후 루프를 재시작합니다.
+
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `ticker` | String | Y | 종목 심볼 (예: `NVDA`) |
+| `text_chunk` | String | Y | STT 원문 텍스트 (타이핑 효과 렌더링용) |
+| `raw_score` | Double | Y | AI 순수 감성 점수 — 텐션 미터기(게이지) 표시용 |
+| `ema_score` | Double | Y | EMA 추세 점수 — 추세선 차트 표시용 |
+| `rationale` | String | Y | LLM 분석 근거 — 시그널 피드 텍스트 표시용 |
+| `action` | String | Y | 룰 엔진 최종 판단 (`BUY`, `SELL`, `HOLD`) |
+| `timestamp` | Long | Y | 원본 어닝콜 발생 시점 (Unix Epoch Second, UTC) |
+| `is_session_end` | Boolean | N | 루프 종료 신호. `true`이면 프론트엔드가 재시작 UI 표시 (기본값 `false`) |
+
+### 4.2. Public Broadcast (실시간 라이브 신호 시각화용)
 - **Topic:** `/topic/live/{ticker}`
-- **설명:** 웹 대시보드 접속자 모두에게 시각화용 데이터(STT 텍스트, 게이지바 수치)를 동일하게 뿌려줍니다. (주문 명령 없음)
+- **설명:** 실제 어닝콜이 진행 중일 때 웹 대시보드 접속자 모두에게 시각화용 데이터(STT 텍스트, 게이지바 수치)를 동일하게 뿌려줍니다. (주문 명령 없음)
 
 | 필드명 | 타입 | 필수 | 설명 |
 | :--- | :--- | :---: | :--- |
@@ -64,7 +83,7 @@
 | `action` | String | Y | 룰 엔진 최종 판단 (`BUY`, `SELL`, `HOLD`) |
 | `timestamp` | Long | Y | 신호 발생 시점 (Unix Epoch Second, UTC) |
 
-### 4.2. Private Routing (Trading Terminal 주문 지시용)
+### 4.3. Private Routing (Trading Terminal 주문 지시용)
 - **Queue:** `/user/{userId}/queue/signals`
 - **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
 - **수량 처리 원칙:** 백엔드는 자체 장부(Ledger) 기준으로 `target_qty`를 산출하여 전송합니다. Trading Terminal은 주문 직전 실제 KIS 증권사 잔고를 조회하여 수량을 보정(예: 예수금 부족 시 하향 조정)한 뒤 매매를 실행합니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고하여 백엔드 장부의 오차를 교정합니다.
