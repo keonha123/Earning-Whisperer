@@ -1,0 +1,146 @@
+[
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Good afternoon, everyone. Thank you for joining NVIDIA's third quarter fiscal 2025 earnings call. We're pleased to report continued strong execution across our business.",
+    "raw_score": 0.20,
+    "ema_score": 0.20,
+    "rationale": "어닝콜 개시. 초기 발언, 추세 미형성.",
+    "action": "HOLD",
+    "timestamp": 1732143600
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Revenue for the third quarter reached a record 35.1 billion dollars, representing 94 percent growth year-over-year and 17 percent sequentially, driven by exceptional demand for our data center products.",
+    "raw_score": 0.60,
+    "ema_score": 0.27,
+    "rationale": "전체 매출 YoY +94% 달성. 긍정 신호 시작.",
+    "action": "HOLD",
+    "timestamp": 1732143610
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Our data center segment achieved a record 30.8 billion dollars in the quarter, with strong contributions from both Hopper architecture and the initial ramp of our next-generation Blackwell platform.",
+    "raw_score": 0.85,
+    "ema_score": 0.38,
+    "rationale": "데이터센터 308억으로 폭발적 성장. Blackwell 초도 출하 개시.",
+    "action": "HOLD",
+    "timestamp": 1732143620
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "I'm pleased to report that Blackwell production is ramping faster than initially planned. Customer demand continues to significantly exceed our supply capacity, and we expect this trend to persist.",
+    "raw_score": 0.90,
+    "ema_score": 0.47,
+    "rationale": "Blackwell 생산 일정 초과 달성. 수요가 공급을 지속 초과.",
+    "action": "HOLD",
+    "timestamp": 1732143630
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "The supply-demand imbalance for our AI infrastructure products is expected to continue well into 2025, as leading cloud providers and enterprises accelerate their AI compute investments.",
+    "raw_score": 0.80,
+    "ema_score": 0.53,
+    "rationale": "공급 부족 2025년까지 지속 전망. 하이퍼스케일러 투자 지속 확인.",
+    "action": "HOLD",
+    "timestamp": 1732143640
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Gross margin for the quarter expanded to 74.6 percent, reflecting the premium value of our products and improving operational efficiency as we scale our manufacturing partnerships.",
+    "raw_score": 0.75,
+    "ema_score": 0.57,
+    "rationale": "매출총이익률 74.6% 달성. 강한 가격 결정력 확인.",
+    "action": "HOLD",
+    "timestamp": 1732143650
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Gaming revenue reached 3.3 billion dollars, growing 15 percent year-over-year as RTX 40 series adoption continues to accelerate globally, particularly in the high-end segment.",
+    "raw_score": 0.65,
+    "ema_score": 0.58,
+    "rationale": "게이밍 회복세 확인. 전 사업부 고른 성장세.",
+    "action": "HOLD",
+    "timestamp": 1732143660
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Our automotive segment delivered 449 million dollars, representing 72 percent year-over-year growth, as DRIVE platform design wins from prior years are now converting into meaningful production revenue.",
+    "raw_score": 0.70,
+    "ema_score": 0.60,
+    "rationale": "자동차 YoY +72% 달성. EMA 임계치 상향 돌파 — 매수 신호 발생.",
+    "action": "BUY",
+    "timestamp": 1732143670
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "For the fourth quarter of fiscal 2025, we expect revenue of approximately 37.5 billion dollars, plus or minus 2 percent. This guidance reflects our continued strong pipeline and execution capability.",
+    "raw_score": 0.80,
+    "ema_score": 0.64,
+    "rationale": "Q4 가이던스 375억 제시. 실적 모멘텀 지속 확인.",
+    "action": "BUY",
+    "timestamp": 1732143680
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "I do want to address the impact of export control regulations on our China business. These restrictions reduced our data center revenue by approximately 1 to 2 billion dollars in the quarter.",
+    "raw_score": -0.20,
+    "ema_score": 0.49,
+    "rationale": "중국 수출규제로 10~20억 달러 매출 손실 언급. 단기 리스크 요인.",
+    "action": "HOLD",
+    "timestamp": 1732143690
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "However, we are seeing robust demand from hyperscalers in North America, Europe, and Asia-Pacific that has more than offset the impact of China restrictions on our overall revenue trajectory.",
+    "raw_score": 0.60,
+    "ema_score": 0.51,
+    "rationale": "北美·유럽 수요로 중국 규제 영향 상쇄. 지역 다변화 확인.",
+    "action": "HOLD",
+    "timestamp": 1732143700
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Our networking revenue, including Spectrum-X Ethernet solutions, reached an all-time high this quarter, demonstrating the breadth of our AI infrastructure portfolio beyond just compute.",
+    "raw_score": 0.75,
+    "ema_score": 0.55,
+    "rationale": "네트워킹 매출 역대 최고. AI 인프라 포트폴리오 확장.",
+    "action": "HOLD",
+    "timestamp": 1732143710
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "We returned 2.8 billion dollars to shareholders through stock buybacks during the quarter, reflecting our confidence in NVIDIA's long-term growth opportunity and strong free cash flow generation.",
+    "raw_score": 0.50,
+    "ema_score": 0.54,
+    "rationale": "자사주 28억 매입. 경영진 장기 성장 자신감 시사.",
+    "action": "HOLD",
+    "timestamp": 1732143720
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "Looking ahead, we expect to begin sampling the Blackwell Ultra platform in early 2025, maintaining our technology roadmap cadence and ensuring continued leadership in AI accelerated computing.",
+    "raw_score": 0.80,
+    "ema_score": 0.59,
+    "rationale": "Blackwell Ultra 2025년 초 샘플링 예고. 기술 리더십 지속.",
+    "action": "HOLD",
+    "timestamp": 1732143730
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "We are at the very beginning of a massive platform transition. Every industry, every enterprise will need to fundamentally reinvent their IT infrastructure for the AI era. NVIDIA is uniquely positioned to lead this transformation.",
+    "raw_score": 0.90,
+    "ema_score": 0.65,
+    "rationale": "AI 플랫폼 전환의 시작점 선언. EMA 임계치 재돌파 — 매수 신호 재발생.",
+    "action": "BUY",
+    "timestamp": 1732143740
+  },
+  {
+    "ticker": "NVDA",
+    "text_chunk": "In summary, NVIDIA delivered another quarter of record results, demonstrating strong execution across all business segments. We remain highly confident in our ability to capture the extraordinary opportunity ahead.",
+    "raw_score": 0.80,
+    "ema_score": 0.68,
+    "rationale": "사상 최고 실적 마무리. 전 사업부 강한 모멘텀. 매수 신호 유지.",
+    "action": "BUY",
+    "timestamp": 1732143750
+  }
+]
