@@ -49,7 +49,7 @@ export default function SignalFeed({ signals }: SignalFeedProps) {
                   <span className="text-xs text-gray-600 font-mono">
                     EMA: {signal.emaScore.toFixed(3)}
                   </span>
-                  <span className="text-xs text-gray-700">
+                  <span className="text-xs text-gray-500">
                     {formatTime(signal.timestamp)}
                   </span>
                 </div>

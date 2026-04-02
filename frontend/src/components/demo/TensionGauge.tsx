@@ -66,9 +66,9 @@ export default function TensionGauge({ rawScore, emaScore }: TensionGaugeProps) 
       </div>
 
       {/* 스케일 표시 */}
-      <div className="flex justify-between text-xs text-gray-600">
+      <div className="relative flex justify-between text-xs text-gray-600">
         <span>-1.0 매도</span>
-        <span>0</span>
+        <span className="absolute left-1/2 -translate-x-1/2">0</span>
         <span>+1.0 매수</span>
       </div>
     </div>
