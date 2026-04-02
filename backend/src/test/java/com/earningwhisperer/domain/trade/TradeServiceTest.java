@@ -6,6 +6,7 @@ import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
+import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -77,5 +79,22 @@ class TradeServiceTest {
         // Assert
         assertThat(result).isNull();
         verify(tradeRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("callback 시 Trade 소유자가 다르면 SecurityException이 발생한다")
+    void callback_소유권_불일치시_예외발생() {
+        // Arrange
+        Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
+        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+
+        TradeCallbackRequest request = mock(TradeCallbackRequest.class);
+
+        // Act & Assert — callerId=2L은 소유자(1L)와 다름
+        assertThatThrownBy(() -> tradeService.processCallback(99L, 2L, request))
+                .isInstanceOf(SecurityException.class);
     }
 }

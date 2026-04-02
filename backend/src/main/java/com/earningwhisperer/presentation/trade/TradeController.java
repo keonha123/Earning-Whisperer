@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.trade.TradeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -21,9 +22,11 @@ public class TradeController {
 
     @PostMapping("/{tradeId}/callback")
     public ResponseEntity<Void> callback(
+            Authentication auth,
             @PathVariable Long tradeId,
             @Valid @RequestBody TradeCallbackRequest request) {
-        tradeService.processCallback(tradeId, request);
+        Long callerId = (Long) auth.getPrincipal();
+        tradeService.processCallback(tradeId, callerId, request);
         return ResponseEntity.ok().build();
     }
 }
