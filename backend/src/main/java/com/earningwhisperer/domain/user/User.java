@@ -6,6 +6,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -26,10 +27,19 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 50)
     private String nickname;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private UserRole role;
+
     @Builder
     public User(String email, String password, String nickname) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
+        this.role = UserRole.FREE;
+    }
+
+    public void upgradeToPro() {
+        this.role = UserRole.PRO;
     }
 }
