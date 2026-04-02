@@ -26,7 +26,7 @@ export default function SttTextFeed({ currentText, textHistory, ticker }: SttTex
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto max-h-48 space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
+      <div className="flex-1 overflow-y-auto max-h-64 space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
         {textHistory.length === 0 ? (
           <p className="text-gray-600 text-sm italic">연결 대기 중...</p>
         ) : (

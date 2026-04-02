@@ -29,7 +29,7 @@ export default function AuthCard({ activeTab, onTabChange }: AuthCardProps) {
   );
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-md space-y-6">
+    <div className="bg-gray-900 rounded-2xl p-6 sm:p-8 w-full max-w-md space-y-6">
       {/* 모바일 전용 브랜드 헤더 */}
       <div className="lg:hidden">
         <h1 className="text-xl font-bold text-white">EarningWhisperer</h1>

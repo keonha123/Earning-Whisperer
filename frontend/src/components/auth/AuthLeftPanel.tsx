@@ -26,7 +26,7 @@ function DecorativeChart() {
 
   return (
     <div className="mt-8 opacity-30">
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`}>
         <defs>
           <linearGradient id="ema-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.4" />

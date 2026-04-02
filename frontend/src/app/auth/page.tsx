@@ -29,7 +29,7 @@ function AuthPageInner() {
       <div className="hidden lg:flex lg:w-[45%]">
         <AuthLeftPanel />
       </div>
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
+      <div className="flex-1 flex items-center justify-center px-4 py-6 sm:py-12">
         <AuthCard activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
     </div>

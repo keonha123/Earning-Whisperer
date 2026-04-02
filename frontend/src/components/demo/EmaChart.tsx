@@ -82,7 +82,7 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
         </ResponsiveContainer>
       )}
 
-      <div className="flex gap-4 text-xs text-gray-500">
+      <div className="flex flex-wrap gap-3 text-xs text-gray-500">
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-0.5 bg-purple-400"></span> EMA
         </span>
@@ -90,7 +90,10 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
           <span className="inline-block w-4 h-0.5 bg-blue-400 opacity-50"></span> Raw
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-4 h-0.5 bg-green-500"></span> BUY 임계({threshold})
+          <span className="inline-block w-4 h-0.5 bg-green-500"></span> BUY({threshold})
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 bg-red-500"></span> SELL(-{threshold})
         </span>
       </div>
     </div>
