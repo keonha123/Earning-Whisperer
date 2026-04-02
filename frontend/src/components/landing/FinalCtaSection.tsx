@@ -9,16 +9,26 @@ const PLANS = [
     name: "Free",
     price: "₩0",
     period: "영구 무료",
-    features: ["실시간 AI 신호 열람", "데모룸 무제한 체험", "EMA 차트 & 감성 분석"],
+    features: [
+      "FinBERT Raw Score 실시간 수신",
+      "데모룸 무제한 체험",
+      "Trading Terminal 설치",
+      "매매 계좌 연동",
+    ],
     cta: "무료 시작",
     href: "/auth?mode=signup",
     highlight: false,
   },
   {
     name: "Pro",
-    price: "₩29,900",
+    price: "₩9,900",
     period: "/월",
-    features: ["Free 플랜 전체 포함", "Trading Terminal 다운로드", "AUTO_PILOT 자동매매 모드", "우선 기술 지원"],
+    features: [
+      "Free 플랜 전체 포함",
+      "EMA 기반 BUY/SELL 매매 신호",
+      "AUTO_PILOT 자동매매 모드",
+      "포트폴리오 연동 신호 최적화",
+    ],
     cta: "Pro 시작하기",
     href: "/auth?mode=signup",
     highlight: true,
@@ -46,7 +56,7 @@ export default function FinalCtaSection() {
           transition={{ duration: 0.5 }}
           className="mb-4 text-center"
         >
-          <span className="text-xs font-semibold uppercase tracking-widest text-purple-400">
+          <span className="text-xs font-semibold uppercase tracking-widest text-accent-400">
             Get Started
           </span>
         </m.div>
@@ -83,12 +93,12 @@ export default function FinalCtaSection() {
               key={plan.name}
               className={`rounded-xl p-6 ${
                 plan.highlight
-                  ? "border border-purple-500/40 bg-gradient-to-b from-purple-500/10 to-gray-900/80"
+                  ? "border border-accent-500/40 bg-gradient-to-b from-accent-500/10 to-gray-900/80"
                   : "border border-gray-800 bg-gray-900"
               }`}
             >
               {plan.highlight && (
-                <span className="mb-3 inline-block rounded-full bg-purple-500/20 px-2.5 py-0.5 text-xs font-semibold text-purple-300">
+                <span className="mb-3 inline-block rounded-full bg-accent-500/20 px-2.5 py-0.5 text-xs font-semibold text-accent-300">
                   추천
                 </span>
               )}
@@ -100,7 +110,7 @@ export default function FinalCtaSection() {
               <ul className="mb-6 space-y-2">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm text-gray-300">
-                    <svg className="h-3.5 w-3.5 flex-shrink-0 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-3.5 w-3.5 flex-shrink-0 text-accent-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                     {f}
@@ -111,7 +121,7 @@ export default function FinalCtaSection() {
                 href={plan.href}
                 className={`block w-full rounded-lg py-2.5 text-center text-sm font-semibold transition-colors ${
                   plan.highlight
-                    ? "bg-purple-600 text-white hover:bg-purple-500"
+                    ? "bg-accent-600 text-white hover:bg-accent-500"
                     : "border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white"
                 }`}
               >
@@ -131,7 +141,7 @@ export default function FinalCtaSection() {
         >
           <Link
             href="/demo"
-            className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-purple-300"
+            className="inline-flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-accent-300"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />

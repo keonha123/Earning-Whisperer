@@ -19,13 +19,13 @@ function HeroBackground() {
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[700px] w-[700px] rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)",
+            "radial-gradient(circle, color-mix(in srgb, var(--accent-500) 15%, transparent) 0%, transparent 70%)",
         }}
       />
       {/* 좌상단 보조 글로우 */}
-      <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-purple-600/[0.08] blur-3xl" />
+      <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-accent-600/[0.08] blur-3xl" />
       {/* 우하단 보조 글로우 */}
-      <div className="absolute -bottom-20 -right-20 h-80 w-80 rounded-full bg-purple-500/[0.06] blur-3xl" />
+      <div className="absolute -bottom-20 -right-20 h-80 w-80 rounded-full bg-accent-500/[0.06] blur-3xl" />
       {/* 격자 패턴 */}
       <div
         className="absolute inset-0"
@@ -37,16 +37,16 @@ function HeroBackground() {
         }}
       />
       {/* 파티클 dot */}
-      <div className="absolute left-[15%] top-[25%] h-1 w-1 rounded-full bg-purple-400/40" />
-      <div className="absolute right-[20%] top-[40%] h-1 w-1 rounded-full bg-purple-400/30" />
-      <div className="absolute left-[60%] bottom-[30%] h-1.5 w-1.5 rounded-full bg-purple-300/20" />
+      <div className="absolute left-[15%] top-[25%] h-1 w-1 rounded-full bg-accent-400/40" />
+      <div className="absolute right-[20%] top-[40%] h-1 w-1 rounded-full bg-accent-400/30" />
+      <div className="absolute left-[60%] bottom-[30%] h-1.5 w-1.5 rounded-full bg-accent-300/20" />
     </m.div>
   );
 }
 
 export default function HeroSection() {
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-950 px-4">
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-950 px-4 pt-16">
       <HeroBackground />
 
       <m.div
@@ -57,8 +57,8 @@ export default function HeroSection() {
       >
         {/* 배지 */}
         <m.div variants={fadeUp} className="mb-6 inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-medium text-purple-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse" />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-500/30 bg-accent-500/10 px-3 py-1 text-xs font-medium text-accent-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent-400 animate-pulse" />
             AI-Powered Earnings Analysis
           </span>
         </m.div>
@@ -99,7 +99,7 @@ export default function HeroSection() {
         >
           <Link
             href="/demo"
-            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 transition-all hover:bg-purple-500 hover:shadow-purple-500/40"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-accent-500/30 transition-all hover:bg-accent-500 hover:shadow-accent-500/40"
           >
             데모 체험하기
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

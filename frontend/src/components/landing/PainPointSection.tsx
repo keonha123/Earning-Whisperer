@@ -51,7 +51,7 @@ export default function PainPointSection() {
           transition={{ duration: 0.5 }}
           className="mb-4 text-center"
         >
-          <span className="text-xs font-semibold uppercase tracking-widest text-purple-400">
+          <span className="text-xs font-semibold uppercase tracking-widest text-accent-400">
             The Problem
           </span>
         </m.div>
@@ -88,10 +88,10 @@ export default function PainPointSection() {
             <m.div
               key={point.number}
               variants={fadeUp}
-              className="group rounded-xl border border-gray-800 bg-gray-900 p-6 transition-all hover:border-purple-500/40 hover:bg-gray-900/80"
+              className="group rounded-xl border border-gray-800 bg-gray-900 p-6 transition-all hover:border-accent-500/40 hover:bg-gray-900/80"
             >
               {/* 아이콘 */}
-              <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+              <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-accent-500/10 text-accent-400">
                 {point.icon}
               </div>
               {/* 숫자 */}
@@ -114,8 +114,8 @@ export default function PainPointSection() {
           transition={{ duration: 0.5, delay: 0.4 }}
           className="mt-10 flex flex-col items-center gap-2"
         >
-          <div className="h-8 w-px bg-gradient-to-b from-gray-700 to-purple-500" />
-          <span className="rounded-full border border-purple-500/40 bg-purple-500/10 px-4 py-1.5 text-sm font-medium text-purple-300">
+          <div className="h-8 w-px bg-gradient-to-b from-gray-700 to-accent-500" />
+          <span className="rounded-full border border-accent-500/40 bg-accent-500/10 px-4 py-1.5 text-sm font-medium text-accent-300">
             EarningWhisperer가 해결합니다
           </span>
         </m.div>
