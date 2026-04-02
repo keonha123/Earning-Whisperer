@@ -2,9 +2,13 @@ package com.earningwhisperer.infrastructure.redis;
 
 import com.earningwhisperer.domain.signal.ProcessedSignal;
 import com.earningwhisperer.domain.signal.SignalService;
+import com.earningwhisperer.domain.signal.TradeAction;
+import com.earningwhisperer.domain.trade.PendingTradeResult;
 import com.earningwhisperer.domain.trade.TradeService;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalMessage;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalPublisher;
+import com.earningwhisperer.infrastructure.websocket.TradeCommandMessage;
+import com.earningwhisperer.infrastructure.websocket.TradeCommandPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +37,7 @@ public class TradingSignalSubscriber {
     private final TradeService tradeService;
     private final ObjectMapper objectMapper;
     private final LiveSignalPublisher liveSignalPublisher;
+    private final TradeCommandPublisher tradeCommandPublisher;
 
     /**
      * Redis 채널에서 메시지를 수신하면 호출되는 진입점.
@@ -52,12 +57,17 @@ public class TradingSignalSubscriber {
         // Step 2: DB 전용 트랜잭션 — 완료 후 커넥션 즉시 반환
         ProcessedSignal processed = signalService.processSignal(signal);
 
-        // Step 3: PENDING Trade 생성 — Trading Terminal로 매매 명령 라우팅 예정
-        // TODO: Private WebSocket 구현 후 tradeId를 /user/{userId}/queue/signals 로 라우팅
-        Long tradeId = tradeService.createPendingTrade(signal.getTicker(), processed.action());
-        if (tradeId != null) {
-            log.info("[TradingSignal] 매매 명령 생성 - tradeId={} ticker={} action={}",
-                    tradeId, signal.getTicker(), processed.action());
+        // Step 3: PENDING Trade 생성 → Private WebSocket으로 Trading Terminal에 매매 명령 전송
+        PendingTradeResult tradeResult = tradeService.createPendingTrade(signal.getTicker(), processed.action());
+        if (tradeResult != null) {
+            TradeCommandMessage command = TradeCommandMessage.builder()
+                    .tradeId(tradeResult.tradeId())
+                    .action(processed.action().name())
+                    .targetQty(1) // TODO: buyAmountRatio 기반 동적 수량 계산 (Phase 후속)
+                    .ticker(signal.getTicker())
+                    .emaScore(processed.emaScore())
+                    .build();
+            tradeCommandPublisher.publish(tradeResult.userId(), command);
         }
 
         // Step 4: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)

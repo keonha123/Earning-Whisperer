@@ -5,7 +5,10 @@ import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
+import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -38,12 +41,12 @@ public class TradeService {
     private final PortfolioSettingsService portfolioSettingsService;
 
     /**
-     * PENDING 상태의 Trade를 생성하고 tradeId를 반환한다.
-     * Trading Terminal이 이 tradeId를 받아 주문을 실행하고 콜백으로 결과를 보고한다.
+     * PENDING 상태의 Trade를 생성하고 tradeId + userId를 반환한다.
+     * Trading Terminal이 tradeId를 받아 주문을 실행하고 콜백으로 결과를 보고한다.
      *
-     * @return 생성된 Trade ID (주문 생성하지 않은 경우 null)
+     * @return PendingTradeResult (AUTO_PILOT 아니거나 HOLD이면 null)
      */
-    public Long createPendingTrade(String ticker, TradeAction action) {
+    public PendingTradeResult createPendingTrade(String ticker, TradeAction action) {
         if (action == TradeAction.HOLD) {
             return null;
         }
@@ -69,6 +72,34 @@ public class TradeService {
 
         Trade saved = tradeRepository.save(trade);
         log.info("[TradeService] PENDING 거래 생성 - tradeId={} ticker={} action={}", saved.getId(), ticker, action);
-        return saved.getId();
+        return new PendingTradeResult(saved.getId(), SYSTEM_USER_ID);
+    }
+
+    /**
+     * Contract 4 — Trading Terminal 체결 콜백 처리.
+     * Trade 상태를 PENDING → EXECUTED / FAILED 로 전환한다.
+     * 순수 DB 작업이므로 @Transactional 사용 (외부 HTTP 없음).
+     *
+     * @param callerId JWT에서 추출한 요청자 userId — 소유권 검증에 사용
+     */
+    @Transactional
+    public void processCallback(Long tradeId, Long callerId, TradeCallbackRequest request) {
+        Trade trade = tradeRepository.findById(tradeId)
+                .orElseThrow(() -> new EntityNotFoundException("Trade를 찾을 수 없습니다. tradeId=" + tradeId));
+
+        if (!trade.getUser().getId().equals(callerId)) {
+            throw new SecurityException("Trade 소유권 불일치 - tradeId=" + tradeId + " callerId=" + callerId);
+        }
+
+        if ("EXECUTED".equals(request.getStatus())) {
+            int qty = request.getExecutedQty() != null ? request.getExecutedQty() : 0;
+            trade.executed(qty, request.getBrokerOrderId());
+            log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
+                    tradeId, request.getBrokerOrderId(), qty);
+        } else {
+            trade.failed();
+            log.warn("[TradeService] 체결 실패 - tradeId={} error={}", tradeId, request.getErrorMessage());
+        }
+        tradeRepository.save(trade);
     }
 }
