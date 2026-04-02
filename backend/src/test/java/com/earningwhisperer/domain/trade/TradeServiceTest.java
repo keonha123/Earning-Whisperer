@@ -34,7 +34,7 @@ class TradeServiceTest {
     private TradeService tradeService;
 
     @Test
-    @DisplayName("AUTO_PILOT + BUY이면 PENDING Trade가 저장되고 tradeId가 반환된다")
+    @DisplayName("AUTO_PILOT + BUY이면 PENDING Trade가 저장되고 PendingTradeResult가 반환된다")
     void AUTO_PILOT_BUY이면_PENDING_Trade가_생성된다() {
         // Arrange
         given(portfolioSettingsService.getSettings(any())).willReturn(mockSettings);
@@ -45,10 +45,11 @@ class TradeServiceTest {
         given(tradeRepository.save(any())).willReturn(savedTrade);
 
         // Act
-        Long tradeId = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
+        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
 
         // Assert
-        assertThat(tradeId).isEqualTo(42L);
+        assertThat(result).isNotNull();
+        assertThat(result.tradeId()).isEqualTo(42L);
         verify(tradeRepository).save(any());
     }
 
@@ -56,10 +57,10 @@ class TradeServiceTest {
     @DisplayName("HOLD이면 Trade가 생성되지 않고 null이 반환된다")
     void HOLD이면_Trade가_생성되지_않는다() {
         // Act
-        Long tradeId = tradeService.createPendingTrade("NVDA", TradeAction.HOLD);
+        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.HOLD);
 
         // Assert
-        assertThat(tradeId).isNull();
+        assertThat(result).isNull();
         verify(tradeRepository, never()).save(any());
     }
 
@@ -71,10 +72,10 @@ class TradeServiceTest {
         given(mockSettings.getTradingMode()).willReturn(TradingMode.MANUAL);
 
         // Act
-        Long tradeId = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
+        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
 
         // Assert
-        assertThat(tradeId).isNull();
+        assertThat(result).isNull();
         verify(tradeRepository, never()).save(any());
     }
 }

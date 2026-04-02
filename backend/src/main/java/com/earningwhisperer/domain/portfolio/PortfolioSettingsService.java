@@ -23,4 +23,14 @@ public class PortfolioSettingsService {
         settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, emaThreshold, tradingMode);
         return settings;
     }
+
+    /**
+     * Contract 4b — Trading Terminal 실계좌 잔고 동기화.
+     * cashBalance를 저장하여 룰 엔진의 동적 수량 계산에 활용한다.
+     */
+    @Transactional
+    public void syncCashBalance(Long userId, Double cashBalance) {
+        PortfolioSettings settings = getSettings(userId);
+        settings.syncCashBalance(cashBalance);
+    }
 }

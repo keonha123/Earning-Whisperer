@@ -3,8 +3,10 @@ package com.earningwhisperer.infrastructure.redis;
 import com.earningwhisperer.domain.signal.ProcessedSignal;
 import com.earningwhisperer.domain.signal.SignalService;
 import com.earningwhisperer.domain.signal.TradeAction;
+import com.earningwhisperer.domain.trade.PendingTradeResult;
 import com.earningwhisperer.domain.trade.TradeService;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalPublisher;
+import com.earningwhisperer.infrastructure.websocket.TradeCommandPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ class TradingSignalSubscriberTest {
     @Mock private SignalService signalService;
     @Mock private TradeService tradeService;
     @Mock private LiveSignalPublisher liveSignalPublisher;
+    @Mock private TradeCommandPublisher tradeCommandPublisher;
     @Spy  private ObjectMapper objectMapper;
 
     @InjectMocks
@@ -46,7 +49,8 @@ class TradingSignalSubscriberTest {
     void 정상_메시지_처리_순서_검증() {
         // Arrange
         when(signalService.processSignal(any())).thenReturn(new ProcessedSignal(0.8, TradeAction.BUY));
-        when(tradeService.createPendingTrade(anyString(), any())).thenReturn(1L);
+        when(tradeService.createPendingTrade(anyString(), any()))
+                .thenReturn(new PendingTradeResult(1L, 1L));
 
         // Act
         subscriber.handleMessage(VALID_MESSAGE);
@@ -56,11 +60,13 @@ class TradingSignalSubscriberTest {
         inOrder.verify(signalService).processSignal(any());
         inOrder.verify(tradeService).createPendingTrade("NVDA", TradeAction.BUY);
         inOrder.verify(liveSignalPublisher).publish(any());
+        // TradeCommandPublisher도 호출되어야 함
+        verify(tradeCommandPublisher).publish(eq(1L), any());
     }
 
     @Test
-    @DisplayName("HOLD 액션이면 TradeService가 호출되고 Publisher도 호출된다")
-    void HOLD_액션이면_TradeService_호출_후_Publisher도_호출된다() {
+    @DisplayName("HOLD 액션이면 TradeCommandPublisher는 호출되지 않고 LiveSignalPublisher는 호출된다")
+    void HOLD_액션이면_TradeCommand는_전송하지_않는다() {
         // Arrange
         when(signalService.processSignal(any())).thenReturn(new ProcessedSignal(0.3, TradeAction.HOLD));
         when(tradeService.createPendingTrade(anyString(), any())).thenReturn(null);
@@ -70,6 +76,7 @@ class TradingSignalSubscriberTest {
 
         // Assert
         verify(tradeService).createPendingTrade("NVDA", TradeAction.HOLD);
+        verify(tradeCommandPublisher, never()).publish(any(), any());
         verify(liveSignalPublisher).publish(any());
     }
 
