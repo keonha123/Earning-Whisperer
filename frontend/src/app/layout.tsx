@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { LazyMotion, domAnimation } from "framer-motion";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,10 +25,14 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-gray-950 text-white">
+        <LazyMotion features={domAnimation}>
+          {children}
+        </LazyMotion>
+      </body>
     </html>
   );
 }
