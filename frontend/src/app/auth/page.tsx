@@ -20,7 +20,7 @@ function AuthPageInner() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace("/demo");
+      router.replace("/");
     }
   }, [isAuthenticated, router]);
 
