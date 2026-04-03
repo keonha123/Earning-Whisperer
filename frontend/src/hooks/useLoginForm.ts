@@ -80,13 +80,14 @@ export function useLoginForm({ onLoadingChange }: UseLoginFormOptions = {}) {
       });
 
       if (!res.ok) {
-        setApiError(mapApiError(res.status));
+        const body = await res.json().catch(() => ({}));
+        setApiError(body.error ?? mapApiError(res.status));
         return;
       }
 
       const data = await res.json();
       setToken(data.accessToken);
-      router.push("/demo");
+      router.push("/");
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setApiError("서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");

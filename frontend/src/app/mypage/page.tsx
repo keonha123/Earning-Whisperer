@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { m } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
+import LandingNav from "@/components/landing/LandingNav";
 import ProfileHeader from "@/components/mypage/ProfileHeader";
 import TabNav, { MypageTab } from "@/components/mypage/TabNav";
 import TradeHistoryTab from "@/components/mypage/TradeHistoryTab";
@@ -93,6 +94,8 @@ export default function MypagePage() {
   if (!isAuthenticated) return null;
 
   return (
+    <>
+      <LandingNav />
     <main className="min-h-screen bg-gray-950 px-4 pt-20 pb-16">
       <div className="mx-auto max-w-3xl">
         {loading ? (
@@ -127,5 +130,6 @@ export default function MypagePage() {
         ) : null}
       </div>
     </main>
+    </>
   );
 }
