@@ -13,8 +13,8 @@ const GUEST_NAV_LINKS = [
 ];
 
 const AUTH_NAV_LINKS = [
-  { label: "워치리스트", href: "/watchlist" },
   { label: "어닝 캘린더", href: "/earnings-calendar" },
+  { label: "워치리스트", href: "/watchlist" },
   { label: "다운로드", href: "/download" },
 ];
 
