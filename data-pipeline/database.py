@@ -85,3 +85,19 @@ def save_prices(price_list: List[Dict]):
         print(f"💾 [DB] {price_list[0]['ticker']} 주가 데이터 {len(price_list)}건 저장 완료.")
     except Exception as e:
         print(f"❌ [DB] 주가 저장 에러: {e}")
+
+def update_static_indicators(indicator_list: List[Dict]):
+    """stocks 테이블에 52주 고점 및 평균 거래량 정보를 박제(Update)"""
+    if not indicator_list: return
+
+    query = text("""
+        UPDATE stocks 
+        SET high_52w = :high_52w, 
+            avg_volume_20d = :avg_volume_20d 
+        WHERE ticker = :ticker
+    """)
+
+    with engine.begin() as conn:
+        for item in indicator_list:
+            conn.execute(query, item)
+    print(f"💾 [DB] {len(indicator_list)}개 종목의 정적 지표 박제 완료.")
