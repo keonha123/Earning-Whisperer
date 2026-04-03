@@ -107,10 +107,10 @@ export default function HeroSection() {
             </svg>
           </Link>
           <Link
-            href="/auth?mode=signup"
+            href="/download"
             className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-6 py-3 text-sm font-semibold text-gray-300 transition-all hover:border-gray-500 hover:text-white"
           >
-            무료 시작하기
+            다운로드
           </Link>
         </m.div>
 

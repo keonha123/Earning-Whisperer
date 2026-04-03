@@ -9,11 +9,13 @@ const GUEST_NAV_LINKS = [
   { label: "작동 원리", href: "/#how-it-works" },
   { label: "데모 체험", href: "/demo" },
   { label: "요금제", href: "/#pricing" },
+  { label: "다운로드", href: "/download" },
 ];
 
 const AUTH_NAV_LINKS = [
   { label: "워치리스트", href: "/watchlist" },
   { label: "어닝 캘린더", href: "/earnings-calendar" },
+  { label: "다운로드", href: "/download" },
 ];
 
 function UserDropdown({ onLogout }: { onLogout: () => void }) {
