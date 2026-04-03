@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useAuthStore } from "@/store/authStore";
 
 export default function CtaOverlay() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  if (isAuthenticated) return null;
+
   return (
     <div className="relative mt-6">
       {/* 블러 레이어 */}
@@ -16,7 +21,7 @@ export default function CtaOverlay() {
         <div className="flex gap-3 flex-wrap justify-center">
           <Link
             href="/auth?mode=signup"
-            className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg text-sm transition-colors"
+            className="px-6 py-2.5 bg-accent-600 hover:bg-accent-500 text-white font-semibold rounded-lg text-sm transition-colors"
           >
             회원가입
           </Link>
@@ -32,7 +37,7 @@ export default function CtaOverlay() {
         </p>
       </div>
 
-      {/* 블러 뒤에 있는 더미 콘텐츠 (블러 효과용) */}
+      {/* 블러 뒤에 있는 더미 콘텐츠 */}
       <div className="bg-gray-900 rounded-xl p-4 space-y-3 select-none min-h-[200px]" aria-hidden>
         <div className="h-4 bg-gray-700 rounded w-3/4"></div>
         <div className="h-4 bg-gray-700 rounded w-1/2"></div>

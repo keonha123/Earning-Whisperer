@@ -97,7 +97,8 @@ export function useSignupForm({ onLoadingChange, onSwitchToLogin }: UseSignupFor
       });
 
       if (!signupRes.ok) {
-        setApiError(mapApiError(signupRes.status));
+        const body = await signupRes.json().catch(() => ({}));
+        setApiError(body.error ?? mapApiError(signupRes.status));
         return;
       }
 
@@ -118,7 +119,7 @@ export function useSignupForm({ onLoadingChange, onSwitchToLogin }: UseSignupFor
 
       const data = await loginRes.json();
       setToken(data.accessToken);
-      router.push("/demo");
+      router.push("/");
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setApiError("서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");

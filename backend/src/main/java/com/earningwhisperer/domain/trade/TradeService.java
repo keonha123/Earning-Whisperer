@@ -6,8 +6,11 @@ import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
+import com.earningwhisperer.presentation.trade.TradeResponse;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +42,12 @@ public class TradeService {
     private final TradeRepository tradeRepository;
     private final UserRepository userRepository;
     private final PortfolioSettingsService portfolioSettingsService;
+
+    @Transactional(readOnly = true)
+    public Page<TradeResponse> getMyTrades(Long userId, Pageable pageable) {
+        return tradeRepository.findByUserId(userId, pageable)
+                .map(TradeResponse::new);
+    }
 
     /**
      * PENDING 상태의 Trade를 생성하고 tradeId + userId를 반환한다.

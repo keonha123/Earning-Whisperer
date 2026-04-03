@@ -42,10 +42,10 @@ export default function ThemeSwitcher() {
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs text-gray-300 transition-colors hover:bg-gray-800"
             >
               <span
-                className="h-3.5 w-3.5 flex-shrink-0 rounded-full ring-2 ring-offset-1 ring-offset-gray-900"
+                className="h-3.5 w-3.5 flex-shrink-0 rounded-full"
                 style={{
                   backgroundColor: theme.color,
-                  ringColor: current === theme.id ? theme.color : "transparent",
+                  boxShadow: current === theme.id ? `0 0 0 2px #1f2937, 0 0 0 3.5px ${theme.color}` : "none",
                 }}
               />
               <span className={current === theme.id ? "font-semibold text-white" : ""}>

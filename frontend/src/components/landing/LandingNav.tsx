@@ -5,9 +5,9 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 
 const NAV_LINKS = [
-  { label: "작동 원리", href: "#how-it-works" },
+  { label: "작동 원리", href: "/#how-it-works" },
   { label: "데모 체험", href: "/demo" },
-  { label: "요금제", href: "#pricing" },
+  { label: "요금제", href: "/#pricing" },
 ];
 
 export default function LandingNav() {
