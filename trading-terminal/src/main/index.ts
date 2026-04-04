@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, session, Tray, Menu, nativeImage, screen } from 'electron'
 import { join } from 'path'
 import { mainState } from './store/mainState'
 import { registerAuthHandlers } from './ipc/authHandlers'
@@ -10,13 +10,22 @@ import { registerWsHandlers } from './ipc/wsHandlers'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
+
 function createWindow() {
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
+  const w = Math.min(1200, sw)
+  const h = Math.min(800, sh)
+  const x = Math.floor((sw - w) / 2)
+  const y = Math.floor((sh - h) / 2)
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: w,
+    height: h,
+    x,
+    y,
     minWidth: 1024,
     minHeight: 680,
-    titleBarStyle: 'hidden',
+    titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
     backgroundColor: '#0a0c0f',
     webPreferences: {
       nodeIntegration: false,
@@ -28,20 +37,22 @@ function createWindow() {
     },
   })
 
-  // CSP 설정
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;",
-        ],
-      },
+  // CSP 설정 (프로덕션만)
+  if (!process.env['ELECTRON_RENDERER_URL']) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;",
+          ],
+        },
+      })
     })
-  })
+  }
 
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173')
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
