@@ -25,6 +25,17 @@ public class PortfolioSettingsService {
     }
 
     /**
+     * Trading Terminal 전용 — emaThreshold는 기존 값을 유지한다.
+     */
+    @Transactional
+    public PortfolioSettings updateFromTerminal(Long userId, Double buyAmountRatio, Double maxPositionRatio,
+                                                Integer cooldownMinutes, TradingMode tradingMode) {
+        PortfolioSettings settings = getSettings(userId);
+        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, settings.getEmaThreshold(), tradingMode);
+        return settings;
+    }
+
+    /**
      * Contract 4b — Trading Terminal 실계좌 잔고 동기화.
      * cashBalance를 저장하여 룰 엔진의 동적 수량 계산에 활용한다.
      */
