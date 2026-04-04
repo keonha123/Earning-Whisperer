@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.875rem;
+    background-color: #0a0c0f;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    user-select: none; /* 데스크톱 앱 — 텍스트 선택 기본 비활성 */
+  }
+
+  /* 숫자 데이터: 모노스페이스 */
+  .num { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+  .num-positive { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; color: #22c55e; }
+  .num-negative { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; color: #ef4444; }
+  .num-neutral  { font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; color: #94a3b8; }
+
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a3344; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3b4a5c; }
+}
+
+@layer components {
+  /* 버튼 */
+  .btn-base {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md
+           font-medium text-base transition-colors duration-100
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1
+           focus-visible:ring-offset-[#161b22] disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary  { @apply btn-base bg-brand hover:bg-brand-hover text-white; }
+  .btn-buy      { @apply btn-base bg-buy hover:bg-buy-hover text-white; }
+  .btn-sell     { @apply btn-base bg-sell hover:bg-sell-hover text-white; }
+  .btn-ghost    { @apply btn-base bg-transparent hover:bg-[#232d3f] text-text-secondary hover:text-text-primary; }
+  .btn-reject   { @apply btn-base bg-[#232d3f] hover:bg-[#1c2330] text-text-secondary; }
+
+  /* 입력 */
+  .input-base {
+    @apply w-full px-3 py-2 rounded-md bg-[#1c2330] border border-[#2a3344]
+           text-text-primary text-base placeholder:text-text-disabled
+           focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand
+           transition-colors duration-100;
+  }
+  .input-error { @apply input-base border-sell focus:border-sell focus:ring-sell; }
+
+  /* 카드 */
+  .card    { @apply rounded-lg bg-[#161b22] border border-[#2a3344] p-6; }
+  .card-sm { @apply rounded-md bg-[#161b22] border border-[#2a3344] p-4; }
+
+  /* 뱃지 */
+  .badge-base    { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium; }
+  .badge-success { @apply badge-base bg-buy/20 text-buy; }
+  .badge-danger  { @apply badge-base bg-sell/20 text-sell; }
+  .badge-warning { @apply badge-base bg-connecting/20 text-connecting; }
+  .badge-neutral { @apply badge-base bg-[#232d3f] text-text-secondary; }
+  .badge-buy     { @apply badge-base bg-buy/20 text-buy text-sm px-3 py-1; }
+  .badge-sell    { @apply badge-base bg-sell/20 text-sell text-sm px-3 py-1; }
+
+  /* 모드 탭 */
+  .mode-tab         { @apply flex-1 py-2.5 text-sm font-medium rounded-md transition-colors duration-100 text-center cursor-pointer; }
+  .mode-tab-active  { @apply mode-tab bg-brand text-white; }
+  .mode-tab-inactive { @apply mode-tab bg-[#1c2330] text-text-secondary hover:bg-[#232d3f] hover:text-text-primary; }
+  .mode-tab-locked  { @apply mode-tab bg-[#1c2330] text-text-disabled cursor-not-allowed; }
+
+  /* StatusBar 항목 */
+  .status-item { @apply flex items-center gap-1.5 text-xs; }
+  .status-dot  { @apply w-1.5 h-1.5 rounded-full; }
+
+  /* 사이드바 네비 */
+  .nav-item        { @apply flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:bg-[#1c2330] hover:text-text-primary transition-colors duration-100 cursor-pointer; }
+  .nav-item-active { @apply nav-item bg-[#1c2330] text-text-primary; }
+
+  /* 신호 피드 행 */
+  .signal-row        { @apply flex items-center gap-3 px-4 py-3 border-b border-[#1e2738] hover:bg-[#1c2330] transition-colors duration-100; }
+  .signal-row-latest { @apply signal-row bg-[#1c2330] animate-slide-in-top; }
+
+  /* 확인 다이얼로그 */
+  .confirm-dialog-overlay { @apply fixed inset-0 bg-black/70 flex items-center justify-center z-[400] animate-fade-in; }
+  .confirm-dialog-card    { @apply w-96 rounded-xl bg-[#161b22] shadow-dialog border border-sell/30 p-6 animate-slide-in-top; }
+  .confirm-dialog-card-urgent { @apply confirm-dialog-card animate-border-pulse; }
+
+  /* Forced Manual 배너 */
+  .forced-manual-banner { @apply w-full px-6 py-2.5 bg-sell/20 border-b border-sell/40 flex items-center gap-3 text-sm text-sell; }
+}
