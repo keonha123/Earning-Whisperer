@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -19,7 +19,7 @@ import java.util.List;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "finnhub.api-key", matchIfMissing = false)
+@ConditionalOnExpression("!'${finnhub.api-key:}'.isBlank()")
 public class FinnhubEarningsScheduler {
 
     private final RestClient restClient;

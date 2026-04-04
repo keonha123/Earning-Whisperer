@@ -5,7 +5,7 @@ import com.earningwhisperer.domain.stock.StockRepository;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "fmp.api-key", matchIfMissing = false)
+@ConditionalOnExpression("!'${fmp.api-key:}'.isBlank()")
 public class Sp500SyncScheduler {
 
     private final RestClient restClient;
