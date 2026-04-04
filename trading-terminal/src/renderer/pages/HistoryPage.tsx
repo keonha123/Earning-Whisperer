@@ -4,11 +4,12 @@ import { ipc, IPC_CHANNELS } from '../lib/ipc'
 interface Trade {
   id: number
   ticker: string
-  action: string
+  side: 'BUY' | 'SELL'
+  orderQty: number
   executedQty: number
-  executedPrice: number
+  executedPrice: number | null
   status: string
-  createdAt: number
+  createdAt: string // ISO 8601
 }
 
 export default function HistoryPage() {
@@ -70,11 +71,11 @@ export default function HistoryPage() {
               trades.map((t) => (
                 <tr key={t.id} className="border-b border-[#1e2738] hover:bg-[#1c2330] transition-colors">
                   <td className="px-4 py-3 text-text-secondary text-xs num">
-                    {new Date(t.createdAt * 1000).toLocaleString('ko-KR')}
+                    {new Date(t.createdAt).toLocaleString('ko-KR')}
                   </td>
                   <td className="px-4 py-3 font-medium text-text-primary num">{t.ticker}</td>
                   <td className="px-4 py-3">
-                    <span className={t.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>{t.action}</span>
+                    <span className={t.side === 'BUY' ? 'badge-buy' : 'badge-sell'}>{t.side}</span>
                   </td>
                   <td className="px-4 py-3 num text-text-primary">{t.executedQty}</td>
                   <td className="px-4 py-3 num text-text-primary">${t.executedPrice?.toFixed(2) ?? '-'}</td>

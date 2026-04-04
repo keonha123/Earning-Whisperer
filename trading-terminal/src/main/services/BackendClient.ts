@@ -58,4 +58,15 @@ export const BackendClient = {
     const { data } = await http.get('/api/v1/trades', { params: { page, size } })
     return data
   },
+
+  async getSettings(): Promise<{
+    buyAmountRatio: number
+    maxPositionRatio: number
+    cooldownMinutes: number
+    emaThreshold: number
+    tradingMode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
+  }> {
+    const { data } = await http.get('/api/v1/portfolio/settings')
+    return data
+  },
 }

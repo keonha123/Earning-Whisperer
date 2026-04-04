@@ -102,7 +102,7 @@ public class TradeService {
 
         if ("EXECUTED".equals(request.getStatus())) {
             int qty = request.getExecutedQty() != null ? request.getExecutedQty() : 0;
-            trade.executed(qty, request.getBrokerOrderId());
+            trade.executed(qty, request.getExecutedPrice(), request.getBrokerOrderId());
             log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
                     tradeId, request.getBrokerOrderId(), qty);
         } else {

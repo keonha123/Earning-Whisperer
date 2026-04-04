@@ -10,10 +10,18 @@ export default function AuthPage() {
   const [step, setStep] = useState<Step>('login')
   const navigate = useNavigate()
   const { setAuthenticated, setHasCredentials } = useConnectionStore()
-  const { setUser } = useUserStore()
+  const { setUser, setSettings } = useUserStore()
 
-  async function handleLoginSuccess(user: any) {
+  async function handleLoginSuccess(user: any, settings: any) {
     setUser(user)
+    if (settings) {
+      setSettings({
+        tradingMode: settings.tradingMode,
+        maxBuyRatio: settings.buyAmountRatio,
+        maxHoldingRatio: settings.maxPositionRatio,
+        cooldownMinutes: settings.cooldownMinutes,
+      })
+    }
     setAuthenticated(true)
     const hasCredentials = await ipc.invoke<boolean>(IPC_CHANNELS.VAULT_HAS)
     if (hasCredentials) {
@@ -45,7 +53,7 @@ export default function AuthPage() {
   )
 }
 
-function LoginForm({ onSuccess }: { onSuccess: (user: any) => void }) {
+function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -56,8 +64,8 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any) => void }) {
     setError(null)
     setLoading(true)
     try {
-      const result = await ipc.invoke<{ user: any }>(IPC_CHANNELS.AUTH_LOGIN, { email, password })
-      onSuccess(result.user)
+      const result = await ipc.invoke<{ user: any; settings: any }>(IPC_CHANNELS.AUTH_LOGIN, { email, password })
+      onSuccess(result.user, result.settings)
     } catch (err: any) {
       setError(err?.message ?? '로그인에 실패했습니다.')
     } finally {
