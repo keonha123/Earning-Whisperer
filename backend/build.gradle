@@ -64,3 +64,8 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+bootRun {
+    // application-local.yml 자동 활성화 (API 키 등 로컬 설정)
+    systemProperty 'spring.profiles.active', 'local'
+}
