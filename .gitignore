@@ -1,32 +1,32 @@
-.env
-.env.*
-!.env.example
+# Java (Gradle)
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
 
+# 로컬 설정 파일 (API 키 등 민감 정보)
+**/application-local.yml
+
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-
-.pytest_cache/
-pytest-cache-files-*/
-
-.mypy_cache/
-.ruff_cache/
-.coverage
-coverage.xml
-htmlcov/
-
-.venv/
+*$py.class
 venv/
-env/
+.env
 
-*.log
-*.zip
+# Node (Frontend)
+node_modules/
+.next/
+out/
 
-# IDE
+# IDE & OS
 .idea/
 .vscode/
+.DS_Store
 *.swp
 
-# OS
-.DS_Store
-Thumbs.db
+# Personal
+learning/
+
+# Claude
+CLAUDE.md
+**/CLAUDE.md

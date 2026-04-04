@@ -1,0 +1,48 @@
+server:
+  port: 8082
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/earningwhisperer?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+    show-sql: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+ema:
+  window-size: 10  # EMA 계산 윈도우 크기 (클수록 노이즈에 둔감)
+
+jwt:
+  # 운영 환경에서는 반드시 환경변수로 주입. 최소 32자(256-bit) 이상.
+  secret: ${JWT_SECRET:earning-whisperer-dev-secret-key-minimum-32-chars}
+  expiration-ms: 86400000  # 24시간 (ms)
+
+finnhub:
+  base-url: https://finnhub.io/api/v1
+  api-key: ${FINNHUB_API_KEY:}   # 미설정 시 어닝 일정 스케줄러 비활성화
+
+fmp:
+  base-url: https://financialmodelingprep.com
+  api-key: ${FMP_API_KEY:}       # 미설정 시 S&P 500 분기 동기화 스케줄러 비활성화
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
