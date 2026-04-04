@@ -20,9 +20,18 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { setWsStatus, setKisTokenStatus, setAuthenticated } = useConnectionStore()
+  const { isAuthenticated, setWsStatus, setKisTokenStatus, setAuthenticated } = useConnectionStore()
   const { forceManual, receiveSignal, updateSignalStatus, setLastExecutedTrade, pendingConfirm, setPendingConfirm } = useTradingStore()
   const { setBalance } = usePortfolioStore()
+
+  // 인증 상태 변화 시 WebSocket 연결/해제
+  useEffect(() => {
+    if (isAuthenticated) {
+      ipc.invoke(IPC_CHANNELS.WS_CONNECT)
+    } else {
+      ipc.invoke(IPC_CHANNELS.WS_DISCONNECT)
+    }
+  }, [isAuthenticated])
 
   useEffect(() => {
     const unsubs = [

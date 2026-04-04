@@ -49,6 +49,7 @@ export const StompService = {
     if (client?.connected) return
 
     const token = mainState.backendToken
+    console.log('[StompService] connect() called — WS_URL:', WS_URL, '| token:', token ? '있음' : '없음(null)')
     if (!token) return
 
     onStatusChange('CONNECTING')
@@ -96,7 +97,8 @@ export const StompService = {
         scheduleReconnect()
       },
 
-      onWebSocketError: () => {
+      onWebSocketError: (event) => {
+        console.error('[StompService] WebSocket 연결 오류:', event)
         onStatusChange('RECONNECTING')
         scheduleReconnect()
       },
