@@ -1,61 +1,139 @@
-# core/context_manager.py
-# 슬라이딩 윈도우 컨텍스트 관리
-# 어닝콜 중 이전 발언 내용을 기억해 Gemini가 문맥을 이해할 수 있게 함
+"""Sliding-window transcript context management keyed by per-call session ids."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
 from collections import deque
 from dataclasses import dataclass, field
-from config import settings
+from typing import Deque
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ChunkRecord:
+    """A single transcript fragment kept in the rolling context window."""
+
+    sequence: int
+    text_chunk: str
+    timestamp: int
+
+
+@dataclass
+class ContextSession:
+    """Rolling transcript state for one earnings-call session key."""
+
+    session_key: str
+    chunks: Deque[ChunkRecord] = field(default_factory=deque)
+    created_at: float = field(default_factory=time.time)
+    last_updated: float = field(default_factory=time.time)
+    is_closed: bool = False
+
+
 class ContextManager:
+    """Maintain a bounded chunk history per session key.
+
+    Session keys may be plain tickers or call-scoped ids such as
+    ``NVDA:call-001``. The API uses ``session_key`` consistently so the
+    interface matches real usage in the router layer.
     """
-    ticker별 최근 N개 텍스트 청크를 FIFO 큐로 관리.
-    get_context() → Gemini USER_PROMPT의 PREVIOUS CONTEXT 섹션에 삽입됨.
-    """
-    # ticker → 최근 N개 청크 저장 (deque: maxlen 초과 시 가장 오래된 것 자동 삭제)
-    _memory: dict = field(default_factory=dict)
 
-    def get_context(self, ticker: str) -> str:
-        """
-        이전 청크들의 요약을 하나의 문자열로 반환.
-        청크가 없으면 '(No previous context)' 반환.
-        """
-        if ticker not in self._memory or not self._memory[ticker]:
-            return "(No previous context — this is the first chunk)"
+    def __init__(self, history_size: int = 5, session_ttl: int = 3600) -> None:
+        self._history_size = history_size
+        self._session_ttl = session_ttl
+        self._sessions: dict[str, ContextSession] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._global_lock = asyncio.Lock()
 
-        chunks = list(self._memory[ticker])
+    async def update(
+        self,
+        session_key: str,
+        chunk: ChunkRecord,
+        is_final: bool = False,
+    ) -> None:
+        """Append a chunk to a session and optionally close it."""
 
-        # 각 청크를 최대 80자로 잘라서 연결 (토큰 비용 절약)
-        summaries = []
-        for i, chunk in enumerate(chunks):
-            truncated = chunk[:80] + "..." if len(chunk) > 80 else chunk
-            summaries.append(f"[{i+1}] {truncated}")
+        lock = await self._get_or_create_lock(session_key)
 
-        context = " | ".join(summaries)
+        async with lock:
+            session = self._sessions.get(session_key)
+            if session is None or session.is_closed:
+                session = ContextSession(session_key=session_key)
+                self._sessions[session_key] = session
+                logger.debug("Session created: session_key=%s", session_key)
 
-        # 전체 컨텍스트 길이 제한
-        return context[:settings.context_summary_chars]
+            session.chunks.append(chunk)
+            if len(session.chunks) > self._history_size:
+                session.chunks.popleft()
 
-    def update(self, ticker: str, text_chunk: str) -> None:
-        """
-        새 청크를 컨텍스트에 추가 (FIFO, maxlen=N 초과 시 오래된 것 제거).
-        """
-        if ticker not in self._memory:
-            self._memory[ticker] = deque(maxlen=settings.context_history_size)
-        self._memory[ticker].append(text_chunk)
+            session.last_updated = time.time()
 
-    def clear(self, ticker: str) -> None:
-        """
-        is_final=True 수신 시 해당 티커 컨텍스트 완전 초기화.
-        어닝콜 세션이 끝나면 다음 어닝콜을 위해 메모리 비워야 함.
-        """
-        if ticker in self._memory:
-            del self._memory[ticker]
+            if is_final:
+                session.is_closed = True
+                logger.info(
+                    "Session closed: session_key=%s total_chunks=%d",
+                    session_key,
+                    len(session.chunks),
+                )
 
-    def get_all_tickers(self) -> list:
-        """현재 컨텍스트가 있는 티커 목록 반환 (디버깅용)."""
-        return list(self._memory.keys())
+    async def get_context(self, session_key: str) -> list[ChunkRecord]:
+        """Return the recent context window for one session key."""
 
+        lock = await self._get_or_create_lock(session_key)
 
-# 싱글턴
-context_manager = ContextManager()
+        async with lock:
+            session = self._sessions.get(session_key)
+            if session is None:
+                return []
+            return list(session.chunks)
+
+    async def get_active_tickers(self) -> list[str]:
+        """Return active session keys that are not closed yet."""
+
+        async with self._global_lock:
+            return [
+                session_key
+                for session_key, session in self._sessions.items()
+                if not session.is_closed
+            ]
+
+    async def cleanup_expired(self) -> int:
+        """Remove expired sessions without deleting freshly updated state."""
+
+        now = time.time()
+        expired_candidates: list[str] = []
+
+        async with self._global_lock:
+            for session_key, session in self._sessions.items():
+                if now - session.last_updated > self._session_ttl:
+                    expired_candidates.append(session_key)
+
+        cleaned = 0
+        for session_key in expired_candidates:
+            lock = await self._get_or_create_lock(session_key)
+            async with lock:
+                async with self._global_lock:
+                    session = self._sessions.get(session_key)
+                    if session is None:
+                        continue
+
+                    age = time.time() - session.last_updated
+                    if age <= self._session_ttl:
+                        continue
+
+                    self._sessions.pop(session_key, None)
+                    self._locks.pop(session_key, None)
+                    cleaned += 1
+                    logger.info("Expired session cleaned: session_key=%s", session_key)
+
+        return cleaned
+
+    async def _get_or_create_lock(self, session_key: str) -> asyncio.Lock:
+        """Return the per-session lock, creating it when needed."""
+
+        async with self._global_lock:
+            if session_key not in self._locks:
+                self._locks[session_key] = asyncio.Lock()
+            return self._locks[session_key]

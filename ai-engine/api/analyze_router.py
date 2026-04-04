@@ -1,212 +1,313 @@
-# api/analyze_router.py
-# POST /api/v1/analyze — 메인 엔드포인트
-import time
+"""Legacy analysis endpoint with the upgraded hyeongyu-style analysis service."""
+
+from __future__ import annotations
+
+import asyncio
 import logging
+import time
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from models.request_models  import AnalyzeRequest
-from models.signal_models   import TradingSignalV3, GeminiAnalysisResult
-from core.gemini_client     import gemini_client
-from core.prompt_builder    import build_prompt
-from core.context_manager   import context_manager
-from core.score_normalizer  import normalize_score
-from core.pead_calculator   import calculate_sue
-from core.composite_scorer  import calculate_momentum_score, calculate_composite_score
-from core.five_gate_filter  import apply_5gate_filter
-from core.risk_manager      import calculate_exit_levels, calculate_kelly_position
-from core.regime_classifier import classify_regime
-from core.integrity_validator import validate_direction_consistency
-from core.redis_publisher   import redis_publisher
-from strategies.orchestrator import orchestrator
+from ..config import get_settings
+from ..core.analysis_service import analysis_service
+from ..core.composite_scorer import calculate_composite_score
+from ..core.contract_adapter import to_backend_redis_signal
+from ..core.context_manager import ChunkRecord, ContextManager
+from ..core.five_gate_filter import FiveGateFilter
+from ..core.integration_state import IntegrationStateStore
+from ..core.pead_calculator import calculate_sue_score
+from ..core.phase1_scorer import blend_raw_scores, fallback_gemini_result, phase1_scorer
+from ..core.redis_publisher import RedisPublisher
+from ..core.regime_classifier import apply_regime_multiplier, classify_regime
+from ..core.risk_manager import calculate_risk_parameters
+from ..core.score_normalizer import compute_raw_score
+from ..models.request_models import AnalyzeBatchRequest, AnalyzeRequest, MarketData
+from ..models.signal_models import StrategyName, TradingSignalV3
+from ..strategies.orchestrator import StrategyOrchestrator
 
-router = APIRouter()
-logger = logging.getLogger("analyze_router")
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1", tags=["analysis"])
+
+_context_manager: Optional[ContextManager] = None
+_gate_filter: Optional[FiveGateFilter] = None
+_redis_publisher: Optional[RedisPublisher] = None
+_integration_state: Optional[IntegrationStateStore] = None
+_orchestrator = StrategyOrchestrator()
 
 
-@router.post("/api/v1/analyze", status_code=202)
-async def analyze(request: AnalyzeRequest, bg: BackgroundTasks):
-    """
-    텍스트 청크 수신 → 즉시 202 반환, 분석은 백그라운드 실행.
-    """
-    # 기본 유효성 검사
-    if not request.text_chunk.strip():
-        raise HTTPException(status_code=400, detail="text_chunk가 비어있습니다")
+def init_dependencies(
+    context_manager: ContextManager,
+    gate_filter: FiveGateFilter,
+    redis_publisher: RedisPublisher,
+    integration_state: Optional[IntegrationStateStore] = None,
+) -> None:
+    """Inject shared runtime dependencies during FastAPI startup."""
 
-    bg.add_task(_process_signal, request)
+    global _context_manager, _gate_filter, _redis_publisher, _integration_state
+    _context_manager = context_manager
+    _gate_filter = gate_filter
+    _redis_publisher = redis_publisher
+    _integration_state = integration_state
+
+
+@router.post("/analyze", status_code=202)
+async def analyze_text_chunk(
+    request: AnalyzeRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Receive a chunk, enqueue async analysis, and return immediately."""
+
+    return enqueue_analysis_request(request, background_tasks)
+
+
+@router.post("/analyze/batch", status_code=202)
+async def analyze_batch(
+    request: AnalyzeBatchRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Accept a batch of transcript fragments for concurrent async processing."""
+
+    if not request.items:
+        raise HTTPException(status_code=400, detail="items must not be empty")
+
+    background_tasks.add_task(_run_batch_pipeline, request)
     return {
-        "status":   "accepted",
-        "sequence": request.sequence,
-        "ticker":   request.ticker,
+        "status": "accepted",
+        "accepted_count": len(request.items),
+        "tickers": sorted({item.ticker for item in request.items}),
+        "batch_label": request.batch_label,
     }
 
 
-@router.get("/health")
-async def health():
-    from config import settings
-    return {
-        "status":  "ok",
-        "model":   settings.gemini_model,
-        "version": "3.0.0",
-    }
+async def _run_pipeline(request: AnalyzeRequest) -> None:
+    """Run the full analysis and signal generation flow."""
 
+    _require_dependencies()
 
-@router.get("/stats")
-async def stats():
-    return {
-        "active_tickers": context_manager.get_all_tickers(),
-    }
+    ticker = request.ticker
+    session_key = _build_session_key(request)
+    start_time = time.monotonic()
 
-
-async def _process_signal(request: AnalyzeRequest):
-    """백그라운드 분석 파이프라인."""
     try:
-        md = request.market_data.model_dump() if request.market_data else {}
-
-        # 1. 슬라이딩 윈도우 컨텍스트
-        context = context_manager.get_context(request.ticker)
-
-        # 2. 프롬프트 생성 & Gemini 호출
-        prompt        = build_prompt(context, request.text_chunk, request.ticker, md, {})
-        gemini_result = await gemini_client.analyze(prompt)
-
-        # 3. raw_score 계산
-        raw_score = normalize_score(
-            direction           = gemini_result.direction,
-            magnitude           = gemini_result.magnitude,
-            confidence          = gemini_result.confidence,
-            euphemisms          = gemini_result.euphemisms,
-            negative_word_ratio = gemini_result.negative_word_ratio,
+        chunk_record = ChunkRecord(
+            sequence=request.sequence,
+            text_chunk=request.text_chunk,
+            timestamp=request.timestamp,
         )
+        await _context_manager.update(session_key, chunk_record, request.is_final)
+        context_chunks = await _context_manager.get_context(session_key)
 
-        # 4. 무결성 검증 (환각 감지 → 재호출 1회)
-        if not validate_direction_consistency(raw_score, gemini_result.rationale):
-            logger.warning(f"방향 불일치 감지 ({request.ticker}) — 재호출")
-            gemini_result = await gemini_client.analyze(prompt)
-            raw_score = normalize_score(
-                gemini_result.direction, gemini_result.magnitude,
-                gemini_result.confidence, gemini_result.euphemisms,
-            )
+        md = request.market_data
+        if _integration_state is not None:
+            md = await _integration_state.merge_market_data(ticker, request.market_data)
 
-        # 5. 퀀트 점수 계산
-        raw_sign       = 1.0 if raw_score > 0 else -1.0
-        sue_score      = calculate_sue(md.get("earnings_surprise_pct"), raw_sign)
-        momentum_score = calculate_momentum_score(
-            md.get("macd_signal"), md.get("rsi_14"), md.get("bb_position")
-        )
-        composite_score = calculate_composite_score(
-            raw_score, sue_score, momentum_score,
-            md.get("volume_ratio", 1.0), md.get("vix"),
-        )
+        phase1_result = await asyncio.to_thread(phase1_scorer.analyze_text, request.text_chunk)
 
-        # 6. 시장 국면 & 5-Gate
-        market_regime = classify_regime(md.get("vix"), md.get("bb_position"))
-        gate_result   = apply_5gate_filter(
-            cs       = composite_score,
-            rs       = raw_score,
-            conf     = gemini_result.confidence,
-            euph_cnt = len(gemini_result.euphemisms),
-            sue      = sue_score,
-            macd     = md.get("macd_signal"),
-            rsi      = md.get("rsi_14"),
-            vol_ratio= md.get("volume_ratio"),
-            catalyst = gemini_result.catalyst_type,
-            vix      = md.get("vix"),
-            regime   = market_regime,
-        )
-
-        # 7. 전략 선택
-        price_data = {
-            "current":           md.get("current_price", 0),
-            "change_pct":        md.get("price_change_pct", 0),
-            "ma20":              md.get("ma20", 0),
-            "high_52w":          md.get("high_52w", 0),
-            "atr14":             md.get("atr_14", 0),
-            "first_5min_close":  md.get("first_5min_close", 0),
-            "first_5min_open":   md.get("first_5min_open", 0),
-            "gap_pct":           md.get("gap_pct"),
-            "premarket_volume_ratio": md.get("premarket_volume_ratio"),
-            "days_to_cover":     md.get("days_to_cover"),
-            "short_interest_pct":md.get("short_interest_pct"),
-            "hours_since_news":  md.get("hours_since_news", 0),
-        }
-        selected   = orchestrator.select_strategies(
-            gemini_result   = gemini_result,
-            market_data     = md,
-            price_data      = price_data,
-            composite_score = composite_score,
-            raw_score       = raw_score,
-            portfolio_state = {"open_positions": 0},
-        )
-        primary_strategy = selected[0]["strategy"] if selected else "SENTIMENT_ONLY"
-
-        # 8. 포지션 사이징 & 손절/익절
-        adj_comp    = gate_result["adj_composite"]
-        position_pct = (
-            calculate_kelly_position(adj_comp, gemini_result.confidence, md.get("vix"))
-            if gate_result["trade_approved"] else 0.0
-        )
-        direction = "LONG" if composite_score >= 0 else "SHORT"
-        exits = calculate_exit_levels(
-            entry_price     = md.get("current_price", 0),
-            atr_14          = md.get("atr_14", 0),
-            composite_score = adj_comp,
-            signal_strength = gate_result["strength"],
-            direction       = direction,
-        )
-
-        # 9. 시그널 조립 & Redis 발행
-        signal = TradingSignalV3(
-            ticker            = request.ticker,
-            raw_score         = raw_score,
-            rationale         = gemini_result.rationale,
-            text_chunk        = request.text_chunk,
-            timestamp         = int(time.time()),
-            composite_score   = composite_score,
-            sue_score         = sue_score,
-            momentum_score    = momentum_score,
-            trade_approved    = gate_result["trade_approved"],
-            primary_strategy  = primary_strategy,
-            signal_strength   = gate_result["strength"],
-            position_pct      = position_pct,
-            market_regime     = market_regime,
-            catalyst_type     = gemini_result.catalyst_type,
-            stop_loss_price   = exits.get("stop_loss"),
-            take_profit_price = exits.get("take_profit"),
-            stop_loss_pct     = exits.get("risk_pct"),
-            take_profit_pct   = exits.get("reward_pct"),
-            profit_factor     = exits.get("profit_factor"),
-            hold_days_max     = selected[0].get("hold_days_max") if selected else None,
-            failed_gates      = gate_result["failed"] or None,
-            whisper_signal    = gemini_result.whisper_signal,
-            sector_contagion  = gemini_result.sector_impact.get("contagion_risk", False),
-            cot_reasoning     = gemini_result.cot_reasoning,
-        )
-        await redis_publisher.publish(signal)
-
-        # 10. 컨텍스트 업데이트 & 세션 종료
-        context_manager.update(request.ticker, request.text_chunk)
-        if request.is_final:
-            context_manager.clear(request.ticker)
-            logger.info(f"세션 종료: {request.ticker}")
-
-    except Exception as e:
-        logger.error(
-            f"분석 오류 ({request.ticker} seq={request.sequence}): {e}",
-            exc_info=True,
-        )
-        # HOLD 폴백 시그널 발행
+        llm_available = True
         try:
-            fallback = TradingSignalV3(
-                ticker           = request.ticker,
-                raw_score        = 0.0,
-                rationale        = "분석 오류 — HOLD 처리합니다.",
-                text_chunk       = request.text_chunk,
-                timestamp        = int(time.time()),
-                trade_approved   = False,
-                signal_strength  = "WEAK",
-                primary_strategy = "ERROR_FALLBACK",
+            gemini_result = await analysis_service.analyze(
+                ticker=ticker,
+                current_chunk=request.text_chunk,
+                context_chunks=context_chunks[:-1],
+                market_data=md,
+                section_type=request.section_type,
+                request_priority=request.request_priority,
+                is_final=request.is_final,
+                phase1_result=phase1_result,
             )
-            await redis_publisher.publish(fallback)
-        except Exception as pub_err:
-            logger.error(f"폴백 발행 실패: {pub_err}")
+        except Exception as exc:
+            llm_available = False
+            logger.warning("LLM analysis unavailable for %s, using phase-1 fallback: %s", ticker, exc)
+            gemini_result = fallback_gemini_result(request.text_chunk, phase1_result)
+
+        llm_raw_score = compute_raw_score(gemini_result)
+        raw_score = blend_raw_scores(
+            phase1_score=phase1_result.raw_score,
+            llm_score=llm_raw_score,
+            llm_available=llm_available,
+        )
+
+        sue_score = calculate_sue_score(md)
+        momentum_score = _compute_momentum_score(md)
+        composite_score = calculate_composite_score(
+            raw_score=raw_score,
+            sue_score=sue_score,
+            momentum_score=momentum_score,
+            volume_ratio=md.volume_ratio if md else None,
+        )
+
+        regime = classify_regime(md)
+        adj_composite = apply_regime_multiplier(composite_score, regime)
+
+        filter_result = _gate_filter.apply(
+            composite_score=composite_score,
+            raw_score=raw_score,
+            confidence=gemini_result.confidence,
+            euphemism_count=gemini_result.euphemism_count,
+            sue_score=sue_score,
+            momentum_score=momentum_score,
+            market_data=md,
+            gemini_result=gemini_result,
+            regime=regime,
+            adj_composite=adj_composite,
+        )
+
+        primary_strategy, hold_days, whisper_signal, sector_contagion = (
+            _orchestrator.select_strategy(md, gemini_result, raw_score)
+        )
+
+        risk_params = calculate_risk_parameters(
+            adj_composite=adj_composite,
+            confidence=gemini_result.confidence,
+            market_data=md,
+        )
+
+        signal = TradingSignalV3(
+            ticker=ticker,
+            raw_score=round(raw_score, 4),
+            rationale=gemini_result.rationale,
+            text_chunk=request.text_chunk,
+            timestamp=request.timestamp,
+            composite_score=round(composite_score, 4),
+            sue_score=round(sue_score, 4) if sue_score is not None else None,
+            momentum_score=round(momentum_score, 4) if momentum_score is not None else None,
+            trade_approved=filter_result.trade_approved,
+            primary_strategy=primary_strategy,
+            signal_strength=risk_params.signal_strength,
+            position_pct=round(risk_params.position_pct, 4) if filter_result.trade_approved else 0.0,
+            market_regime=regime,
+            catalyst_type=gemini_result.catalyst_type,
+            stop_loss_price=risk_params.stop_loss_price,
+            take_profit_price=risk_params.take_profit_price,
+            stop_loss_pct=risk_params.stop_loss_pct,
+            take_profit_pct=risk_params.take_profit_pct,
+            profit_factor=risk_params.profit_factor,
+            hold_days_max=hold_days,
+            failed_gates=filter_result.failed_gates or None,
+            whisper_signal=whisper_signal,
+            sector_contagion=sector_contagion,
+            cot_reasoning=gemini_result.cot_reasoning,
+        )
+
+        backend_signal = to_backend_redis_signal(signal, is_session_end=request.is_final)
+        await _redis_publisher.publish(signal, backend_signal=backend_signal)
+        if _integration_state is not None:
+            await _integration_state.record_signal(
+                session_key=session_key,
+                signal=signal,
+                call_id=request.call_id,
+                event_id=request.event_id,
+                source_type=request.source_type.value if request.source_type else None,
+                section_type=request.section_type.value if request.section_type else None,
+                speaker_role=request.speaker_role,
+                speaker_name=request.speaker_name,
+            )
+
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        logger.info(
+            "Pipeline completed ticker=%s seq=%d approved=%s strength=%s elapsed=%.0fms",
+            ticker,
+            request.sequence,
+            filter_result.trade_approved,
+            risk_params.signal_strength.value,
+            elapsed_ms,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Pipeline failed for %s: %s", ticker, exc)
+        await _publish_error_signal(request, str(exc))
+
+
+def _require_dependencies() -> None:
+    if _context_manager is None or _gate_filter is None or _redis_publisher is None:
+        raise RuntimeError("analyze_router dependencies were not initialized")
+
+
+def enqueue_analysis_request(
+    request: AnalyzeRequest,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """Share the same analysis enqueue logic across multiple API surfaces."""
+
+    if not request.text_chunk.strip():
+        raise HTTPException(status_code=400, detail="text_chunk must not be empty")
+
+    background_tasks.add_task(_run_pipeline, request)
+    return {
+        "status": "accepted",
+        "sequence": request.sequence,
+        "ticker": request.ticker,
+        "call_id": request.call_id,
+        "event_id": request.event_id,
+    }
+
+
+async def _run_batch_pipeline(request: AnalyzeBatchRequest) -> None:
+    settings = get_settings()
+    max_concurrency = min(request.max_concurrency, settings.analysis_batch_concurrency)
+    semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def _run_one(item: AnalyzeRequest) -> None:
+        async with semaphore:
+            await _run_pipeline(item)
+
+    await asyncio.gather(*[_run_one(item) for item in request.items])
+
+
+def _build_session_key(request: AnalyzeRequest) -> str:
+    if request.call_id:
+        return f"{request.ticker}:{request.call_id}"
+    if request.event_id:
+        return f"{request.ticker}:{request.event_id}"
+    if request.batch_id:
+        return f"{request.ticker}:{request.batch_id}"
+    return request.ticker
+
+def _compute_momentum_score(md: Optional[MarketData]) -> Optional[float]:
+    """Calculate a lightweight momentum score from technical inputs."""
+
+    if md is None:
+        return None
+
+    score = 0.0
+    weight_sum = 0.0
+
+    if md.macd_signal is not None:
+        macd_norm = max(-1.0, min(1.0, md.macd_signal * 10))
+        score += 0.50 * macd_norm
+        weight_sum += 0.50
+
+    if md.rsi_14 is not None:
+        rsi_norm = (md.rsi_14 - 50.0) / 50.0
+        score += 0.30 * rsi_norm
+        weight_sum += 0.30
+
+    if md.bb_position is not None:
+        bb_norm = (md.bb_position - 0.5) * 2.0
+        score += 0.20 * bb_norm
+        weight_sum += 0.20
+
+    if weight_sum < 0.01:
+        return None
+
+    return float(max(-1.0, min(1.0, score / weight_sum)))
+
+
+async def _publish_error_signal(request: AnalyzeRequest, error_msg: str) -> None:
+    """Publish a fallback HOLD-style signal when the pipeline crashes."""
+
+    try:
+        error_signal = TradingSignalV3(
+            ticker=request.ticker,
+            raw_score=0.0,
+            rationale=f"Pipeline error: {error_msg[:200]}",
+            text_chunk=request.text_chunk,
+            timestamp=request.timestamp,
+            trade_approved=False,
+            primary_strategy=StrategyName.ERROR_FALLBACK,
+        )
+        backend_signal = to_backend_redis_signal(error_signal, is_session_end=request.is_final)
+        await _redis_publisher.publish(error_signal, backend_signal=backend_signal)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to publish fallback error signal")

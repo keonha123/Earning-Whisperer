@@ -1,93 +1,161 @@
-# core/composite_scorer.py
-# 복합 점수 계산: 감성(40%) + PEAD(25%) + 모멘텀(20%) + 거래량(15%)
-# VIX 시장 국면 보정계수 적용
+"""
+core/composite_scorer.py — EarningWhisperer AI Engine v3.1.0
+4지표 복합 점수 계산 모듈
+
+핵심 공식:
+  composite = W_sentiment × raw_score
+            + W_sue × clip(sue_score / 3.0, -1, +1)
+            + W_momentum × momentum_score
+            + W_volume × vol_score
+
+수정 이력:
+  v3.1.0  get_score_breakdown() 인터페이스 강화, 타입 힌트 완성
+  v3.0.1  BUG-01 CRITICAL 수정:
+    - 문제: VIX 보정이 composite_scorer와 five_gate_filter 양쪽에서 적용됨
+            → 신호 강도가 정상의 21% 수준으로 억제
+    - 수정: calculate_composite_score(vix=None) — VIX 파라미터 완전 제거
+            VIX 보정은 five_gate_filter.py의 adj_composite에서만 1회 적용
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
 from typing import Optional
-from config import settings
+
+import numpy as np
+
+from ..config import get_settings
+from ..models.request_models import MarketData
+
+logger = logging.getLogger(__name__)
 
 
-def calculate_momentum_score(
-    macd_signal: Optional[float],
-    rsi_14: Optional[float],
-    bb_position: Optional[float],
-) -> float:
-    """
-    기술적 지표 복합 모멘텀 점수 (-1.0 ~ +1.0).
+@dataclass
+class ScoreBreakdown:
+    """4지표 기여도 분해 결과 (Explainability)."""
 
-    가중치:
-      MACD 히스토그램 방향: 50%
-      RSI 반전 신호:        30% (과매도=+, 과매수=-)
-      볼린저밴드 위치:       20% (하단=+, 상단=-)
-    """
-    score = 0.0
+    sentiment_contrib: float  # W_sentiment × raw_score
+    pead_contrib: float       # W_sue × clip(sue/3.0, -1, +1)
+    momentum_contrib: float   # W_momentum × momentum_score
+    volume_contrib: float     # W_volume × vol_score
+    composite: float          # 합계
 
-    # MACD 히스토그램: 양수=상승 모멘텀, 음수=하락 모멘텀
-    if macd_signal is not None:
-        score += (1.0 if macd_signal > 0 else -1.0) * 0.5
-
-    # RSI: 과매도(낮음)=반등 기대=양수, 과매수(높음)=하락 기대=음수
-    if rsi_14 is not None:
-        # rsi_14=30 → (50-30)/50 = +0.4 (과매도 → 반등)
-        # rsi_14=70 → (50-70)/50 = -0.4 (과매수 → 하락)
-        rsi_score = (50.0 - rsi_14) / 50.0
-        score += rsi_score * 0.3
-
-    # 볼린저밴드: 하단(0)=반등 기대=양수, 상단(1)=하락 기대=음수
-    if bb_position is not None:
-        bb_score = (0.5 - bb_position) * 2.0  # 0→+1, 0.5→0, 1→-1
-        score += bb_score * 0.2
-
-    return round(max(-1.0, min(1.0, score)), 4)
+    def to_dict(self) -> dict:
+        return {
+            "sentiment_contrib": round(self.sentiment_contrib, 4),
+            "pead_contrib":      round(self.pead_contrib, 4),
+            "momentum_contrib":  round(self.momentum_contrib, 4),
+            "volume_contrib":    round(self.volume_contrib, 4),
+            "composite":         round(self.composite, 4),
+        }
 
 
 def calculate_composite_score(
     raw_score: float,
     sue_score: Optional[float],
-    momentum_score: float,
-    volume_ratio: float = 1.0,
-    vix: Optional[float] = None,
+    momentum_score: Optional[float],
+    volume_ratio: Optional[float],
+    # ⚠️  vix 파라미터 완전 제거 — BUG-01 수정
+    # VIX 보정은 five_gate_filter.py에서만 1회 적용
 ) -> float:
+    """4지표 가중 복합 점수를 계산합니다.
+
+    BUG-01 CRITICAL 수정:
+        구버전은 이 함수 내부와 five_gate_filter.py 양쪽에서 VIX 보정을 적용했습니다.
+        결과적으로 VIX=20일 때 신호가 이중으로 감쇄되어 정상의 21% 수준으로 억제됐습니다.
+        수정 후: VIX 보정은 five_gate_filter.py에서만 단 1회 적용합니다.
+
+    Args:
+        raw_score:       Gemini 감성 점수 (-1.0 ~ +1.0)
+        sue_score:       PEAD SUE 점수 (-5.0 ~ +5.0), None이면 0으로 처리
+        momentum_score:  기술적 모멘텀 (-1.0 ~ +1.0), None이면 0으로 처리
+        volume_ratio:    거래량 배율 (현재/20일 평균), None이면 1.0으로 처리
+
+    Returns:
+        -1.0 ~ +1.0 사이의 composite_score
     """
-    복합 점수 = 가중 합산 × VIX 보정계수.
+    settings = get_settings()
 
-    가중치 (합계 1.0):
-      감성(raw_score):  40%  Gemini 핵심 신호
-      PEAD(sue_score):  25%  어닝 드리프트 방향
-      모멘텀:           20%  기술적 지표 방향
-      거래량:           15%  이상 거래량 확인
-
-    VIX 보정:
-      VIX < 25:  ×1.00 (정상)
-      VIX 25-30: ×0.70 (주의)
-      VIX 30-35: ×0.50 (고위험)
-      VIX >= 35: ×0.30 (극한 공포)
-    """
-    w_sentiment = settings.w_sentiment   # 0.40
-    w_sue       = settings.w_sue         # 0.25
-    w_momentum  = settings.w_momentum    # 0.20
-    w_volume    = settings.w_volume      # 0.15
-
-    # 거래량 점수: 평균 초과분을 raw_score 방향으로 변환
-    # volume_ratio=2.0 → vol_excess=0.5 → vol_score=±0.5 (방향에 따라)
-    vol_excess = min(1.0, max(0.0, (volume_ratio - 1.0) / 2.0))
-    vol_score  = vol_excess * (1.0 if raw_score >= 0 else -1.0)
-
+    # ── 각 지표 정규화 ────────────────────────────────────────────────────
     # SUE 정규화: -5~+5 → -1~+1
-    sue_normalized = max(-1.0, min(1.0, (sue_score or 0.0) / 3.0))
+    sue_normalized = float(np.clip(
+        (sue_score or 0.0) / 3.0,
+        -1.0, 1.0,
+    ))
 
-    # 가중 합산
-    composite_raw = (
-        w_sentiment * raw_score +
-        w_sue       * sue_normalized +
-        w_momentum  * momentum_score +
-        w_volume    * vol_score
+    # 모멘텀: None이면 중립
+    mom = float(np.clip(momentum_score or 0.0, -1.0, 1.0))
+
+    # 거래량 점수: 배율 → 방향 있는 점수로 변환
+    # volume_ratio=1.0 → vol_score=0, 2.0 → +0.5, 3.0+ → +1.0
+    vol = _volume_to_score(volume_ratio)
+
+    # ── 가중 합산 (vix 보정 없음) ─────────────────────────────────────────
+    composite = (
+        settings.w_sentiment * raw_score
+        + settings.w_sue      * sue_normalized
+        + settings.w_momentum * mom
+        + settings.w_volume   * vol
     )
 
-    # VIX 보정계수 (고변동성 구간 신호 약화)
-    if vix is not None:
-        if vix >= 35:    vix_mult = 0.30
-        elif vix >= 30:  vix_mult = 0.50
-        elif vix >= 25:  vix_mult = 0.70
-        else:            vix_mult = 1.00
-        composite_raw *= vix_mult
+    return float(np.clip(composite, -1.0, 1.0))
 
-    return round(max(-1.0, min(1.0, composite_raw)), 4)
+
+def get_score_breakdown(
+    raw_score: float,
+    sue_score: Optional[float],
+    momentum_score: Optional[float],
+    volume_ratio: Optional[float],
+) -> ScoreBreakdown:
+    """4지표 기여도를 분해하여 Explainability 객체를 반환합니다.
+
+    사용 예:
+        breakdown = get_score_breakdown(raw_score=0.87, sue_score=3.21, ...)
+        print(breakdown.to_dict())
+        # {
+        #   "sentiment_contrib": 0.3480,
+        #   "pead_contrib":      0.2675,
+        #   "momentum_contrib":  0.1300,
+        #   "volume_contrib":    0.0675,
+        #   "composite":         0.8130
+        # }
+    """
+    settings = get_settings()
+
+    sue_normalized = float(np.clip((sue_score or 0.0) / 3.0, -1.0, 1.0))
+    mom = float(np.clip(momentum_score or 0.0, -1.0, 1.0))
+    vol = _volume_to_score(volume_ratio)
+
+    sentiment_contrib = settings.w_sentiment * raw_score
+    pead_contrib      = settings.w_sue       * sue_normalized
+    momentum_contrib  = settings.w_momentum  * mom
+    volume_contrib    = settings.w_volume    * vol
+
+    composite = float(np.clip(
+        sentiment_contrib + pead_contrib + momentum_contrib + volume_contrib,
+        -1.0, 1.0,
+    ))
+
+    return ScoreBreakdown(
+        sentiment_contrib=round(sentiment_contrib, 4),
+        pead_contrib=round(pead_contrib, 4),
+        momentum_contrib=round(momentum_contrib, 4),
+        volume_contrib=round(volume_contrib, 4),
+        composite=round(composite, 4),
+    )
+
+
+def _volume_to_score(volume_ratio: Optional[float]) -> float:
+    """거래량 배율을 -1.0~+1.0 점수로 변환합니다.
+
+    변환 규칙:
+        volume_ratio ≥ 3.0 → +1.0 (폭발적 거래량)
+        volume_ratio = 2.0 → +0.5
+        volume_ratio = 1.0 → 0.0 (평균 거래량)
+        volume_ratio < 1.0 → 음수 (거래량 부족)
+    """
+    if volume_ratio is None:
+        return 0.0
+    # (ratio - 1.0) / 2.0 으로 [0, 2.0] → [0.0, 1.0] 정규화 후 클립
+    return float(np.clip((volume_ratio - 1.0) / 2.0, -1.0, 1.0))

@@ -1,53 +1,78 @@
-# core/regime_classifier.py
-# 시장 국면 분류 — VIX + 볼린저밴드로 Bull/Bear/Volatile 판별
-# 논문 근거: Baker & Wurgler (2006) 투자자 감성 지수
+"""Market regime classification and score adjustment helpers."""
+
+from __future__ import annotations
+
+import logging
 from typing import Optional
 
+import numpy as np
 
-def classify_regime(
-    vix: Optional[float],
-    bb_position: Optional[float],
-) -> str:
-    """
-    시장 국면 분류.
+from ..models.request_models import MarketData
+from ..models.signal_models import MarketRegime
 
-    Returns:
-        "BULL_TREND"      — 저변동 + 가격 상단 유지
-        "BEAR_TREND"      — 저변동 + 가격 하단 유지
-        "HIGH_VOLATILITY" — VIX 25~35 구간
-        "EXTREME_FEAR"    — VIX >= 35 (진입 금지)
-        "NORMAL"          — 기본 정상 장세
-    """
+logger = logging.getLogger(__name__)
+
+_REGIME_MULTIPLIER = {
+    (MarketRegime.BULL_TREND, True): 1.15,
+    (MarketRegime.BULL_TREND, False): 0.80,
+    (MarketRegime.BEAR_TREND, True): 0.80,
+    (MarketRegime.BEAR_TREND, False): 1.15,
+    (MarketRegime.HIGH_VOLATILITY, True): 0.70,
+    (MarketRegime.HIGH_VOLATILITY, False): 0.70,
+    (MarketRegime.EXTREME_FEAR, True): 0.00,
+    (MarketRegime.EXTREME_FEAR, False): 0.00,
+    (MarketRegime.NORMAL, True): 1.00,
+    (MarketRegime.NORMAL, False): 1.00,
+}
+
+
+def classify_regime(market_data: Optional[MarketData]) -> MarketRegime:
+    """Classify the current market regime from VIX and Bollinger position."""
+
+    if market_data is None:
+        return MarketRegime.NORMAL
+
+    vix = market_data.vix
+    bb = market_data.bb_position
+
     if vix is None:
-        return "NORMAL"
+        return MarketRegime.NORMAL
+    if vix >= 35.0:
+        logger.warning("EXTREME_FEAR detected: VIX=%.1f", vix)
+        return MarketRegime.EXTREME_FEAR
+    if vix >= 25.0:
+        logger.info("HIGH_VOLATILITY detected: VIX=%.1f", vix)
+        return MarketRegime.HIGH_VOLATILITY
 
-    # 극한 공포 → 모든 거래 금지
-    if vix >= 35:
-        return "EXTREME_FEAR"
+    if vix < 15.0 and bb is not None:
+        if bb >= 0.70:
+            return MarketRegime.BULL_TREND
+        if bb <= 0.30:
+            return MarketRegime.BEAR_TREND
 
-    # 고변동성 → 포지션 50% 축소
-    if vix >= 25:
-        return "HIGH_VOLATILITY"
-
-    # 저변동 장세에서 추세 판별 (볼린저밴드 위치 활용)
-    if vix < 15 and bb_position is not None:
-        if bb_position >= 0.70:
-            return "BULL_TREND"   # 상단 밴드 유지 = 강세 추세
-        if bb_position <= 0.30:
-            return "BEAR_TREND"   # 하단 밴드 유지 = 약세 추세
-
-    return "NORMAL"
+    return MarketRegime.NORMAL
 
 
-def get_regime_multiplier(composite_score: float, regime: str) -> float:
-    """
-    시장 국면별 시그널 강도 보정계수.
-    추세 방향과 일치하면 강화, 반대면 약화.
-    """
-    if regime == "BULL_TREND":
-        return 1.15 if composite_score > 0 else 0.80
-    elif regime == "BEAR_TREND":
-        return 1.15 if composite_score < 0 else 0.80
-    elif regime == "HIGH_VOLATILITY":
-        return 0.70  # 고변동성 전체 약화
-    return 1.00
+def apply_regime_multiplier(
+    composite_score: float,
+    regime: MarketRegime,
+) -> float:
+    """Apply the regime multiplier to the already-computed composite score."""
+
+    is_positive = composite_score >= 0.0
+    multiplier = _REGIME_MULTIPLIER.get((regime, is_positive), 1.0)
+    adj = composite_score * multiplier
+    return float(np.clip(adj, -1.0, 1.0))
+
+
+def get_regime_description(regime: MarketRegime) -> str:
+    """Return a user-readable description of the regime."""
+
+    descriptions = {
+        MarketRegime.BULL_TREND: "Bull trend (low VIX, upper Bollinger regime)",
+        MarketRegime.BEAR_TREND: "Bear trend (low VIX, lower Bollinger regime)",
+        MarketRegime.HIGH_VOLATILITY: "High volatility (VIX 25-35, reduced sizing)",
+        MarketRegime.EXTREME_FEAR: "Extreme fear (VIX >= 35, no-trade regime)",
+        MarketRegime.NORMAL: "Normal regime",
+    }
+    return descriptions.get(regime, "Unknown regime")

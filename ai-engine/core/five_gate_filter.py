@@ -1,240 +1,269 @@
-# core/five_gate_filter.py
-# 5-Gate Signal Confluence Filter — 승률 51%+ 달성의 핵심
-# 5개 게이트 모두 PASS해야만 거래 실행
-#
-# 논문 근거:
-#   Kelley & Tetlock(2013): 다중 지표 합류 시 예측 정확도 통계적 향상
-#   Gate 1: Bernard(1992) — 강한 서프라이즈 구간 필터
-#   Gate 2: Bernard & Thomas(1992) — SUE 방향 일치 PEAD
-#   Gate 3: Jegadeesh & Titman(1993) — 기술적 모멘텀 일치
-#   Gate 4: Chan(2003) — 뉴스 있는 거래량 폭발
-#   Gate 5: Baker & Wurgler(2006) — 시장 국면 필터
+"""Five-gate trade filter with thread-safe pass-rate accounting."""
+
+from __future__ import annotations
+
+import logging
+import threading
 from dataclasses import dataclass
-from typing import Optional
-from config import settings
+from typing import Dict, List, Optional
+
+import numpy as np
+
+from ..config import get_settings
+from ..models.request_models import MarketData
+from ..models.signal_models import GateLabel, GeminiAnalysisResult, MarketRegime
+
+logger = logging.getLogger(__name__)
+
+CATALYST_VOLUME_THRESHOLDS: Dict[str, float] = {
+    "EARNINGS_BEAT": 1.80,
+    "EARNINGS_MISS": 1.80,
+    "GUIDANCE_UP": 1.50,
+    "GUIDANCE_DOWN": 1.50,
+    "GUIDANCE_HOLD": 1.20,
+    "RESTRUCTURING": 2.00,
+    "PRODUCT_NEWS": 1.30,
+    "MACRO_COMMENTARY": 1.00,
+    "REGULATORY_RISK": 2.00,
+    "OPERATIONAL_EXEC": 1.40,
+}
 
 
 @dataclass
-class GateConfig:
-    """
-    게이트 임계값. AdaptiveGate에 의해 자동 조정됨.
-    승률 < 45% → tighten(), 승률 > 60% → loosen()
-    """
-    composite_threshold:  float = None
-    raw_score_threshold:  float = None
-    confidence_threshold: float = None
-    max_euphemism_count:  int   = None
-    min_volume_ratio:     float = None
-    max_vix:              float = None
+class GateResult:
+    """Single gate evaluation result."""
 
-    def __post_init__(self):
-        # settings에서 기본값 로드
-        if self.composite_threshold  is None: self.composite_threshold  = settings.composite_threshold
-        if self.raw_score_threshold  is None: self.raw_score_threshold  = settings.raw_score_threshold
-        if self.confidence_threshold is None: self.confidence_threshold = settings.confidence_threshold
-        if self.max_euphemism_count  is None: self.max_euphemism_count  = settings.max_euphemism_count
-        if self.min_volume_ratio     is None: self.min_volume_ratio     = settings.min_volume_ratio
-        if self.max_vix              is None: self.max_vix              = settings.max_vix
-
-    def tighten(self):
-        """승률 45% 이하: 임계값 강화 (통과율 감소 → 승률 향상 목표)"""
-        self.composite_threshold  = min(0.70, self.composite_threshold  + 0.05)
-        self.confidence_threshold = min(0.92, self.confidence_threshold + 0.03)
-        self.min_volume_ratio     = min(2.50, self.min_volume_ratio     + 0.20)
-
-    def loosen(self):
-        """승률 60% 이상: 임계값 완화 (통과율 증가 → 거래 횟수 증가)"""
-        self.composite_threshold  = max(0.50, self.composite_threshold  - 0.03)
-        self.confidence_threshold = max(0.78, self.confidence_threshold - 0.02)
-        self.min_volume_ratio     = max(1.30, self.min_volume_ratio     - 0.10)
+    label: GateLabel
+    passed: bool
+    reason: str
 
 
-# 전역 GateConfig 싱글턴
-gate_config = GateConfig()
+@dataclass
+class FilterResult:
+    """Combined five-gate decision."""
+
+    trade_approved: bool
+    failed_gates: List[GateLabel]
+    gate_results: List[GateResult]
+    adj_composite: float
 
 
-# ── Gate 1: 복합 강도 + 신뢰도 필터 ──────────────────────────────────────────
-def gate1_confidence(
-    composite_score: float,
-    raw_score: float,
-    confidence: float,
-    euphemism_count: int,
-) -> tuple:
-    """
-    Gate 1: 복합 강도 & 신뢰도 필터.
-    애매한 신호를 완전히 차단. 승률 기여: +3%p.
-    """
-    if abs(composite_score) < gate_config.composite_threshold:
-        return False, f"composite {composite_score:.2f} < {gate_config.composite_threshold}"
-    if confidence < gate_config.confidence_threshold:
-        return False, f"confidence {confidence:.2f} < {gate_config.confidence_threshold}"
-    if abs(raw_score) < gate_config.raw_score_threshold:
-        return False, f"raw_score {raw_score:.2f} < {gate_config.raw_score_threshold}"
-    if euphemism_count > gate_config.max_euphemism_count:
-        return False, f"euphemism_count {euphemism_count} > {gate_config.max_euphemism_count}"
-    return True, "PASS"
+class FiveGateFilter:
+    """Apply five gate checks and keep thread-safe pass-rate stats."""
 
+    def __init__(self) -> None:
+        self._pass_counts: Dict[str, int] = {f"g{i}": 0 for i in range(1, 6)}
+        self._total_counts: Dict[str, int] = {f"g{i}": 0 for i in range(1, 6)}
+        self._stats_lock = threading.Lock()
 
-# ── Gate 2: PEAD 방향 일치 필터 ─────────────────────────────────────────────
-def gate2_pead(sue_score: Optional[float], composite_score: float) -> tuple:
-    """
-    Gate 2: SUE 방향과 감성 방향 일치 확인.
-    방향 충돌 시 혼재 신호로 HOLD. 승률 기여: +3%p.
-    """
-    if sue_score is None:
-        return True, "NO_DATA (허용)"
+    def apply(
+        self,
+        composite_score: float,
+        raw_score: float,
+        confidence: float,
+        euphemism_count: int,
+        sue_score: Optional[float],
+        momentum_score: Optional[float],
+        market_data: Optional[MarketData],
+        gemini_result: GeminiAnalysisResult,
+        regime: MarketRegime,
+        adj_composite: float,
+    ) -> FilterResult:
+        settings = get_settings()
+        gate_results: List[GateResult] = []
+        failed: List[GateLabel] = []
 
-    # |SUE| < 1.0 이면 방향 불일치 허용 (신호 약함)
-    if abs(sue_score) < 1.0:
-        return True, f"SUE_WEAK ({sue_score:.1f}) — 방향 불일치 허용"
+        g1 = self._gate1(
+            composite_score,
+            confidence,
+            raw_score,
+            euphemism_count,
+            settings.composite_threshold,
+            settings.confidence_threshold,
+            settings.raw_score_threshold,
+            settings.max_euphemism_count,
+        )
+        gate_results.append(g1)
+        if not g1.passed:
+            failed.append(GateLabel.G1)
 
-    sue_dir  = 1 if sue_score > 0 else -1
-    comp_dir = 1 if composite_score > 0 else -1
+        g2 = self._gate2(composite_score, sue_score)
+        gate_results.append(g2)
+        if not g2.passed:
+            failed.append(GateLabel.G2)
 
-    if sue_dir != comp_dir:
-        return False, f"SUE_CONFLICT (sue={sue_score:.1f}, composite={composite_score:.2f})"
+        g3 = self._gate3(composite_score, market_data, momentum_score)
+        gate_results.append(g3)
+        if not g3.passed:
+            failed.append(GateLabel.G3)
 
-    return True, f"PEAD_ALIGNED (sue={sue_score:.1f})"
+        g4 = self._gate4(market_data, gemini_result.catalyst_type)
+        gate_results.append(g4)
+        if not g4.passed:
+            failed.append(GateLabel.G4)
 
+        g5 = self._gate5(regime, market_data)
+        gate_results.append(g5)
+        if not g5.passed:
+            failed.append(GateLabel.G5)
 
-# ── Gate 3: 기술적 모멘텀 일치 필터 ─────────────────────────────────────────
-def gate3_momentum(
-    macd_signal: Optional[float],
-    rsi_14: Optional[float],
-    composite_score: float,
-) -> tuple:
-    """
-    Gate 3: MACD 방향 + RSI 과매수/과매도 확인.
-    감성 방향과 기술적 모멘텀 불일치 2개 이상 → FAIL.
-    승률 기여: +2%p.
-    """
-    if macd_signal is None and rsi_14 is None:
-        return True, "NO_DATA (허용)"
+        self._update_stats_sync(gate_results)
 
-    comp_dir = 1 if composite_score > 0 else -1
-    failures = []
+        return FilterResult(
+            trade_approved=len(failed) == 0,
+            failed_gates=failed,
+            gate_results=gate_results,
+            adj_composite=adj_composite,
+        )
 
-    # MACD 히스토그램 방향 확인
-    if macd_signal is not None:
-        macd_dir = 1 if macd_signal > 0 else -1
-        if macd_dir != comp_dir:
-            failures.append(f"MACD_CONFLICT ({macd_signal:.3f})")
+    def get_pass_rates(self) -> Dict[str, Optional[float]]:
+        result = {}
+        with self._stats_lock:
+            for label in ["g1", "g2", "g3", "g4", "g5"]:
+                total = self._total_counts.get(label, 0)
+                result[label] = round(self._pass_counts[label] / total, 4) if total else None
+        return result
 
-    # RSI 극단값 확인
-    if rsi_14 is not None:
-        if comp_dir == 1 and rsi_14 > 75:
-            failures.append(f"RSI_OVERBOUGHT ({rsi_14:.0f})")
-        elif comp_dir == -1 and rsi_14 < 25:
-            failures.append(f"RSI_OVERSOLD ({rsi_14:.0f})")
+    @staticmethod
+    def _gate1(
+        composite: float,
+        confidence: float,
+        raw: float,
+        euphemism: int,
+        comp_thresh: float,
+        conf_thresh: float,
+        raw_thresh: float,
+        max_euph: int,
+    ) -> GateResult:
+        conditions = [
+            (abs(composite) >= comp_thresh, f"|composite|({abs(composite):.3f}) < {comp_thresh}"),
+            (confidence >= conf_thresh, f"confidence({confidence:.3f}) < {conf_thresh}"),
+            (abs(raw) >= raw_thresh, f"|raw_score|({abs(raw):.3f}) < {raw_thresh}"),
+            (euphemism <= max_euph, f"euphemism({euphemism}) > {max_euph}"),
+        ]
+        failed_conditions = [message for ok, message in conditions if not ok]
+        return GateResult(
+            label=GateLabel.G1,
+            passed=len(failed_conditions) == 0,
+            reason="pass" if not failed_conditions else " | ".join(failed_conditions),
+        )
 
-    if len(failures) >= 2:
-        return False, ", ".join(failures)
+    @staticmethod
+    def _gate2(composite: float, sue_score: Optional[float]) -> GateResult:
+        if sue_score is None or abs(sue_score) < 1.0:
+            return GateResult(label=GateLabel.G2, passed=True, reason="sue_not_binding")
 
-    return True, "PASS"
+        composite_dir = np.sign(composite)
+        sue_dir = np.sign(sue_score)
+        if composite_dir == 0 or sue_dir == 0:
+            return GateResult(label=GateLabel.G2, passed=True, reason="neutral_direction")
 
+        passed = composite_dir == sue_dir
+        return GateResult(
+            label=GateLabel.G2,
+            passed=passed,
+            reason="direction_match"
+            if passed
+            else f"direction_mismatch(composite={composite:.2f},sue={sue_score:.2f})",
+        )
 
-# ── Gate 4: 거래량 폭발 확인 필터 ────────────────────────────────────────────
-def gate4_volume(volume_ratio: Optional[float], catalyst_type: str) -> tuple:
-    """
-    Gate 4: 이벤트 유형별 차등 거래량 임계값 확인.
-    Chan(2003): 뉴스와 함께 거래량 폭발해야 추세 지속.
-    승률 기여: +2%p.
-    """
-    if volume_ratio is None:
-        return True, "NO_DATA (허용)"
+    @staticmethod
+    def _gate3(
+        composite: float,
+        market_data: Optional[MarketData],
+        momentum_score: Optional[float],
+    ) -> GateResult:
+        if market_data is None:
+            return GateResult(label=GateLabel.G3, passed=True, reason="market_data_missing")
 
-    # 이벤트 유형별 요구 거래량 임계값 (높을수록 강한 확인 필요)
-    thresholds = {
-        "EARNINGS_BEAT":    1.8,
-        "EARNINGS_MISS":    1.8,
-        "GUIDANCE_UP":      1.5,
-        "GUIDANCE_DOWN":    1.5,
-        "RESTRUCTURING":    2.0,
-        "PRODUCT_NEWS":     1.3,
-        "MACRO_COMMENTARY": 1.0,
-        "REGULATORY_RISK":  2.0,
-        "GUIDANCE_HOLD":    1.0,
-        "OPERATIONAL_EXEC": 1.3,
-    }
-    threshold = thresholds.get(catalyst_type, gate_config.min_volume_ratio)
+        is_long = composite >= 0.0
+        failures = []
 
-    if volume_ratio < threshold:
-        return False, f"volume_ratio {volume_ratio:.1f} < {threshold} (catalyst: {catalyst_type})"
+        macd = market_data.macd_signal
+        if macd is not None:
+            if is_long and macd < 0:
+                failures.append(f"macd({macd:.3f}) conflicts with long signal")
+            elif not is_long and macd > 0:
+                failures.append(f"macd({macd:.3f}) conflicts with short signal")
 
-    return True, f"PASS (volume={volume_ratio:.1f}x)"
+        rsi = market_data.rsi_14
+        if rsi is not None:
+            if is_long and rsi >= 75:
+                failures.append(f"rsi({rsi:.1f}) overbought for long entry")
+            elif not is_long and rsi <= 25:
+                failures.append(f"rsi({rsi:.1f}) oversold for short entry")
 
+        return GateResult(
+            label=GateLabel.G3,
+            passed=len(failures) < 2,
+            reason="pass" if len(failures) < 2 else " | ".join(failures),
+        )
 
-# ── Gate 5: 시장 국면 허가 필터 ──────────────────────────────────────────────
-def gate5_regime(vix: Optional[float], regime: str) -> tuple:
-    """
-    Gate 5: VIX 공포지수 + 시장 국면 체크.
-    Baker & Wurgler(2006): 고변동성 구간 개별 이벤트 트레이딩 승률 하락.
-    승률 기여: +1%p.
-    """
-    if vix is not None and vix >= gate_config.max_vix:
-        return False, f"VIX={vix:.1f} >= {gate_config.max_vix}"
-    if regime == "EXTREME_FEAR":
-        return False, "EXTREME_FEAR 국면"
-    return True, f"PASS (regime={regime})"
+    @staticmethod
+    def _gate4(market_data: Optional[MarketData], catalyst_type: str) -> GateResult:
+        if market_data is None:
+            return GateResult(label=GateLabel.G4, passed=True, reason="market_data_missing")
 
+        spread_bps = market_data.bid_ask_spread_bps
+        if spread_bps is not None and spread_bps > 35:
+            return GateResult(
+                label=GateLabel.G4,
+                passed=False,
+                reason=f"bid_ask_spread({spread_bps:.1f}bps) > 35bps",
+            )
 
-# ── 통합 함수 ─────────────────────────────────────────────────────────────────
-def apply_5gate_filter(
-    cs: float,           # composite_score
-    rs: float,           # raw_score
-    conf: float,         # confidence
-    euph_cnt: int,       # euphemism count
-    sue: Optional[float],
-    macd: Optional[float],
-    rsi: Optional[float],
-    vol_ratio: Optional[float],
-    catalyst: str,
-    vix: Optional[float],
-    regime: str,
-) -> dict:
-    """
-    5-Gate 통합 판단.
+        liquidity = market_data.liquidity_score
+        if liquidity is not None and liquidity < 0.25:
+            return GateResult(
+                label=GateLabel.G4,
+                passed=False,
+                reason=f"liquidity_score({liquidity:.2f}) < 0.25",
+            )
 
-    Returns:
-        {
-            "trade_approved": bool,
-            "gates": {"g1":(bool,reason), ...},
-            "failed": ["g1", ...],
-            "adj_composite": float,  # 국면 보정 후 composite
-            "strength": "STRONG"|"MODERATE"|"WEAK"
-        }
-    """
-    g1, r1 = gate1_confidence(cs, rs, conf, euph_cnt)
-    g2, r2 = gate2_pead(sue, cs)
-    g3, r3 = gate3_momentum(macd, rsi, cs)
-    g4, r4 = gate4_volume(vol_ratio, catalyst)
-    g5, r5 = gate5_regime(vix, regime)
+        volume_ratio = market_data.volume_ratio
+        if volume_ratio is None:
+            return GateResult(
+                label=GateLabel.G4,
+                passed=True,
+                reason="volume_ratio_missing_execution_checks_passed",
+            )
 
-    all_pass = g1 and g2 and g3 and g4 and g5
+        threshold = CATALYST_VOLUME_THRESHOLDS.get(catalyst_type.upper(), 1.80)
+        passed = volume_ratio >= threshold
+        return GateResult(
+            label=GateLabel.G4,
+            passed=passed,
+            reason=(
+                f"volume_ratio({volume_ratio:.2f}x) >= {threshold}x"
+                if passed
+                else f"volume_ratio({volume_ratio:.2f}x) < {threshold}x"
+            ),
+        )
 
-    gates = {
-        "g1": (g1, r1), "g2": (g2, r2), "g3": (g3, r3),
-        "g4": (g4, r4), "g5": (g5, r5),
-    }
-    failed = [k for k, (v, _) in gates.items() if not v]
+    @staticmethod
+    def _gate5(regime: MarketRegime, market_data: Optional[MarketData]) -> GateResult:
+        if regime == MarketRegime.EXTREME_FEAR:
+            vix = market_data.vix if market_data else None
+            return GateResult(
+                label=GateLabel.G5,
+                passed=False,
+                reason=f"extreme_fear(vix={vix})",
+            )
 
-    # 국면 보정계수 적용
-    from core.regime_classifier import get_regime_multiplier
-    regime_mult   = get_regime_multiplier(cs, regime)
-    adj_composite = round(cs * regime_mult, 4)
+        settings = get_settings()
+        if market_data and market_data.vix is not None and market_data.vix >= settings.max_vix:
+            return GateResult(
+                label=GateLabel.G5,
+                passed=False,
+                reason=f"vix({market_data.vix:.1f}) >= {settings.max_vix}",
+            )
 
-    # 신호 강도 분류
-    if abs(adj_composite) >= 0.70:
-        strength = "STRONG"
-    elif abs(adj_composite) >= 0.50:
-        strength = "MODERATE"
-    else:
-        strength = "WEAK"
+        return GateResult(label=GateLabel.G5, passed=True, reason="pass")
 
-    return {
-        "trade_approved": all_pass,
-        "gates":          gates,
-        "failed":         failed,
-        "adj_composite":  adj_composite,
-        "strength":       strength,
-    }
+    def _update_stats_sync(self, gate_results: List[GateResult]) -> None:
+        with self._stats_lock:
+            for gate_result in gate_results:
+                label = gate_result.label.value
+                self._total_counts[label] = self._total_counts.get(label, 0) + 1
+                if gate_result.passed:
+                    self._pass_counts[label] = self._pass_counts.get(label, 0) + 1

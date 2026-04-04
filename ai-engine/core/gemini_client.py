@@ -1,100 +1,281 @@
-# core/gemini_client.py
-# Gemini 3 Flash 클라이언트
-#
-#   Gemini 3 주요 변경사항 (2.x와 다름):
-#   1. 모델명: gemini-3-flash-preview
-#   2. temperature 낮게 설정 금지 → 루프/성능 저하 유발
-#      대신 thinking_level="minimal" 로 일관된 출력 유도
-#   3. Thought signatures: 멀티턴 대화 시 필수 반환
-#   4. SDK: google-genai (from google import genai)
-import json
-import re
+"""Gemini transport layer with compatibility support for old and new SDKs."""
+
+from __future__ import annotations
+
 import asyncio
+import json
 import logging
-from typing import Optional
+import re
+import time
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
-from google import genai
-from google.genai import types
+from ..config import get_settings
+from ..models.signal_models import GeminiAnalysisResult
+from .prompt_builder import SYSTEM_PROMPT
 
-from models.signal_models import GeminiAnalysisResult
-from core.prompt_builder import SYSTEM_PROMPT
-from config import settings
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger("gemini_client")
+try:  # Preferred modern SDK used by the hyeongyu branch.
+    from google import genai as modern_genai
+    from google.genai import types as modern_types
+except ImportError:  # pragma: no cover - depends on local environment
+    modern_genai = None
+    modern_types = None
+
+try:  # Legacy SDK kept for backwards compatibility.
+    import google.generativeai as legacy_genai
+except ImportError:  # pragma: no cover - depends on local environment
+    legacy_genai = None
+
+
+@dataclass
+class GeminiStats:
+    """Basic request statistics for monitoring."""
+
+    call_count: int = 0
+    error_count: int = 0
+    total_latency_ms: float = 0.0
+    route_counts: Dict[str, int] = field(default_factory=dict)
+
+    @property
+    def avg_latency_ms(self) -> float:
+        if self.call_count == 0:
+            return 0.0
+        return round(self.total_latency_ms / self.call_count, 1)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "call_count": self.call_count,
+            "error_count": self.error_count,
+            "avg_latency_ms": self.avg_latency_ms,
+            "route_counts": dict(sorted(self.route_counts.items())),
+        }
 
 
 class GeminiClient:
-    def __init__(self):
-        self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.model  = settings.gemini_model          # "gemini-3-flash-preview"
+    """Gemini API client with a raw transport and parsed-analysis wrapper."""
 
-        # ── Gemini 3 생성 설정 ─────────────────────────────────────────────
-        #  temperature 미설정 (Gemini 3 기본값 1.0 사용)
-        #     낮게 설정하면 루프/성능 저하 → 공식 문서 권고사항
-        # thinking_level="minimal": 빠른 응답 + 일관된 JSON 구조화 출력
-        self.gen_config = types.GenerateContentConfig(
-            system_instruction = SYSTEM_PROMPT,
-            max_output_tokens  = settings.gemini_max_tokens,
-            response_mime_type = "application/json",
-            thinking_config    = types.ThinkingConfig(
-                thinking_level = settings.gemini_thinking_level  # "minimal"
+    def __init__(self) -> None:
+        self._stats = GeminiStats()
+        self._stats_lock = asyncio.Lock()
+        self._modern_client: Any = None
+        self._modern_client_api_key: str | None = None
+
+    async def analyze(self, prompt: str) -> GeminiAnalysisResult:
+        """Legacy convenience wrapper that keeps older callers working."""
+
+        settings = get_settings()
+        config = self._default_config(settings)
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(settings.gemini_max_retries):
+            try:
+                raw = await self.generate_content(
+                    model=settings.gemini_primary_model,
+                    contents=prompt,
+                    config=config,
+                )
+                result = self.parse_response_text(raw)
+                result.model_route = result.model_route or settings.gemini_primary_model
+                return result
+            except (json.JSONDecodeError, ValueError, KeyError) as exc:
+                logger.warning("Gemini response parse failed (attempt %d): %s", attempt + 1, exc)
+                last_exc = exc
+            except Exception as exc:  # pragma: no cover - network / SDK failures
+                logger.warning("Gemini request failed (attempt %d): %s", attempt + 1, exc)
+                last_exc = exc
+
+            if attempt < settings.gemini_max_retries - 1:
+                delay = settings.gemini_base_retry_delay * (2**attempt)
+                await asyncio.sleep(delay)
+
+        logger.error("Gemini analyze failed after retries: %s", last_exc)
+        return self._fallback_result()
+
+    async def generate_content(self, *, model: str, contents: str, config: dict) -> str:
+        """Low-level raw text generation entrypoint used by the graph workflow."""
+
+        if not isinstance(contents, str) or not contents.strip():
+            raise ValueError("contents must be a non-empty string")
+        if not model or not model.strip():
+            raise ValueError("model must be a non-empty string")
+
+        start = time.monotonic()
+        try:
+            raw_text = await asyncio.to_thread(self._generate_sync, model.strip(), contents, config or {})
+        except Exception:
+            await self._record_error(model)
+            raise
+
+        latency_ms = (time.monotonic() - start) * 1000
+        await self._record_success(model, latency_ms)
+        return (raw_text or "").strip()
+
+    def parse_response_text(self, raw_text: str) -> GeminiAnalysisResult:
+        """Parse a JSON response body into a typed GeminiAnalysisResult."""
+
+        cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
+        if not cleaned:
+            raise ValueError("Gemini response is empty")
+
+        payload = json.loads(cleaned)
+        result = GeminiAnalysisResult(**payload)
+        return result
+
+    async def get_stats(self) -> Dict[str, Any]:
+        async with self._stats_lock:
+            return self._stats.to_dict()
+
+    def _generate_sync(self, model: str, contents: str, config: dict) -> str:
+        settings = get_settings()
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured")
+
+        if modern_genai is not None and modern_types is not None:
+            return self._generate_with_modern_sdk(model, contents, config)
+        if legacy_genai is not None:
+            return self._generate_with_legacy_sdk(model, contents, config)
+        raise RuntimeError("No supported Gemini SDK is installed")
+
+    def _generate_with_modern_sdk(self, model: str, contents: str, config: dict) -> str:
+        settings = get_settings()
+        if self._modern_client is None or self._modern_client_api_key != settings.gemini_api_key:
+            self._modern_client = modern_genai.Client(api_key=settings.gemini_api_key)
+            self._modern_client_api_key = settings.gemini_api_key
+
+        thinking_level = config.get("thinking_level")
+        generate_config = self._build_modern_generate_config(
+            system_instruction=config.get("system_instruction", SYSTEM_PROMPT),
+            max_output_tokens=config.get("max_output_tokens", settings.gemini_max_tokens),
+            response_mime_type=config.get(
+                "response_mime_type",
+                settings.gemini_response_mime_type,
             ),
+            thinking_level=thinking_level,
         )
 
-    async def analyze(self, user_prompt: str) -> GeminiAnalysisResult:
-        """
-        Gemini 3 Flash 호출 → GeminiAnalysisResult 반환.
-        재시도 3회 (지수 백오프: 1.5s → 3.0s → 4.5s).
-        """
-        last_error = None
-        raw = ""
+        try:
+            response = self._modern_client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=generate_config,
+            )
+        except TypeError as exc:
+            if "thinking" not in str(exc).lower():
+                raise
+            logger.warning("Modern Gemini SDK rejected thinking config, retrying without it: %s", exc)
+            generate_config = self._build_modern_generate_config(
+                system_instruction=config.get("system_instruction", SYSTEM_PROMPT),
+                max_output_tokens=config.get("max_output_tokens", settings.gemini_max_tokens),
+                response_mime_type=config.get(
+                    "response_mime_type",
+                    settings.gemini_response_mime_type,
+                ),
+                thinking_level=None,
+            )
+            response = self._modern_client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=generate_config,
+            )
+        return getattr(response, "text", None) or ""
 
-        for attempt in range(3):
+    def _generate_with_legacy_sdk(self, model: str, contents: str, config: dict) -> str:
+        settings = get_settings()
+        legacy_genai.configure(api_key=settings.gemini_api_key)
+        model_client = legacy_genai.GenerativeModel(
+            model_name=model,
+            system_instruction=config.get("system_instruction", SYSTEM_PROMPT),
+        )
+        response = model_client.generate_content(
+            contents,
+            generation_config=legacy_genai.types.GenerationConfig(
+                max_output_tokens=config.get("max_output_tokens", settings.gemini_max_tokens),
+                temperature=0.1,
+            ),
+        )
+        return getattr(response, "text", None) or ""
+
+    @staticmethod
+    def _default_config(settings) -> dict:
+        return {
+            "system_instruction": SYSTEM_PROMPT,
+            "max_output_tokens": settings.gemini_standard_max_output_tokens,
+            "response_mime_type": settings.gemini_response_mime_type,
+            "thinking_level": settings.gemini_standard_thinking_level,
+        }
+
+    @staticmethod
+    def _fallback_result() -> GeminiAnalysisResult:
+        return GeminiAnalysisResult(
+            direction="NEUTRAL",
+            magnitude=0.0,
+            confidence=0.0,
+            rationale="Gemini analysis failed. Falling back to HOLD.",
+            catalyst_type="MACRO_COMMENTARY",
+            euphemism_count=0,
+            negative_word_ratio=0.0,
+            cot_reasoning=None,
+            model_route="fallback",
+        )
+
+    async def _record_success(self, model: str, latency_ms: float) -> None:
+        async with self._stats_lock:
+            self._stats.call_count += 1
+            self._stats.total_latency_ms += latency_ms
+            self._stats.route_counts[model] = self._stats.route_counts.get(model, 0) + 1
+
+    async def _record_error(self, model: str) -> None:
+        async with self._stats_lock:
+            self._stats.call_count += 1
+            self._stats.error_count += 1
+            self._stats.route_counts[model] = self._stats.route_counts.get(model, 0) + 1
+
+    @staticmethod
+    def _build_modern_generate_config(
+        *,
+        system_instruction: str,
+        max_output_tokens: int,
+        response_mime_type: str,
+        thinking_level: str | None,
+    ) -> Any:
+        payload = {
+            "system_instruction": system_instruction,
+            "max_output_tokens": max_output_tokens,
+            "response_mime_type": response_mime_type,
+        }
+
+        thinking_config = GeminiClient._build_modern_thinking_config(thinking_level)
+        if thinking_config is not None:
+            payload["thinking_config"] = thinking_config
+
+        if modern_types is None or not hasattr(modern_types, "GenerateContentConfig"):
+            return payload
+
+        try:
+            return modern_types.GenerateContentConfig(**payload)
+        except TypeError:
+            payload.pop("thinking_config", None)
+            return modern_types.GenerateContentConfig(**payload)
+
+    @staticmethod
+    def _build_modern_thinking_config(thinking_level: str | None) -> Any:
+        if not thinking_level or modern_types is None or not hasattr(modern_types, "ThinkingConfig"):
+            return None
+
+        builders = (
+            lambda: modern_types.ThinkingConfig(thinking_level=thinking_level),
+            lambda: modern_types.ThinkingConfig(level=thinking_level),
+        )
+        for build in builders:
             try:
-                response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model    = self.model,
-                    contents = user_prompt,
-                    config   = self.gen_config,
-                )
-
-                raw = response.text.strip() if response.text else ""
-
-                # 마크다운 코드블록 제거
-                raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-                raw = re.sub(r"\s*```$",          "", raw, flags=re.MULTILINE)
-                raw = raw.strip()
-
-                if not raw:
-                    raise ValueError("Gemini 응답이 비어있음")
-
-                data   = json.loads(raw)
-                result = GeminiAnalysisResult(**data)
-
-                logger.info(
-                    f"Gemini 분석 완료: direction={result.direction} "
-                    f"magnitude={result.magnitude:.2f} "
-                    f"confidence={result.confidence:.2f} "
-                    f"catalyst={result.catalyst_type} "
-                    f"whisper={result.whisper_signal}"
-                )
-                return result
-
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON 파싱 실패 (시도 {attempt+1}/3): {e}")
-                logger.debug(f"원본 응답 (300자): {raw[:300]}")
-                last_error = e
-            except Exception as e:
-                logger.warning(f"Gemini 호출 실패 (시도 {attempt+1}/3): {type(e).__name__}: {e}")
-                last_error = e
-
-            if attempt < 2:
-                wait = 1.5 * (attempt + 1)
-                logger.info(f"{wait:.1f}초 후 재시도...")
-                await asyncio.sleep(wait)
-
-        raise RuntimeError(f"Gemini API 3회 모두 실패: {last_error}")
+                return build()
+            except TypeError:
+                continue
+        logger.warning("Modern Gemini SDK does not support explicit thinking_level; omitting it")
+        return None
 
 
-# 싱글턴
 gemini_client = GeminiClient()
