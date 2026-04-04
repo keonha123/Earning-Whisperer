@@ -1,58 +1,176 @@
-# 🧠 AI Engine (AI 추론 서버) 요구사항 정의서
+# EarningWhisperer AI Engine v3.5.2
 
-## 1. 모듈의 역할 및 목표
-이 모듈은 EarningWhisperer 프로젝트의 '두뇌' 역할을 담당합니다. 
-단순한 감성 분석을 넘어, **실시간 알고리즘 매매를 위한 '초저지연(Low Latency) 속도'**와 **유저를 납득시키기 위한 '설명력'**을 동시에 달성하는 **하이브리드 AI 아키텍처**를 구축하는 것이 핵심 목표입니다. 
-데이터 파이프라인으로부터 텍스트 청크를 받아 매수/매도 시그널의 강도(Score)와 그 논리적 근거(Rationale)를 생성해 백엔드(Java) 서버로 전달합니다.
+실시간 어닝콜 텍스트를 받아 `phase-1 점수화 → Gemini 분석 → 정량 스코어링 → 5-Gate 필터 → 전략 선택 → Redis 발행`까지 처리하는 FastAPI 기반 AI 엔진입니다.
 
-## 2. 핵심 기능 요구사항 (Core Features)
+## 핵심 역할
 
-### [Feature 1] 슬라이딩 윈도우(Sliding Window) 기반 텍스트 수신 API
-- 데이터 파이프라인(수집 서버)이 10~20초 단위의 텍스트를 던져줄 수 있는 비동기 HTTP POST 엔드포인트를 엽니다. (`/api/v1/analyze`)
-- **컨텍스트 단절 방지:** 텍스트가 잘릴 때 발생하는 '문맥 왜곡'을 막기 위해, 수집 서버 또는 AI 엔진 단에서 이전 텍스트 청크와 현재 청크가 일부 겹치도록(Overlapping) 슬라이딩 윈도우 기법을 적용하여 입력받습니다.
+- 어닝콜 STT 청크를 비동기로 수신
+- FinBERT 기반 phase-1 raw score 생성
+- Gemini 3.x 라우팅으로 비용을 줄이면서 구조화 분석 수행
+- SUE, 모멘텀, 거래량을 합친 composite score 계산
+- 5-Gate 규칙으로 실제 매매 가능 신호만 선별
+- 최종 신호를 Backend 계약 형식으로 Redis에 발행
 
-### [Feature 2] 초고속 감성 스코어링 엔진 (FinBERT) - 속도/크기 담당
-- 텍스트 입력 즉시 수 밀리초(ms) 단위로 방향성(+/-)과 강도(Magnitude)를 포함한 감성 점수(`raw_score`: -1.0 ~ +1.0)를 출력합니다.
-- **제약사항 (라벨링 방식):** 모델 파인튜닝 시 주가 등락 매핑(노이즈 발생)을 금지합니다. 고성능 LLM(GPT-4 등)을 Teacher 모델로 사용하여 과거 어닝콜 스크립트의 감성을 정량화한 후, 이를 FinBERT(Student)에 학습시키는 **'Teacher-Student 라벨링'** 방식을 채택합니다.
-- *참고: 이 스코어를 바탕으로 시계열 누적(EMA)을 계산하고 최종 매매(BUY/SELL)를 결정하는 비즈니스 로직은 Java 백엔드에서 수행합니다.*
+## Runtime Flow
 
-### [Feature 3] 대시보드 해설 엔진 (LLM) - 설명력 담당
-스코어링 엔진(NLP)이 내린 결론(방향성)을 바탕으로, 프론트엔드 대시보드에 띄워줄 유저 친화적인 해설(Rationale)을 비동기적으로 생성합니다.
-
-* **Phase 1 (MVP 목표): 강제 주입식 프롬프팅 (Conditioned Prompting)**
-  - NLP가 도출한 점수(예: `raw_score: -0.85`)를 LLM의 시스템 프롬프트에 '절대적인 팩트(강한 부정)'로 강제 주입합니다.
-  - **역할:** LLM은 스스로 방향을 판단하지 않으며, 오직 **"왜 NLP가 이 문장에서 강한 부정 점수를 냈는가?"**를 정당화(Justify)하는 2~3문장의 브리핑만 작성하여 논리적 환각을 차단합니다.
-
-* **Phase 2 (고도화 목표): LangChain + RAG 기반 통계 주입**
-  - 단순 논리적 해설을 넘어 **'과거 데이터 기반의 증거'**를 제시합니다.
-  - **역할:** 이전 어닝콜 발언 누적 요약 및 과거 데이터는 **외부 Vector DB(예: ChromaDB)**에 저장하여 관리합니다. LLM 해설 생성 시 Vector DB를 조회(RAG)하여, 현재 발언과 가장 유사했던 과거 맥락이나 데이터를 프롬프트에 포함시켜 설득력 높은 데이터 기반 해설을 생성합니다.
-
-### [Feature 4] Redis Pub/Sub 메시지 발행 (Publish)
-- NLP의 `raw_score`와 LLM의 `rationale`가 모두 포함된 JSON 객체가 완성되면, 이를 즉시 로컬 메모리 DB인 Redis의 `trading-signals` 채널에 발행(Publish)합니다.
-- **제약사항:** RDBMS(MySQL 등)에 직접 접근하여 쓰는 행위는 절대 금지합니다. 오직 Redis 채널에 메시지를 던지고 통신을 종료하여 백엔드와의 결합도를 낮춥니다.
-
-## 3. 입출력 명세 (I/O Specification)
-- **Input:** 데이터 파이프라인의 HTTP POST Request (`text_chunk`, `ticker`, `timestamp`)
-- **내부 State:** `context_memory` (이전 발언 누적 요약)
-- **Output:** Redis `trading-signals` 채널에 JSON 스트링 Publish
-
-```json
-{
-  "ticker": "TSLA",
-  "signal": "SELL",
-  "score": -0.85,
-  "rationale": "CEO가 연간 매출 목표 유지를 언급했으나, 핵심 동력인 신제품 출시가 2분기 지연됨에 따라 단기 마진 악화가 우려되어 매도 시그널이 발생했습니다."
-}
+```mermaid
+flowchart TD
+    A["Data Pipeline / Collector\nPOST /api/v1/analyze"] --> B["api/analyze_router.py"]
+    B --> C["core/context_manager.py\n세션별 슬라이딩 컨텍스트"]
+    B --> D["core/phase1_scorer.py\nFinBERT phase-1"]
+    B --> E["core/analysis_service.py"]
+    E --> F["src/graph/workflow.py\nroute → prompt → flash → review → finalize"]
+    F --> G["core/gemini_client.py\nGemini 3 Flash / Pro"]
+    B --> H["core/pead_calculator.py\nSUE"]
+    B --> I["api/analyze_router.py::_compute_momentum_score"]
+    H --> J["core/composite_scorer.py"]
+    I --> J
+    D --> J
+    J --> K["core/regime_classifier.py"]
+    K --> L["core/five_gate_filter.py"]
+    L --> M["strategies/orchestrator.py"]
+    M --> N["core/risk_manager.py"]
+    N --> O["models/signal_models.py\nTradingSignalV3"]
+    O --> P["core/contract_adapter.py"]
+    P --> Q["core/redis_publisher.py\ntrading-signals / enriched"]
 ```
 
-## 4. 기술 스택 (Python)
-- **Core API:** `FastAPI`, `Uvicorn`, `pydantic`
-- **Trading Engine:** `transformers` (HuggingFace FinBERT 등), `torch`
-- **Explanation Engine:** `openai` 또는 `anthropic` (Phase 1), `langchain`, `chromadb` (Phase 2)
-- **Message Broker:** `redis-py`
+## 디렉터리 구조
 
-## 5. 완료 기준 (Definition of Done - DoD)
-이 모듈의 개발이 완료되었다고 평가받으려면 다음 테스트를 통과해야 합니다.
-1. [ ] **속도 테스트:** 가짜 텍스트를 POST 요청했을 때, NLP 모델의 Score 도출이 100ms 이내에 완료되는가?
-2. [ ] **무결성 테스트:** NLP가 '매도'를 외쳤을 때, LLM이 실수로 '긍정적입니다'라는 환각(Hallucination) 해설을 작성하지 않고 완벽하게 동기화되는가?
-3. [ ] **통신 테스트:** 파이썬으로 가짜 Subscriber(구독자) 스크립트를 띄워놨을 때, AI 서버가 발행한 시그널이 Redis를 통해 정상 수신되는가?
+```text
+EarningWhisperer/                   ← 레포 루트
+├── ai_engine/                      ← FastAPI 패키지
+│   ├── api/
+│   │   ├── analyze_router.py
+│   │   ├── integration_router.py
+│   │   └── research_router.py
+│   ├── core/
+│   │   ├── analysis_service.py
+│   │   ├── backtester.py
+│   │   ├── composite_scorer.py
+│   │   ├── context_manager.py
+│   │   ├── contract_adapter.py
+│   │   ├── execution_style.py
+│   │   ├── five_gate_filter.py
+│   │   ├── gemini_client.py
+│   │   ├── integration_state.py
+│   │   ├── integrity_validator.py
+│   │   ├── llm_consistency.py
+│   │   ├── llm_router.py
+│   │   ├── pead_calculator.py
+│   │   ├── phase1_scorer.py
+│   │   ├── prompt_builder.py
+│   │   ├── redis_publisher.py
+│   │   ├── regime_classifier.py
+│   │   ├── risk_manager.py
+│   │   ├── score_normalizer.py
+│   │   └── token_budgeter.py
+│   ├── docs/
+│   │   └── (18개 KO 문서 — 아래 문서 섹션 참조)
+│   ├── models/
+│   │   ├── contract_models.py
+│   │   ├── integration_models.py
+│   │   ├── request_models.py
+│   │   ├── research_models.py
+│   │   └── signal_models.py
+│   ├── src/graph/
+│   │   ├── state.py
+│   │   ├── workflow.py
+│   │   └── nodes/
+│   │       ├── adjudication_llm_call.py
+│   │       ├── build_prompt.py
+│   │       ├── llm_call.py
+│   │       ├── parse_and_finalize.py
+│   │       ├── primary_llm_call.py
+│   │       ├── review_gate.py
+│   │       └── route_decision.py
+│   ├── strategies/
+│   │   └── orchestrator.py
+│   ├── tests/
+│   │   ├── test_contract_compatibility.py
+│   │   ├── test_core.py
+│   │   ├── test_inspection_regressions.py
+│   │   ├── test_integration_state.py
+│   │   ├── test_llm_routing.py
+│   │   ├── test_operational_guards.py
+│   │   ├── test_redis_publisher.py
+│   │   ├── test_regression_fixes.py
+│   │   └── test_research_extensions.py
+│   ├── .env.example
+│   ├── config.py
+│   ├── main.py
+│   ├── pytest.ini
+│   └── requirements.txt
+├── .gitignore
+└── README.md
+```
+
+## 주요 엔드포인트
+
+| Method | Path | 설명 |
+|--------|------|------|
+| `POST` | `/api/v1/analyze` | 어닝콜 청크 단건 분석 |
+| `POST` | `/api/v1/analyze/batch` | 배치 분석 |
+| `POST` | `/api/v1/research/backtest` | 백테스트 실행 |
+| `POST` | `/api/v1/research/style` | 실행 스타일 조회 |
+| `GET`  | `/health` | 헬스체크 |
+| `GET`  | `/stats` | 운영 상태 확인 |
+
+## 실행 방법
+
+### 1. 환경 변수 준비
+
+```bash
+cp ai_engine/.env.example ai_engine/.env
+# .env 파일을 열어 아래 항목을 채웁니다
+```
+
+필수:
+- `GEMINI_API_KEY`
+- `REDIS_URL`
+
+권장:
+- `GEMINI_PRIMARY_MODEL=gemini-3-flash-preview`
+- `GEMINI_REVIEW_MODEL=gemini-3-pro-preview`
+
+### 2. 의존성 설치
+
+```bash
+pip install -r ai_engine/requirements.txt
+```
+
+### 3. 서버 실행
+
+```bash
+# 레포 루트(EarningWhisperer/)에서 실행
+python -m uvicorn ai_engine.main:app --host 0.0.0.0 --port 8000
+```
+
+## 배포 시 체크포인트
+
+- Redis가 실제로 떠 있어야 Backend 계약 신호가 발행됩니다.
+- FinBERT 모델 파일은 런타임에 로드됩니다. 오프라인 서버의 경우 `ProsusAI/finbert`를 미리 캐시하거나 로컬 경로로 지정하세요.
+- `/stats`에서 `phase1_status`, `gemini_stats`, `redis_connected`를 확인하면 운영 상태를 빠르게 볼 수 있습니다.
+
+## 테스트
+
+```bash
+# 레포 루트에서 실행
+python -m pytest ai_engine/ -q
+```
+
+현재 기준 로컬 검증 결과: `81 passed`
+
+## 문서
+
+| 파일 | 내용 |
+|------|------|
+| [MODULE_IO_SPEC_KO.md](ai_engine/docs/MODULE_IO_SPEC_KO.md) | 모듈별 입출력 명세 |
+| [LLM_IO_SPEC_KO.md](ai_engine/docs/LLM_IO_SPEC_KO.md) | LLM 입출력 명세 |
+| [FLOW_SPEC_KO.md](ai_engine/docs/FLOW_SPEC_KO.md) | 전체 플로우 명세 |
+| [TECHNICAL_SPEC_TABLE_KO.md](ai_engine/docs/TECHNICAL_SPEC_TABLE_KO.md) | 기술 스펙 테이블 |
+| [UPDATE_SUMMARY_3_5_2_KO.md](ai_engine/docs/UPDATE_SUMMARY_3_5_2_KO.md) | v3.5.2 업데이트 내역 |
+| [FLOW_AND_STRUCTURE_KO.md](ai_engine/docs/FLOW_AND_STRUCTURE_KO.md) | 구조 및 흐름 요약 |
+| [PROJECT_REQUIREMENTS_KO.md](ai_engine/docs/PROJECT_REQUIREMENTS_KO.md) | 프로젝트 요구사항 |
+| [GEMINI_3_ROUTING_KO.md](ai_engine/docs/GEMINI_3_ROUTING_KO.md) | Gemini 3 라우팅 전략 |
+| [FILE_MANUAL_KO.md](ai_engine/docs/FILE_MANUAL_KO.md) | 파일별 역할 매뉴얼 |

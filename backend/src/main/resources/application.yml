@@ -30,6 +30,14 @@ jwt:
   secret: ${JWT_SECRET:earning-whisperer-dev-secret-key-minimum-32-chars}
   expiration-ms: 86400000  # 24시간 (ms)
 
+finnhub:
+  base-url: https://finnhub.io/api/v1
+  api-key: ${FINNHUB_API_KEY:}   # 미설정 시 어닝 일정 스케줄러 비활성화
+
+fmp:
+  base-url: https://financialmodelingprep.com
+  api-key: ${FMP_API_KEY:}       # 미설정 시 S&P 500 분기 동기화 스케줄러 비활성화
+
 management:
   endpoints:
     web:
