@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { KisService } from './KisService'
 import { BackendClient } from './BackendClient'
+import { NotificationService } from './NotificationService'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
 export interface TradeSignal {
@@ -69,6 +70,7 @@ export const TradeExecutor = {
       // Step 4: 포트폴리오 동기화 (비동기)
       syncPortfolioAsync()
 
+      NotificationService.notifyTradeExecuted(signal.ticker, signal.action, orderResult.executedQty, orderResult.executedPrice)
       pushToRenderer(IPC_CHANNELS.TRADE_EXECUTED, result)
       return result
     } catch (e: unknown) {
@@ -114,6 +116,7 @@ async function sendFailCallback(tradeId: string, reason: string): Promise<TradeR
     console.error('[TradeExecutor] 콜백 전송 실패:', e)
   }
 
+  NotificationService.notifyTradeFailed(tradeId, reason)
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.TRADE_FAILED, result)
   })

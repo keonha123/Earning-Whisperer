@@ -50,7 +50,8 @@
   .btn-buy      { @apply btn-base bg-buy hover:bg-buy-hover text-white; }
   .btn-sell     { @apply btn-base bg-sell hover:bg-sell-hover text-white; }
   .btn-ghost    { @apply btn-base bg-transparent hover:bg-[#232d3f] text-text-secondary hover:text-text-primary; }
-  .btn-reject   { @apply btn-base bg-[#232d3f] hover:bg-[#1c2330] text-text-secondary; }
+  .btn-reject        { @apply btn-base bg-[#232d3f] hover:bg-[#1c2330] text-text-secondary; }
+  .btn-danger-ghost  { @apply btn-base bg-transparent hover:bg-sell/10 text-sell border border-sell/30 hover:border-sell/60; }
 
   /* 입력 */
   .input-base {

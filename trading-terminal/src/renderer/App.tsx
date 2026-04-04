@@ -29,7 +29,7 @@ export default function App() {
       ipc.on(IPC_CHANNELS.WS_STATUS_CHANGED, (payload: any) => {
         setWsStatus(payload.status)
         if (payload.status === 'CONNECTED') {
-          useConnectionStore.getState().clearForcedManual?.()
+          useTradingStore.getState().clearForcedManual()
         }
       }),
 

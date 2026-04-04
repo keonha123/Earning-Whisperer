@@ -4,6 +4,7 @@ import { useTradingStore } from '../store/useTradingStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
 import { useUserStore } from '../store/useUserStore'
 import ModeSelector from '../components/common/ModeSelector'
+import SignalFeed from '../components/trading/SignalFeed'
 
 export default function DashboardPage() {
   const { mode, setMode, signalHistory } = useTradingStore()
@@ -88,22 +89,7 @@ export default function DashboardPage() {
         {/* 최근 신호 피드 (60%) */}
         <div className="col-span-3 card">
           <h3 className="text-sm font-semibold text-text-primary mb-4">최근 신호</h3>
-          {signalHistory.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-text-disabled text-sm">
-              신호 대기 중
-              <span className="animate-pulse ml-1">...</span>
-            </div>
-          ) : (
-            <div className="flex flex-col">
-              {signalHistory.slice(0, 5).map((s, i) => (
-                <div key={s.trade_id} className={i === 0 ? 'signal-row-latest' : 'signal-row'}>
-                  <span className={s.action === 'BUY' ? 'badge-buy' : 'badge-sell'}>{s.action}</span>
-                  <span className="font-medium text-text-primary num flex-1">{s.ticker}</span>
-                  <span className="num text-text-secondary text-xs">EMA {s.ema_score.toFixed(3)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <SignalFeed items={signalHistory.slice(0, 5)} />
         </div>
       </div>
     </div>

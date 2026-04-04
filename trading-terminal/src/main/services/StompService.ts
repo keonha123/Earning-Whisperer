@@ -3,6 +3,8 @@ import WebSocket from 'ws'
 import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { TradeExecutor } from './TradeExecutor'
+import { NotificationService } from './NotificationService'
 
 const WS_URL = (process.env.BACKEND_URL ?? 'http://localhost:8082')
   .replace(/^http/, 'ws') + '/ws'
@@ -11,6 +13,7 @@ type WsStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
 
 let client: Client | null = null
 let retryCount = 0
+let hasConnectedOnce = false
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
 
 function getRetryDelay(): number {
@@ -33,7 +36,11 @@ function onStatusChange(status: WsStatus) {
       pushToRenderer(IPC_CHANNELS.MODE_FORCED_MANUAL, {
         reason: '백엔드 WebSocket 연결이 끊겼습니다.',
       })
+      NotificationService.notifyWsDisconnected()
     }
+  } else if (status === 'CONNECTED') {
+    if (hasConnectedOnce) NotificationService.notifyWsReconnected()
+    hasConnectedOnce = true
   }
 }
 
@@ -64,6 +71,13 @@ export const StompService = {
             try {
               const signal = JSON.parse(message.body)
               pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
+
+              // AUTO_PILOT: 신호 수신 즉시 자동 실행
+              if (mainState.tradingMode === 'AUTO_PILOT') {
+                TradeExecutor.execute(signal).catch((e) => {
+                  console.error('[StompService] AUTO_PILOT 실행 실패:', e)
+                })
+              }
             } catch (e) {
               console.error('[StompService] 신호 파싱 실패:', e)
             }
