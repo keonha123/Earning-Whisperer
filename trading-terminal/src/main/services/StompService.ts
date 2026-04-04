@@ -7,7 +7,7 @@ import { TradeExecutor } from './TradeExecutor'
 import { NotificationService } from './NotificationService'
 
 const WS_URL = (process.env.BACKEND_URL ?? 'http://localhost:8082')
-  .replace(/^http/, 'ws') + '/ws'
+  .replace(/^http/, 'ws') + '/ws-native'
 
 type WsStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
 
