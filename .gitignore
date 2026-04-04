@@ -24,9 +24,9 @@ out/
 .DS_Store
 *.swp
 
-# Personal 
+# Personal
 learning/
 
-# Claude 
+# Claude
 CLAUDE.md
 **/CLAUDE.md
