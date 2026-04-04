@@ -51,10 +51,12 @@ export const mainState = {
   get isOrderInProgress() { return state.isOrderInProgress },
   setOrderInProgress(v: boolean) { state.isOrderInProgress = v },
 
-  /** 앱 종료 시 민감 데이터 소거 */
+  /** 앱 종료 및 로그아웃 시 민감 데이터 소거 */
   clear() {
     state.backendToken = null
     state.kisAccessToken = null
     state.kisTokenExpiresAt = null
+    state.tradingMode = 'MANUAL'
+    state.isOrderInProgress = false
   },
 }
