@@ -9,19 +9,38 @@ build/
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 *$py.class
+.venv/
 venv/
+env/
 .env
+.env.*
+!.env.example
+
+# Python 테스트/분석 도구
+.pytest_cache/
+pytest-cache-files-*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Node (Frontend)
 node_modules/
 .next/
 out/
 
+# 기타
+*.log
+*.zip
+
 # IDE & OS
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db
 *.swp
 
 # Personal
