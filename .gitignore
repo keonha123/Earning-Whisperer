@@ -3,6 +3,9 @@
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# 로컬 설정 파일 (API 키 등 민감 정보)
+**/application-local.yml
+
 # Python
 __pycache__/
 *.py[cod]
