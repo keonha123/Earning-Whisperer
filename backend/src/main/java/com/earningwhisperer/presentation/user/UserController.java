@@ -36,10 +36,10 @@ public class UserController {
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(portfolioSettingsService.updateFromTerminal(
                 userId,
-                request.getMax_buy_ratio(),
-                request.getMax_holding_ratio(),
-                request.getCooldown_minutes(),
-                request.getTrading_mode()
+                request.getMaxBuyRatio(),
+                request.getMaxHoldingRatio(),
+                request.getCooldownMinutes(),
+                request.getTradingMode()
         ));
     }
 }

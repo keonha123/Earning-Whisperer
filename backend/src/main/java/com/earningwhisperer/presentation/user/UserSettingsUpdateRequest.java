@@ -1,6 +1,7 @@
 package com.earningwhisperer.presentation.user;
 
 import com.earningwhisperer.domain.portfolio.TradingMode;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
@@ -17,17 +18,21 @@ import lombok.NoArgsConstructor;
 public class UserSettingsUpdateRequest {
 
     @NotNull
-    private TradingMode trading_mode;
+    @JsonProperty("trading_mode")
+    private TradingMode tradingMode;
 
     @NotNull
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double max_buy_ratio;
+    @JsonProperty("max_buy_ratio")
+    private Double maxBuyRatio;
 
     @NotNull
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double max_holding_ratio;
+    @JsonProperty("max_holding_ratio")
+    private Double maxHoldingRatio;
 
     @NotNull
     @Min(1)
-    private Integer cooldown_minutes;
+    @JsonProperty("cooldown_minutes")
+    private Integer cooldownMinutes;
 }
