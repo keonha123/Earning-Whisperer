@@ -1,64 +1,174 @@
-# 🖥️ Frontend (SaaS 웹 대시보드 및 랜딩) 요구사항 정의서
+# EarningWhisperer — Frontend
 
-## 1. 모듈의 역할 및 목표
-이 모듈은 EarningWhisperer 시스템의 클라우드 기반 고객 접점(SaaS Client-side)이자 핵심 마케팅 채널이다. 
-복잡한 AI 실시간 실적 분석과 퀀트 매매 시스템을 일반 투자자가 직관적으로 체험하고 구독(결제)할 수 있도록 모던 웹 환경을 제공한다. 자본시장법 규제 및 보안 원칙을 엄격히 준수하기 위해 **웹 프론트엔드에서는 사용자의 증권사 API 키를 일절 수집하거나 저장하지 않으며, 실제 주문 API를 호출하지도 않는다.** 웹 프론트엔드의 핵심 목표는 **1) 동적 랜딩 페이지를 통한 서비스 소구점(Point of Appeal) 전달, 2) 라이브 데모를 통한 기술력 증명, 3) 안전한 결제(PG) 연동을 통한 구독 모델 구현, 4) 백엔드와 연동된 원격 모니터링 대시보드 제공**이다. 실질적인 매매 실행은 유저가 다운로드할 `Local Agent(Desktop App)`로 책임을 위임한다.
+![Next.js](https://img.shields.io/badge/Next.js-16.2-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-배포-000000?logo=vercel&logoColor=white)
 
-## 2. 핵심 화면 및 기능 명세 (Core Pages)
+AI 실시간 어닝콜 분석을 체험하고, 구독/결제 후 Trading Terminal을 다운로드하는 SaaS 웹 대시보드입니다.
+랜딩·데모 체험·인증·마이페이지·어닝 캘린더·관심종목을 제공하며, 증권사 API 키를 일절 수집하거나 저장하지 않습니다.
 
-### [Common UI] 전역 네비게이션 바 (GNB)
-- **기능:** 스크롤 시 상단에 고정(Sticky)되어 유저의 탐색과 전환(Conversion)을 지속적으로 유도한다.
-- **구성 요소:**
-  - **좌측:** EarningWhisperer 서비스 로고 및 홈 링크
-  - **중앙:** 주요 네비게이션 (`기능 소개`, `모의 체험(Demo)`, `가격 안내`)
-  - **우측:** `로그인 / 마이페이지` 아이콘 및 CTA(Call to Action) 버튼인 **`[Windows/Mac 앱 다운로드]`** (강조 색상 적용)
+---
 
-### [Page 1] 동적 랜딩 페이지 (Dynamic Landing Page)
-- **기능:** 스크롤 애니메이션을 활용하여 서비스의 필요성과 기술력을 소개하는 첫인상 페이지.
-- **구성 요소:**
-  - **Hero Section:** "새벽 5시 실적 발표, AI가 듣고 당신 대신 매매합니다" 등의 메인 카피와 서비스 구동 목업(Mockup) 3D 이미지/영상 배치.
-  - **Pain Point 해결:** 기존 투자자들이 겪는 밤샘 대기, 영어 청취의 어려움, 감정적 뇌동매매 문제를 어떻게 해결하는지 스토리텔링 형식으로 구성.
-  - **Core Features:** 실시간 STT 분석, 0.1초 단위 텐션(Raw Score) 측정, 노이즈 필터링(EMA 룰 엔진), 완벽한 클라이언트 보안(키 로컬 저장) 등 주요 기술 스택 시각화.
+## 전환 퍼널
 
-### [Page 2] 🔴 라이브 모의 체험장 (Showcase Demo Room)
-- **기능:** 회원가입이나 프로그램 설치 없이도 시스템의 강력함을 보여주는 웹소켓 기반 읽기 전용(Read-only) 체험관.
-- **동작 방식:** 백엔드 `DemoReplayService`가 서버 기동 시부터 과거 주요 어닝콜 데이터(예: NVDA 2024 Q4)를 무한 반복 재생하는 **라디오 방송국 모델**을 적용한다. 프론트는 `/topic/live/demo` 채널을 구독하여 접속 시점의 재생 구간부터 수신하므로 별도의 세션 관리가 불필요하다.
-- **구성 요소:**
-  - **[좌측] 차트 패널:** 주가 틱 차트 (TradingView Lightweight Charts 등 활용).
-  - **[중앙] AI 실시간 분석 패널:** STT 텍스트의 타이핑 효과, 요동치는 'Raw Score 텐션 미터기', 추세를 그리는 'EMA 그래프'를 지연 없이 60fps로 시각화.
-  - **CTA 유도 장치:** 화면 하단에 블러(Blur) 처리된 레이어를 오버레이하여, *"이 시스템을 내 계좌에 연결하여 실제 자동매매를 실행하려면? 👉 [Pro 플랜 구독 및 앱 다운로드]"* 버튼을 배치.
+서비스의 모든 페이지 설계는 아래 퍼널을 기준으로 합니다.
 
-### [Page 3] 인증 및 요금제 결제 (Auth & Pricing)
-- **기능:** JWT 기반의 회원가입/로그인 및 SaaS 구독 결제 처리.
-- **플랜 구성:**
-  - **Free Plan:** 웹에서 AI 실시간 신호 열람 및 수동 모의투자 체험 가능.
-  - **Pro Plan (월 구독):** 로컬 에이전트(Desktop App) 다운로드 권한 부여 및 완전 자동 매매 룰 엔진 잠금 해제(Unlock).
-- **결제 연동:** 토스페이먼츠(Toss Payments) 또는 포트원(PortOne)의 테스트 결제 모듈을 연동하여 웹 환경에서 안전하게 결제 플로우(Redirect/Webhook)를 처리하고 백엔드의 유저 권한(`ROLE_PRO`)을 갱신한다.
+```mermaid
+flowchart LR
+    A["🏠 랜딩 페이지\nSSG · SEO 최적화"]
+    B["🔴 라이브 데모\nWebSocket 실시간 시각화"]
+    C["🔐 회원가입 / 로그인\nJWT 인증"]
+    D["📊 마이페이지\n원격 모니터링"]
+    E["💻 Terminal 다운로드\nPro 전용"]
 
-### [Page 4] 마이페이지 및 원격 대시보드 (My Dashboard)
-- **기능:** 결제를 완료한 유저가 본인의 계정 상태를 관리하고, 로컬 에이전트가 백엔드로 쏘아 올린 모의투자 성과를 모니터링하는 공간. (로그인 필수)
-- **구성 요소:**
-  - **결제 및 구독 관리:** 결제 영수증 조회, 다음 결제일 확인, 구독 해지 기능.
-  - **원격 포트폴리오 뷰어:** 로컬 에이전트가 백엔드로 동기화한 '자체 장부(Internal Ledger)' 데이터를 API로 불러와 총 자산, 수익률 추이, 거래 히스토리 영수증을 시각화. (웹에서는 조회만 가능)
+    A -->|"체험해보기"| B
+    B -->|"구독 시작"| C
+    C -->|"로그인 완료"| D
+    D -->|"Pro 업그레이드"| E
+```
 
-### [Page 5] 클라우드 설정 (Cloud Settings)
-- **기능:** 백엔드 룰 엔진에 적용될 글로벌 리스크 관리 기준을 세팅한다. 설정값은 백엔드로 전송(`PUT`)된다.
-- **설정 항목:** 1회 매수 시 예수금 사용 비율(%), 특정 종목 최대 비중 제한(%), 쿨다운 타임(분).
-- **보안 정책 안내:** 화면 상단에 *"보안을 위해 실제 증권사 API 키는 웹에 저장되지 않으며, PC에 설치된 로컬 에이전트 앱 내부에만 암호화되어 보관됩니다."*라는 안내를 명시하여 시스템의 신뢰도를 높인다.
+---
 
-## 3. 핵심 UI/UX 정책 (Conversion Funnel)
-- 본 프론트엔드의 궁극적인 비즈니스 목표는 유저를 **[랜딩 페이지 ➔ 모의 체험 ➔ 로그인/결제 ➔ 로컬 에이전트 다운로드]**의 퍼널(Funnel)로 자연스럽게 이끄는 것이다.
-- 결제 모듈이나 복잡한 라우팅 처리를 데스크톱 앱 내부에서 수행하지 않고 웹으로 완전히 분리함으로써, 개발 생산성을 높이고 유저의 결제 이탈률을 최소화한다.
+## 페이지 구성
 
-## 4. 기술 스택 (Frontend)
-- **Framework:** `Next.js` (React 18+, App Router 및 SSR/SSG 활용하여 랜딩 페이지 SEO 최적화)
-- **Styling & UI:** `Tailwind CSS`, `Framer Motion` (랜딩 스크롤 애니메이션), `shadcn/ui` (대시보드 컴포넌트)
-- **State Management:** `Zustand` (유저 세션, 전역 상태 관리)
-- **Real-time 통신:** `SockJS` + `@stomp/stompjs` (모의 체험장 실시간 렌더링)
-- **Payment Gateway:** `Toss Payments` (테스트 환경 연동)
-- **Deployment:** `Vercel` (CI/CD 및 글로벌 엣지 네트워크 무중단 배포)
+| 페이지 | URL | 인증 | 렌더링 | 설명 |
+|--------|-----|------|--------|------|
+| 랜딩 | `/` | — | SSG | Hero, Pain Point, How It Works, 요금제 CTA |
+| 라이브 데모룸 | `/demo` | — | CSR | WebSocket 실시간 AI 신호 시각화 (게이지, EMA 차트, 신호 피드) |
+| 인증 | `/auth` | — | CSR | 로그인 / 회원가입 탭 전환 |
+| 마이페이지 | `/mypage` | ✓ | CSR | 거래내역 · 구독관리 · 설정 탭 |
+| 관심종목 | `/watchlist` | ✓ | CSR | S&P 500 종목 검색, 추가/삭제 |
+| 어닝 캘린더 | `/earnings-calendar` | ✓ | CSR | 관심종목 어닝콜 일정 (90일) + D-day 태그 |
+| 다운로드 | `/download` | — | CSR | Trading Terminal 다운로드 안내 (준비 중) |
 
-## 5. 완료 기준 (Definition of Done - DoD)
-1. [ ] **퍼널 무결성 테스트:** 비회원 접속 시 동적 랜딩 페이지가 쾌적하게 렌더링되며, 로그인 ➔ 모의 체험 ➔ 테스트 결제 완료까지의 UX 플로우가 에러 없이 연결되는가?
-2. [ ] **웹소켓 렌더링 부하 테스트:** 데모 룸에서 과거 어닝콜 데이터 스트리밍 수신 시, 차트와 텍스트 타이핑 애니메이션이 브라우저 메인 스레드를 블로킹(Freezing)하지 않고 부드럽게 그려지는가?
-3. [ ] **보안 및 책임 분리 확인:** 소스 코드 및 UI의 어떤 부분에서도 증권사 API 키를 입력받거나 전송하는 로직이 완전히 배제되었는가?
+---
+
+## 주요 화면
+
+### 라이브 데모룸 (`/demo`)
+
+백엔드 `DemoReplayService`가 서버 기동 시부터 과거 어닝콜(예: NVDA Q4 2024)을 무한 반복 재생하는 **라디오 방송국 모델**을 채택합니다. 접속 시점의 재생 구간부터 수신하므로 별도의 세션 관리가 불필요합니다.
+
+```
+/topic/live/demo      ← AI 신호 (raw_score, ema_score, action, text_chunk, ...)
+/topic/live/demo/price ← 실시간 주가 tick
+```
+
+| 컴포넌트 | 역할 |
+|---------|------|
+| `TensionGauge` | Raw Score / EMA Score 실시간 게이지 |
+| `EmaChart` | Recharts 기반 EMA vs Raw 비교 라이브 차트 |
+| `SttTextFeed` | 실시간 STT 텍스트 누적 표시 |
+| `SignalFeed` | BUY / SELL / HOLD 신호 이력 |
+| `PriceTicker` | 현재가 + 등락률 |
+| `CtaOverlay` | 미인증 사용자 가입 유도 (blur 레이어) |
+
+WebSocket 연결이 끊기면 3초 후 자동 재연결, 화면 상단에 연결 상태 표시.
+
+### 마이페이지 (`/mypage`)
+
+| 탭 | 구현 내용 |
+|----|---------|
+| 거래내역 | 테이블(데스크톱) / 카드(모바일) 반응형. ticker, 방향, 수량, 체결 수량, 상태, 일시 |
+| 구독관리 | Free / Pro 플랜 비교. 업그레이드 CTA (Toss Payments 준비 중) |
+| 설정 | 계정 이메일 표시, 포트폴리오 설정은 Terminal에서 변경 안내, 로그아웃 |
+
+---
+
+## 기술 스택
+
+| 분류 | 기술 | 버전 |
+|------|------|------|
+| Framework | Next.js (App Router) | 16.2 |
+| UI | React | 19 |
+| Styling | Tailwind CSS | v4 |
+| Animation | Framer Motion | 12 |
+| Chart | Recharts | 3 |
+| State | Zustand (localStorage persist) | 5 |
+| Real-time | SockJS + @stomp/stompjs | — |
+| Payment | Toss Payments | (준비 중) |
+| Deployment | Vercel | — |
+
+---
+
+## 빠른 시작
+
+### Prerequisites
+
+- Node.js 18+
+- 백엔드 서버 실행 중 (기본 `http://localhost:8082`)
+
+### 1. 의존성 설치
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. 환경 변수 설정
+
+`.env.local` 파일을 생성합니다.
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8082
+NEXT_PUBLIC_WS_URL=http://localhost:8082/ws
+```
+
+### 3. 개발 서버 시작
+
+```bash
+npm run dev
+# → http://localhost:3000
+```
+
+### 4. 빌드 및 프로덕션 실행
+
+```bash
+npm run build
+npm run start
+```
+
+---
+
+## 환경 변수
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8082` | 백엔드 REST API 기본 URL |
+| `NEXT_PUBLIC_WS_URL` | `http://localhost:8082/ws` | WebSocket (STOMP) 연결 주소 |
+
+---
+
+## 인증 플로우
+
+```
+로그인 → POST /api/v1/auth/login → accessToken 수신
+         → Zustand useAuthStore에 저장 (localStorage persist)
+         → 모든 인증 요청 헤더: Authorization: Bearer {accessToken}
+```
+
+미인증 상태로 보호 페이지(`/mypage`, `/watchlist`, `/earnings-calendar`) 접근 시 `/auth`로 리다이렉트합니다.
+
+---
+
+## 배포 (Vercel)
+
+Vercel 프로젝트에서 아래 환경 변수를 설정합니다.
+
+```
+NEXT_PUBLIC_API_URL=https://your-backend-url
+NEXT_PUBLIC_WS_URL=https://your-backend-url/ws
+```
+
+랜딩 페이지(`/`)는 `force-static`으로 빌드 타임에 SSG 생성됩니다. 인증이 필요한 페이지는 모두 CSR로 동작합니다.
+
+---
+
+## 관련 문서
+
+| 문서 | 설명 |
+|------|------|
+| [`docs/api-spec.md`](../docs/api-spec.md) | 서비스 간 API & 데이터 컨트랙트 전체 명세 |
+| [`docs/landing-page-ui-spec.md`](docs/landing-page-ui-spec.md) | 랜딩 페이지 UI 컴포넌트 스펙 |
+| [`docs/requirements.md`](docs/requirements.md) | 프론트엔드 요구사항 정의서 (원문) |
