@@ -75,19 +75,38 @@
   .badge-buy     { @apply badge-base bg-buy/20 text-buy text-sm px-3 py-1; }
   .badge-sell    { @apply badge-base bg-sell/20 text-sell text-sm px-3 py-1; }
 
-  /* 모드 탭 */
-  .mode-tab         { @apply flex-1 py-2.5 text-sm font-medium rounded-md transition-colors duration-100 text-center cursor-pointer; }
-  .mode-tab-active  { @apply mode-tab bg-brand text-white; }
-  .mode-tab-inactive { @apply mode-tab bg-[#1c2330] text-text-secondary hover:bg-[#232d3f] hover:text-text-primary; }
-  .mode-tab-locked  { @apply mode-tab bg-[#1c2330] text-text-disabled cursor-not-allowed; }
+  /* 모드 탭 — 모드별 색상 체계 */
+  .mode-tab {
+    @apply relative flex-1 flex flex-col items-center justify-center gap-1
+           py-2 px-2 rounded-md text-xs font-medium
+           transition-all duration-100 cursor-pointer
+           border border-transparent;
+  }
+  .mode-tab-manual-active   { @apply mode-tab bg-[#1c2330] text-text-primary border-[#2a3344]; }
+  .mode-tab-manual-inactive { @apply mode-tab bg-transparent text-text-secondary hover:bg-[#1c2330] hover:text-text-primary; }
+  .mode-tab-semi-active     { @apply mode-tab bg-connecting/10 text-connecting border-connecting/30; }
+  .mode-tab-semi-inactive   { @apply mode-tab bg-transparent text-text-secondary hover:bg-connecting/10 hover:text-connecting; }
+  .mode-tab-auto-active     { @apply mode-tab bg-buy/10 text-buy border-buy/30; }
+  .mode-tab-auto-inactive   { @apply mode-tab bg-transparent text-text-secondary hover:bg-buy/10 hover:text-buy; }
+  .mode-tab-locked          { @apply mode-tab bg-transparent text-text-disabled cursor-not-allowed; }
 
   /* StatusBar 항목 */
   .status-item { @apply flex items-center gap-1.5 text-xs; }
   .status-dot  { @apply w-1.5 h-1.5 rounded-full; }
 
-  /* 사이드바 네비 */
-  .nav-item        { @apply flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:bg-[#1c2330] hover:text-text-primary transition-colors duration-100 cursor-pointer; }
+  /* 사이드바 네비 — left accent bar */
+  .nav-item {
+    @apply relative flex items-center gap-3 px-3 py-2.5 rounded-md text-sm
+           text-text-secondary hover:bg-[#1c2330] hover:text-text-primary
+           transition-colors duration-100 cursor-pointer w-full;
+  }
+  .nav-item::before {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full
+           bg-brand opacity-0 transition-opacity duration-100;
+  }
   .nav-item-active { @apply nav-item bg-[#1c2330] text-text-primary; }
+  .nav-item-active::before { @apply opacity-100; }
 
   /* 신호 피드 행 */
   .signal-row        { @apply flex items-center gap-3 px-4 py-3 border-b border-[#1e2738] hover:bg-[#1c2330] transition-colors duration-100; }
@@ -100,4 +119,25 @@
 
   /* Forced Manual 배너 */
   .forced-manual-banner { @apply w-full px-6 py-2.5 bg-sell/20 border-b border-sell/40 flex items-center gap-3 text-sm text-sell; }
+
+  /* HistoryPage 테이블 행 left accent */
+  .table-row-accent { position: relative; }
+  .table-row-accent::before {
+    content: '';
+    @apply absolute left-0 top-0 bottom-0 w-0 bg-brand opacity-0
+           transition-all duration-100;
+  }
+  .table-row-accent:hover::before {
+    @apply w-0.5 opacity-100;
+  }
+
+  /* Pagination */
+  .pagination-btn {
+    @apply w-7 h-7 flex items-center justify-center rounded text-xs
+           text-text-secondary hover:bg-[#1c2330] hover:text-text-primary
+           transition-colors duration-100 disabled:opacity-30 disabled:cursor-not-allowed num;
+  }
+  .pagination-btn-active {
+    @apply pagination-btn bg-brand text-white hover:bg-brand-hover;
+  }
 }
