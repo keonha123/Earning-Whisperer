@@ -6,7 +6,7 @@ import logging
 import re
 from typing import FrozenSet
 
-from ..models.signal_models import GeminiAnalysisResult
+from models.signal_models import GeminiAnalysisResult
 
 logger = logging.getLogger(__name__)
 

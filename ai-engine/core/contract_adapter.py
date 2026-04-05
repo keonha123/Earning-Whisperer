@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ..models.contract_models import BackendRedisSignal
-from ..models.signal_models import TradingSignalV3
+from models.contract_models import BackendRedisSignal
+from models.signal_models import TradingSignalV3
 
 
 def to_backend_redis_signal(signal: TradingSignalV3, *, is_session_end: bool) -> BackendRedisSignal:

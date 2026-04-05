@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....core.gemini_client import gemini_client
+from core.gemini_client import gemini_client
 from ..state import AgentState
 
 

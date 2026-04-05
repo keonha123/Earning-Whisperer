@@ -7,8 +7,8 @@ from typing import Optional
 
 import numpy as np
 
-from ..models.request_models import MarketData
-from ..models.signal_models import MarketRegime
+from models.request_models import MarketData
+from models.signal_models import MarketRegime
 
 logger = logging.getLogger(__name__)
 

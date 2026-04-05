@@ -6,10 +6,10 @@ import time
 import numpy as np
 import pytest
 
-from ..core.context_manager import ChunkRecord, ContextManager
-from ..core.integrity_validator import _detect_direction
-from ..core.score_normalizer import compute_raw_score, compute_raw_score_batch
-from ..models.signal_models import GeminiAnalysisResult
+from core.context_manager import ChunkRecord, ContextManager
+from core.integrity_validator import _detect_direction
+from core.score_normalizer import compute_raw_score, compute_raw_score_batch
+from models.signal_models import GeminiAnalysisResult
 
 
 def test_tetlock_penalty_reduces_bearish_magnitude_and_keeps_neutral_unbiased():

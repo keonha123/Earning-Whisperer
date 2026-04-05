@@ -16,7 +16,7 @@ from typing import Optional
 
 import numpy as np
 
-from ..models.request_models import MarketData
+from models.request_models import MarketData
 
 logger = logging.getLogger(__name__)
 

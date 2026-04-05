@@ -6,9 +6,9 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, List
 
-from ..config import get_settings
-from ..models.request_models import SectionType
-from ..models.signal_models import GeminiAnalysisResult
+from config import get_settings
+from models.request_models import SectionType
+from models.signal_models import GeminiAnalysisResult
 
 _SIGN_MAP = {"BULLISH": 1.0, "BEARISH": -1.0, "NEUTRAL": 0.0}
 
