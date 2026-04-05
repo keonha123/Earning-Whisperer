@@ -61,6 +61,12 @@ public class Trade {
     @Column(nullable = false)
     private Integer executedQty;
 
+    /**
+     * 실제 체결 단가 (체결 전에는 null)
+     */
+    @Column
+    private Double executedPrice;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
     private TradeStatus status;
@@ -93,8 +99,9 @@ public class Trade {
         this.status = TradeStatus.PENDING;
     }
 
-    public void executed(int executedQty, String brokerOrderId) {
+    public void executed(int executedQty, Double executedPrice, String brokerOrderId) {
         this.executedQty = executedQty;
+        this.executedPrice = executedPrice;
         this.brokerOrderId = brokerOrderId;
         this.status = TradeStatus.EXECUTED;
     }

@@ -2,6 +2,11 @@ server:
   port: 8082
 
 spring:
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
   datasource:
     url: jdbc:mysql://localhost:3306/earningwhisperer?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
