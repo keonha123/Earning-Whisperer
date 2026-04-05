@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   WS_DISCONNECT: 'terminal:ws:disconnect',
 
   TRADES_GET: 'terminal:trades:get',
+  TRADE_CANCEL: 'terminal:trade:cancel',
 
   // Main → Renderer (send)
   SIGNAL_RECEIVED: 'terminal:signal:received',

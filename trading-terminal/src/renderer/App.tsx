@@ -98,13 +98,30 @@ export default function App() {
           signal={pendingConfirm}
           timeoutSeconds={30}
           onApprove={async () => {
-            await ipc.invoke(IPC_CHANNELS.KIS_PLACE_ORDER, pendingConfirm)
+            try {
+              await ipc.invoke(IPC_CHANNELS.KIS_PLACE_ORDER, pendingConfirm)
+            } catch (e: any) {
+              await ipc.invoke(IPC_CHANNELS.TRADE_CANCEL, {
+                tradeId: pendingConfirm.trade_id,
+                reason: e?.message ?? '주문 실행 실패',
+              })
+              updateSignalStatus(pendingConfirm.trade_id, 'FAILED')
+              setPendingConfirm(null)
+            }
           }}
           onReject={() => {
+            ipc.invoke(IPC_CHANNELS.TRADE_CANCEL, {
+              tradeId: pendingConfirm.trade_id,
+              reason: '사용자 거절',
+            })
             updateSignalStatus(pendingConfirm.trade_id, 'REJECTED')
             setPendingConfirm(null)
           }}
           onTimeout={() => {
+            ipc.invoke(IPC_CHANNELS.TRADE_CANCEL, {
+              tradeId: pendingConfirm.trade_id,
+              reason: '승인 시간 초과',
+            })
             updateSignalStatus(pendingConfirm.trade_id, 'IGNORED')
             setPendingConfirm(null)
           }}
