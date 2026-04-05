@@ -46,16 +46,9 @@ export default function HistoryPage() {
     loadTrades(p)
   }
 
-  // 오늘 날짜 집계
-  const todayTrades = trades.filter((t) => {
-    const d = new Date(t.createdAt)
-    const now = new Date()
-    return d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate()
-  })
-  const buyCount = todayTrades.filter((t) => t.side === 'BUY').length
-  const sellCount = todayTrades.filter((t) => t.side === 'SELL').length
+  // 현재 페이지 기준 집계 (페이지네이션으로 인해 전체 수는 알 수 없음)
+  const buyCount = trades.filter((t) => t.side === 'BUY').length
+  const sellCount = trades.filter((t) => t.side === 'SELL').length
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -64,7 +57,6 @@ export default function HistoryPage() {
         <div className="flex items-center gap-4">
           <span className="text-sm font-semibold text-text-primary">체결 내역</span>
           <div className="flex items-center gap-2">
-            <SummaryChip label="오늘 체결" value={todayTrades.length} color="text-text-secondary" />
             <SummaryChip label="BUY" value={buyCount} color="text-buy" />
             <SummaryChip label="SELL" value={sellCount} color="text-sell" />
           </div>

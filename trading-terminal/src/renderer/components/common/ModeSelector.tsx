@@ -73,9 +73,10 @@ export default function ModeSelector({ currentMode, userPlan, onChange, size = '
         const isActive = currentMode === value
         const isDisabled = isDisconnected && value !== 'MANUAL'
 
+        // 활성 모드는 locked/disabled 상태에서도 active 스타일 유지 (현재 상태 표시)
         let cls = conf.inactiveClass
         if (isActive) cls = conf.activeClass
-        if (isLocked || isDisabled) cls = 'mode-tab-locked'
+        else if (isLocked || isDisabled) cls = 'mode-tab-locked'
 
         return (
           <button

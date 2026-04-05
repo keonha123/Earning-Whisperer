@@ -23,9 +23,12 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
   const { activeSignal } = useTradingStore()
 
   async function handleLogout() {
-    await ipc.invoke(IPC_CHANNELS.AUTH_LOGOUT)
-    setAuthenticated(false)
-    clear()
+    try {
+      await ipc.invoke(IPC_CHANNELS.AUTH_LOGOUT)
+    } finally {
+      setAuthenticated(false)
+      clear()
+    }
   }
 
   const wsColor = WS_COLOR[wsStatus] ?? '#ef4444'

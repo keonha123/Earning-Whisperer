@@ -29,14 +29,18 @@ export default function DashboardPage() {
   }
 
   async function handleModeChange(newMode: typeof mode) {
-    await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-      tradingMode: newMode,
-      maxBuyRatio: settings.maxBuyRatio,
-      maxHoldingRatio: settings.maxHoldingRatio,
-      cooldownMinutes: settings.cooldownMinutes,
-    })
-    setMode(newMode)
-    setSettings({ tradingMode: newMode })
+    try {
+      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
+        tradingMode: newMode,
+        maxBuyRatio: settings.maxBuyRatio,
+        maxHoldingRatio: settings.maxHoldingRatio,
+        cooldownMinutes: settings.cooldownMinutes,
+      })
+      setMode(newMode)
+      setSettings({ tradingMode: newMode })
+    } catch (e) {
+      console.error('모드 변경 실패:', e)
+    }
   }
 
   const totalAsset = cash + holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)

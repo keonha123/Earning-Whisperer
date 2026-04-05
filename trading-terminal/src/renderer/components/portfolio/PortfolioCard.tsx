@@ -18,7 +18,7 @@ function AssetBar({ ratio, color }: { ratio: number; color: string }) {
 }
 
 export default function PortfolioCard({ cash, holdings, totalAsset }: Props) {
-  const stockValue = holdings.reduce((s, h) => s + h.qty * h.currentPrice, 0)
+  const stockValue = holdings.reduce((s, h) => s + h.qty * (h.currentPrice ?? 0), 0)
   const cashRatio = totalAsset > 0 ? cash / totalAsset : 1
   const stockRatio = totalAsset > 0 ? stockValue / totalAsset : 0
 
@@ -71,8 +71,9 @@ export default function PortfolioCard({ cash, holdings, totalAsset }: Props) {
             <span className="text-[10px] text-text-disabled uppercase tracking-widest">보유 종목</span>
           </div>
           {holdings.map((h) => {
-            const evalValue = h.qty * h.currentPrice
-            const pnl = (h.currentPrice - h.avgPrice) * h.qty
+            const price = h.currentPrice ?? 0
+            const evalValue = h.qty * price
+            const pnl = (price - h.avgPrice) * h.qty
             const pnlPct = h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0
             const isPositive = pnl >= 0
             return (
@@ -91,7 +92,7 @@ export default function PortfolioCard({ cash, holdings, totalAsset }: Props) {
                     ${evalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </p>
                   <p className={`num text-[10px] ${isPositive ? 'text-buy' : 'text-sell'}`}>
-                    {isPositive ? '+' : ''}{pnl.toFixed(2)} ({isPositive ? '+' : ''}{pnlPct.toFixed(2)}%)
+                    {isPositive ? '+' : ''}{pnl.toFixed(2)} ({isPositive ? '+' : ''}{pnlPct.toFixed(1)}%)
                   </p>
                 </div>
               </div>

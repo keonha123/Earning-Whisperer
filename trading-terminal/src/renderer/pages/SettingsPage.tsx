@@ -10,10 +10,12 @@ export default function SettingsPage() {
   const [form, setForm] = useState({ ...settings })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
+    setSaveError(null)
     try {
       await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
         tradingMode: form.tradingMode,
@@ -24,6 +26,8 @@ export default function SettingsPage() {
       setSettings(form)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+    } catch (e: any) {
+      setSaveError(e?.message ?? '저장에 실패했습니다.')
     } finally {
       setSaving(false)
     }
@@ -97,6 +101,10 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {saveError && (
+            <p className="text-sell text-xs">{saveError}</p>
+          )}
 
           <div className="pt-1">
             <button

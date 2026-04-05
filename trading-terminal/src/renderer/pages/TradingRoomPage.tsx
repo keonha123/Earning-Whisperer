@@ -18,14 +18,18 @@ export default function TradingRoomPage() {
   const { plan, settings, setSettings } = useUserStore()
 
   async function handleModeChange(newMode: typeof mode) {
-    await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-      tradingMode: newMode,
-      maxBuyRatio: settings.maxBuyRatio,
-      maxHoldingRatio: settings.maxHoldingRatio,
-      cooldownMinutes: settings.cooldownMinutes,
-    })
-    setMode(newMode)
-    setSettings({ tradingMode: newMode })
+    try {
+      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
+        tradingMode: newMode,
+        maxBuyRatio: settings.maxBuyRatio,
+        maxHoldingRatio: settings.maxHoldingRatio,
+        cooldownMinutes: settings.cooldownMinutes,
+      })
+      setMode(newMode)
+      setSettings({ tradingMode: newMode })
+    } catch (e) {
+      console.error('모드 변경 실패:', e)
+    }
   }
 
   return (
