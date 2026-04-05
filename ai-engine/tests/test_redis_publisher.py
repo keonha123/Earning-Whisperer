@@ -5,9 +5,9 @@ from collections import deque
 
 import pytest
 
-from ..core.redis_publisher import RedisPublisher
-from ..models.contract_models import BackendRedisSignal
-from ..models.signal_models import TradingSignalV3
+from core.redis_publisher import RedisPublisher
+from models.contract_models import BackendRedisSignal
+from models.signal_models import TradingSignalV3
 
 
 def _make_signal(ticker: str) -> TradingSignalV3:

@@ -20,8 +20,8 @@ from __future__ import annotations
 import logging
 from typing import List, Optional, Tuple
 
-from ..models.request_models import MarketData
-from ..models.signal_models import GeminiAnalysisResult, StrategyName, WhisperSignal
+from models.request_models import MarketData
+from models.signal_models import GeminiAnalysisResult, StrategyName, WhisperSignal
 
 logger = logging.getLogger(__name__)
 

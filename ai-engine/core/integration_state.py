@@ -8,15 +8,15 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from ..models.integration_models import (
+from models.integration_models import (
     CompanyUniverseItem,
     DesktopExecutionFeedbackRequest,
     EarningsScheduleItem,
     LiveRoomSignalView,
     MarketContextSnapshot,
 )
-from ..models.request_models import MarketData
-from ..models.signal_models import TradingSignalV3
+from models.request_models import MarketData
+from models.signal_models import TradingSignalV3
 
 logger = logging.getLogger(__name__)
 

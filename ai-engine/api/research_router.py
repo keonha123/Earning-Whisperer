@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ..core.backtester import (
+from core.backtester import (
     SignalRecord,
     recommend_gate_adjustment,
     recommend_operating_mode,
     run_backtest,
 )
-from ..core.execution_style import recommend_execution_style
-from ..models.research_models import BacktestRequest, StyleRecommendationRequest
+from core.execution_style import recommend_execution_style
+from models.research_models import BacktestRequest, StyleRecommendationRequest
 
 router = APIRouter(prefix="/api/v1/research", tags=["research"])
 

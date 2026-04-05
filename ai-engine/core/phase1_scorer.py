@@ -8,7 +8,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional
 
-from ..config import get_settings
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,7 @@ class Phase1Scorer:
 def fallback_gemini_result(text: str, phase1_result: Phase1ScoreResult):
     """Create a Gemini-shaped result when the richer LLM stage is unavailable."""
 
-    from ..models.signal_models import GeminiAnalysisResult
+    from models.signal_models import GeminiAnalysisResult
 
     direction = "NEUTRAL"
     catalyst = "MACRO_COMMENTARY"

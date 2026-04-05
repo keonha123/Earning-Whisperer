@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from ..config import get_settings
-from ..models.request_models import MarketData, SectionType
+from config import get_settings
+from models.request_models import MarketData, SectionType
 from .context_manager import ChunkRecord
 from .token_budgeter import estimate_tokens
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..models.request_models import MarketData, SectionType
-from ..models.signal_models import StrategyName
+from models.request_models import MarketData, SectionType
+from models.signal_models import StrategyName
 
 
 @dataclass(frozen=True)

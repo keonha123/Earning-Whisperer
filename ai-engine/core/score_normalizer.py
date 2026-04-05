@@ -21,7 +21,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from ..models.signal_models import GeminiAnalysisResult
+from models.signal_models import GeminiAnalysisResult
 
 logger = logging.getLogger(__name__)
 

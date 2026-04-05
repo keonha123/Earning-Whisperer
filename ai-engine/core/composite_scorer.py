@@ -25,8 +25,8 @@ from typing import Optional
 
 import numpy as np
 
-from ..config import get_settings
-from ..models.request_models import MarketData
+from config import get_settings
+from models.request_models import MarketData
 
 logger = logging.getLogger(__name__)
 

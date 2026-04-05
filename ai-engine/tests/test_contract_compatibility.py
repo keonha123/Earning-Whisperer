@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from ..core.contract_adapter import to_backend_redis_signal
-from ..core.phase1_scorer import _score_from_probabilities, blend_raw_scores, phase1_scorer
-from ..models.signal_models import TradingSignalV3
+from core.contract_adapter import to_backend_redis_signal
+from core.phase1_scorer import _score_from_probabilities, blend_raw_scores, phase1_scorer
+from models.signal_models import TradingSignalV3
 
 
 def test_phase1_scorer_detects_positive_language():

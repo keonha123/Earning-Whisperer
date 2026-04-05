@@ -5,14 +5,14 @@ import json
 
 import pytest
 
-from ..config import Settings, get_settings
-from ..core.analysis_service import AnalysisService
-from ..core.context_manager import ChunkRecord
-from ..core.gemini_client import gemini_client
-from ..core.llm_router import decide_route
-from ..models.request_models import MarketData, SectionType
-from ..models.signal_models import GeminiAnalysisResult
-from ..src.graph.nodes.parse_and_finalize import parse_and_finalize
+from config import Settings, get_settings
+from core.analysis_service import AnalysisService
+from core.context_manager import ChunkRecord
+from core.gemini_client import gemini_client
+from core.llm_router import decide_route
+from models.request_models import MarketData, SectionType
+from models.signal_models import GeminiAnalysisResult
+from src.graph.nodes.parse_and_finalize import parse_and_finalize
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +144,7 @@ def test_parse_and_finalize_uses_fallback_when_no_parsed_result_exists():
 
 
 def test_modern_sdk_generation_retries_without_thinking_config(monkeypatch):
-    from ..core import gemini_client as gemini_client_module
+    from core import gemini_client as gemini_client_module
 
     class FakeThinkingConfig:
         def __init__(self, *, level: str):
