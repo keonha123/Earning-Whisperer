@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Sequence
 
-from ..models.request_models import MarketData
-from ..models.signal_models import GeminiAnalysisResult
+from models.request_models import MarketData
+from models.signal_models import GeminiAnalysisResult
 from .context_manager import ChunkRecord
 from .llm_router import trim_transcript_overlap
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from ....config import get_settings
-from ....core.llm_router import decide_route
-from ....core.prompt_builder import SYSTEM_PROMPT
+from config import get_settings
+from core.llm_router import decide_route
+from core.prompt_builder import SYSTEM_PROMPT
 from ..state import AgentState
 
 

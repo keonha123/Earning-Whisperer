@@ -9,9 +9,9 @@ from typing import Deque, Optional
 
 import redis.asyncio as aioredis
 
-from ..config import get_settings
-from ..models.contract_models import BackendRedisSignal
-from ..models.signal_models import TradingSignalV3
+from config import get_settings
+from models.contract_models import BackendRedisSignal
+from models.signal_models import TradingSignalV3
 
 logger = logging.getLogger(__name__)
 

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from ....core.gemini_client import gemini_client
-from ....core.integrity_validator import validate_integrity
-from ....core.llm_consistency import should_request_review
+from core.gemini_client import gemini_client
+from core.integrity_validator import validate_integrity
+from core.llm_consistency import should_request_review
 from ..state import AgentState
 
 

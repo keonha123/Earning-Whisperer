@@ -9,9 +9,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ..config import get_settings
-from ..models.request_models import MarketData
-from ..models.signal_models import GateLabel, GeminiAnalysisResult, MarketRegime
+from config import get_settings
+from models.request_models import MarketData
+from models.signal_models import GateLabel, GeminiAnalysisResult, MarketRegime
 
 logger = logging.getLogger(__name__)
 

@@ -5,17 +5,17 @@ import json
 
 from fastapi.testclient import TestClient
 
-from ..config import get_settings
-from ..core.analysis_service import AnalysisService
-from ..core.context_manager import ChunkRecord
-from ..core.gemini_client import gemini_client
-from ..core.llm_consistency import should_request_review
-from ..core.llm_router import decide_route
-from ..core.phase1_scorer import Phase1ScoreResult
-from ..core.prompt_builder import build_prompt
-from ..main import create_app
-from ..models.request_models import MarketData, SectionType
-from ..models.signal_models import GeminiAnalysisResult
+from config import get_settings
+from core.analysis_service import AnalysisService
+from core.context_manager import ChunkRecord
+from core.gemini_client import gemini_client
+from core.llm_consistency import should_request_review
+from core.llm_router import decide_route
+from core.phase1_scorer import Phase1ScoreResult
+from core.prompt_builder import build_prompt
+from main import create_app
+from models.request_models import MarketData, SectionType
+from models.signal_models import GeminiAnalysisResult
 
 
 def test_decide_route_prefers_economy_for_basic_chunk():

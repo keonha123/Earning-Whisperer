@@ -6,7 +6,7 @@ from typing import TypedDict
 
 from typing_extensions import NotRequired
 
-from ...models.signal_models import GeminiAnalysisResult
+from models.signal_models import GeminiAnalysisResult
 
 
 class GeminiConfig(TypedDict, total=False):

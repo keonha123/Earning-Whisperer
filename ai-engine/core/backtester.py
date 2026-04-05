@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..config import get_settings
+from config import get_settings
 
 DEFAULT_ANNUAL_EVENTS = 40.0
 

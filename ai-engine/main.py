@@ -8,20 +8,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .api.analyze_router import init_dependencies, router as analyze_router
-from .api.integration_router import (
+from api.analyze_router import init_dependencies, router as analyze_router
+from api.integration_router import (
     init_dependencies as init_integration_dependencies,
     router as integration_router,
 )
-from .api.research_router import router as research_router
-from .config import get_settings
-from .core.analysis_service import analysis_service
-from .core.context_manager import ContextManager
-from .core.five_gate_filter import FiveGateFilter
-from .core.gemini_client import gemini_client
-from .core.integration_state import IntegrationStateStore
-from .core.phase1_scorer import phase1_scorer
-from .core.redis_publisher import RedisPublisher
+from api.research_router import router as research_router
+from config import get_settings
+from core.analysis_service import analysis_service
+from core.context_manager import ContextManager
+from core.five_gate_filter import FiveGateFilter
+from core.gemini_client import gemini_client
+from core.integration_state import IntegrationStateStore
+from core.phase1_scorer import phase1_scorer
+from core.redis_publisher import RedisPublisher
 
 logger = logging.getLogger(__name__)
 

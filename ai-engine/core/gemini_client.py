@@ -10,8 +10,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from ..config import get_settings
-from ..models.signal_models import GeminiAnalysisResult
+from config import get_settings
+from models.signal_models import GeminiAnalysisResult
 from .prompt_builder import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)

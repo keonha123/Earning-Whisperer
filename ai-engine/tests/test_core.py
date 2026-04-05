@@ -9,25 +9,25 @@ from __future__ import annotations
 
 import pytest
 
-from ..core.composite_scorer import (
+from core.composite_scorer import (
     calculate_composite_score,
     get_score_breakdown,
 )
-from ..core.five_gate_filter import FiveGateFilter
-from ..core.integrity_validator import validate_integrity, _detect_direction
-from ..core.pead_calculator import calculate_sue_score, classify_pead_signal
-from ..core.regime_classifier import (
+from core.five_gate_filter import FiveGateFilter
+from core.integrity_validator import validate_integrity, _detect_direction
+from core.pead_calculator import calculate_sue_score, classify_pead_signal
+from core.regime_classifier import (
     apply_regime_multiplier,
     classify_regime,
 )
-from ..core.risk_manager import (
+from core.risk_manager import (
     calculate_position_size,
     calculate_stop_take_profit,
     determine_signal_strength,
 )
-from ..core.score_normalizer import compute_raw_score, compute_raw_score_batch
-from ..models.request_models import AnalyzeRequest, MarketData
-from ..models.signal_models import (
+from core.score_normalizer import compute_raw_score, compute_raw_score_batch
+from models.request_models import AnalyzeRequest, MarketData
+from models.signal_models import (
     GeminiAnalysisResult,
     MarketRegime,
     SignalStrength,
@@ -351,7 +351,7 @@ class TestFiveGateFilter:
             adj_composite=0.0,
         )
         assert not result.trade_approved
-        from ..models.signal_models import GateLabel
+        from models.signal_models import GateLabel
         assert GateLabel.G5 in result.failed_gates
 
     def test_low_composite_fails_g1(self, full_market_data, bullish_result):
@@ -366,7 +366,7 @@ class TestFiveGateFilter:
             adj_composite=0.1,
         )
         assert not result.trade_approved
-        from ..models.signal_models import GateLabel
+        from models.signal_models import GateLabel
         assert GateLabel.G1 in result.failed_gates
 
     def test_pass_rates_update(self, full_market_data, bullish_result):
