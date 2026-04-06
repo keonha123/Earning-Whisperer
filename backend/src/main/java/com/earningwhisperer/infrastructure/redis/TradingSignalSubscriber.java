@@ -1,8 +1,7 @@
 package com.earningwhisperer.infrastructure.redis;
 
-import com.earningwhisperer.domain.signal.ProcessedSignal;
 import com.earningwhisperer.domain.signal.SignalService;
-import com.earningwhisperer.domain.signal.TradeAction;
+import com.earningwhisperer.domain.signal.UserProcessedSignal;
 import com.earningwhisperer.domain.trade.PendingTradeResult;
 import com.earningwhisperer.domain.trade.TradeService;
 import com.earningwhisperer.infrastructure.websocket.LiveSignalMessage;
@@ -14,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 /**
  * Redis trading-signals 채널 구독자 — Facade(오케스트레이터) 역할.
  *
@@ -21,8 +22,8 @@ import org.springframework.stereotype.Component;
  *
  * 처리 흐름:
  * 1. JSON → TradingSignalMessage 역직렬화
- * 2. SignalService.processSignal() — EMA + 룰 엔진 + SignalHistory 저장 [트랜잭션 종료]
- * 3. TradeService.createPendingTrade() — PENDING Trade 생성 [트랜잭션 종료]
+ * 2. SignalService.processSignalForAllUsers() — 글로벌 EMA + 전체 사용자 룰 평가 + SignalHistory 저장
+ * 3. 사용자별 TradeService.createPendingTrade() — PENDING Trade 생성 (SEMI_AUTO/AUTO_PILOT)
  *    (실제 주문 실행은 Trading Terminal이 담당. 체결 결과는 콜백 API로 수신)
  * 4. LiveSignalPublisher.publish() — WebSocket 브로드캐스트 (Frontend 데모용)
  *
@@ -46,39 +47,59 @@ public class TradingSignalSubscriber {
      * @param message 수신된 JSON 문자열
      */
     public void handleMessage(String message) {
+        try {
+            processMessage(message);
+        } catch (Exception e) {
+            log.error("[TradingSignal] 메시지 처리 중 예기치 않은 오류 - message={}", message, e);
+        }
+    }
+
+    private void processMessage(String message) {
         TradingSignalMessage signal;
         try {
             signal = objectMapper.readValue(message, TradingSignalMessage.class);
         } catch (Exception e) {
-            log.error("[TradingSignal] 메시지 파싱 실패 - message={}, error={}", message, e.getMessage());
+            log.error("[TradingSignal] 메시지 파싱 실패 - message={}", message, e);
             return;
         }
 
-        // Step 2: DB 전용 트랜잭션 — 완료 후 커넥션 즉시 반환
-        ProcessedSignal processed = signalService.processSignal(signal);
+        // Step 1: 글로벌 EMA 계산 + 전체 사용자 RuleEngine 평가 + SignalHistory batch 저장
+        List<UserProcessedSignal> userResults = signalService.processSignalForAllUsers(signal);
 
-        // Step 3: PENDING Trade 생성 → Private WebSocket으로 Trading Terminal에 매매 명령 전송
-        PendingTradeResult tradeResult = tradeService.createPendingTrade(signal.getTicker(), processed.action());
-        if (tradeResult != null) {
-            TradeCommandMessage command = TradeCommandMessage.builder()
-                    .tradeId(tradeResult.tradeId())
-                    .action(processed.action().name())
-                    .targetQty(1) // TODO: buyAmountRatio 기반 동적 수량 계산 (Phase 후속)
-                    .ticker(signal.getTicker())
-                    .emaScore(processed.emaScore())
-                    .build();
-            tradeCommandPublisher.publish(tradeResult.userId(), command);
+        // Step 2: 사용자별 Trade 생성 + Private WebSocket 라우팅
+        for (UserProcessedSignal result : userResults) {
+            try {
+                PendingTradeResult tradeResult = tradeService.createPendingTrade(
+                        result.user(), signal.getTicker(), result.action(), result.mode());
+
+                if (tradeResult != null) {
+                    TradeCommandMessage command = TradeCommandMessage.builder()
+                            .tradeId(tradeResult.tradeId())
+                            .action(result.action().name())
+                            .targetQty(1) // TODO: buyAmountRatio 기반 동적 수량 계산 (Phase 후속)
+                            .ticker(signal.getTicker())
+                            .emaScore(result.emaScore())
+                            .build();
+                    tradeCommandPublisher.publish(tradeResult.userId(), command);
+                }
+            } catch (Exception e) {
+                Long userId = result.user() != null ? result.user().getId() : null;
+                log.error("[TradingSignal] 사용자별 Trade 처리 실패 - userId={} ticker={}",
+                        userId, signal.getTicker(), e);
+            }
         }
 
-        // Step 4: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)
-        // executedQty는 Trading Terminal 콜백 수신 후 확정되므로 여기서는 0
+        // Step 3: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)
+        // 공개 채널의 action은 EMA 부호 기반 방향성 표시 (개인화 판단 아님)
+        double emaScore = userResults.isEmpty() ? 0.0 : userResults.get(0).emaScore();
+        String publicAction = emaScore >= 0.6 ? "BUY" : emaScore <= -0.6 ? "SELL" : "HOLD";
         LiveSignalMessage liveMessage = LiveSignalMessage.builder()
                 .ticker(signal.getTicker())
                 .textChunk(signal.getTextChunk())
                 .rawScore(signal.getRawScore())
-                .emaScore(processed.emaScore())
+                .emaScore(emaScore)
                 .rationale(signal.getRationale())
-                .action(processed.action().name())
+                .action(publicAction)
                 .executedQty(0)
                 .build();
 

@@ -4,11 +4,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class PortfolioSettingsService {
 
     private final PortfolioSettingsRepository portfolioSettingsRepository;
+
+    @Transactional(readOnly = true)
+    public List<PortfolioSettings> getAllSettings() {
+        return portfolioSettingsRepository.findAllWithUser();
+    }
 
     @Transactional(readOnly = true)
     public PortfolioSettings getSettings(Long userId) {

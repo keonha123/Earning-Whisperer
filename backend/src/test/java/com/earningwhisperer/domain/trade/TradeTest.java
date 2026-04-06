@@ -55,11 +55,12 @@ class TradeTest {
                 .build();
 
         // Act
-        trade.executed(10, "BROKER-ORDER-001");
+        trade.executed(10, 125.50, "BROKER-ORDER-001");
 
         // Assert
         assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
         assertThat(trade.getExecutedQty()).isEqualTo(10);
+        assertThat(trade.getExecutedPrice()).isEqualTo(125.50);
         assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-ORDER-001");
     }
 
