@@ -1,11 +1,8 @@
 package com.earningwhisperer.domain.trade;
 
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
-import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,9 +24,6 @@ import static org.mockito.Mockito.*;
 class TradeServiceTest {
 
     @Mock private TradeRepository tradeRepository;
-    @Mock private UserRepository userRepository;
-    @Mock private PortfolioSettingsService portfolioSettingsService;
-    @Mock private PortfolioSettings mockSettings;
     @Mock private User mockUser;
 
     @InjectMocks
@@ -39,15 +33,14 @@ class TradeServiceTest {
     @DisplayName("AUTO_PILOT + BUY이면 PENDING Trade가 저장되고 PendingTradeResult가 반환된다")
     void AUTO_PILOT_BUY이면_PENDING_Trade가_생성된다() {
         // Arrange
-        given(portfolioSettingsService.getSettings(any())).willReturn(mockSettings);
-        given(mockSettings.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
-        given(userRepository.findById(any())).willReturn(Optional.of(mockUser));
+        given(mockUser.getId()).willReturn(1L);
         Trade savedTrade = mock(Trade.class);
         given(savedTrade.getId()).willReturn(42L);
         given(tradeRepository.save(any())).willReturn(savedTrade);
 
         // Act
-        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
+        PendingTradeResult result = tradeService.createPendingTrade(
+                mockUser, "NVDA", TradeAction.BUY, TradingMode.AUTO_PILOT);
 
         // Assert
         assertThat(result).isNotNull();
@@ -56,10 +49,30 @@ class TradeServiceTest {
     }
 
     @Test
+    @DisplayName("SEMI_AUTO + BUY이면 PENDING Trade가 생성된다")
+    void SEMI_AUTO_BUY이면_PENDING_Trade가_생성된다() {
+        // Arrange
+        given(mockUser.getId()).willReturn(1L);
+        Trade savedTrade = mock(Trade.class);
+        given(savedTrade.getId()).willReturn(43L);
+        given(tradeRepository.save(any())).willReturn(savedTrade);
+
+        // Act
+        PendingTradeResult result = tradeService.createPendingTrade(
+                mockUser, "NVDA", TradeAction.BUY, TradingMode.SEMI_AUTO);
+
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.tradeId()).isEqualTo(43L);
+        verify(tradeRepository).save(any());
+    }
+
+    @Test
     @DisplayName("HOLD이면 Trade가 생성되지 않고 null이 반환된다")
     void HOLD이면_Trade가_생성되지_않는다() {
         // Act
-        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.HOLD);
+        PendingTradeResult result = tradeService.createPendingTrade(
+                mockUser, "NVDA", TradeAction.HOLD, TradingMode.AUTO_PILOT);
 
         // Assert
         assertThat(result).isNull();
@@ -69,12 +82,9 @@ class TradeServiceTest {
     @Test
     @DisplayName("MANUAL 모드이면 Trade가 생성되지 않고 null이 반환된다")
     void MANUAL_모드이면_Trade가_생성되지_않는다() {
-        // Arrange
-        given(portfolioSettingsService.getSettings(any())).willReturn(mockSettings);
-        given(mockSettings.getTradingMode()).willReturn(TradingMode.MANUAL);
-
         // Act
-        PendingTradeResult result = tradeService.createPendingTrade("NVDA", TradeAction.BUY);
+        PendingTradeResult result = tradeService.createPendingTrade(
+                mockUser, "NVDA", TradeAction.BUY, TradingMode.MANUAL);
 
         // Assert
         assertThat(result).isNull();
@@ -96,5 +106,50 @@ class TradeServiceTest {
         // Act & Assert — callerId=2L은 소유자(1L)와 다름
         assertThatThrownBy(() -> tradeService.processCallback(99L, 2L, request))
                 .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("callback EXECUTED 시 Trade 상태가 EXECUTED로 변경된다")
+    void callback_EXECUTED_정상처리() {
+        // Arrange
+        Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
+        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+
+        TradeCallbackRequest request = mock(TradeCallbackRequest.class);
+        given(request.getStatus()).willReturn("EXECUTED");
+        given(request.getExecutedQty()).willReturn(10);
+        given(request.getExecutedPrice()).willReturn(125.50);
+        given(request.getBrokerOrderId()).willReturn("BROKER-001");
+
+        // Act
+        tradeService.processCallback(99L, 1L, request);
+
+        // Assert
+        verify(trade).executed(10, 125.50, "BROKER-001");
+        verify(tradeRepository).save(trade);
+    }
+
+    @Test
+    @DisplayName("callback FAILED 시 Trade 상태가 FAILED로 변경된다")
+    void callback_FAILED_정상처리() {
+        // Arrange
+        Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
+        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+
+        TradeCallbackRequest request = mock(TradeCallbackRequest.class);
+        given(request.getStatus()).willReturn("FAILED");
+
+        // Act
+        tradeService.processCallback(99L, 1L, request);
+
+        // Assert
+        verify(trade).failed();
+        verify(tradeRepository).save(trade);
     }
 }
