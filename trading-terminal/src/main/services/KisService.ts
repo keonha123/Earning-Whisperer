@@ -172,8 +172,27 @@ export const KisService = {
       },
     })
 
-    // 2. 예수금 조회 — 모의투자 통합증거금 계좌는 별도 TR_ID 필요 (추후 구현)
-    const cash = 0
+    // 2. 모의투자 해외주식 주문가능금액 조회 (VTTS3007R)
+    let cash = 0
+    try {
+      const { data: psData } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-psamount', {
+        headers: buildKisHeaders(appKey!, appSecret!, 'VTTS3007R'),
+        params: {
+          CANO: cano,
+          ACNT_PRDT_CD: acntPrdtCd,
+          OVRS_EXCG_CD: 'NASD',
+          OVRS_ORD_UNPR: '0',
+          ITEM_CD: '',
+          CTX_AREA_FK100: '',
+          CTX_AREA_NK100: '',
+        },
+      })
+      console.log('[KisService] VTTS3007R raw response:', JSON.stringify(psData, null, 2))
+      // 응답 확인 후 올바른 필드로 교체 예정
+      cash = Number(psData.output?.ord_psbl_frcr_amt ?? psData.output?.ord_psbl_cash ?? 0)
+    } catch (e) {
+      console.warn('[KisService] 주문가능금액 조회 실패:', e)
+    }
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
       ticker: item.ovrs_pdno,
