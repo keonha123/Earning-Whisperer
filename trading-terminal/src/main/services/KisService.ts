@@ -189,7 +189,7 @@ export const KisService = {
       })
       console.log('[KisService] VTTS3007R raw response:', JSON.stringify(psData, null, 2))
       // 응답 확인 후 올바른 필드로 교체 예정
-      cash = Number(psData.output?.ord_psbl_frcr_amt ?? psData.output?.ord_psbl_cash ?? 0)
+      cash = Number(psData.output?.frcr_ord_psbl_amt1 ?? 0)
     } catch (e) {
       console.warn('[KisService] 주문가능금액 조회 실패:', e)
     }
