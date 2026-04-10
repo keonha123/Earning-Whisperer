@@ -172,30 +172,8 @@ export const KisService = {
       },
     })
 
-    // 2. 원화 예수금 조회 (통합증거금 — 원화+외화 합산 기준)
-    let cash = 0
-    try {
-      const { data: depositData } = await kisHttp.get('/uapi/domestic-stock/v1/trading/inquire-balance', {
-        headers: buildKisHeaders(appKey!, appSecret!, 'VTTC8434R'),
-        params: {
-          CANO: cano,
-          ACNT_PRDT_CD: acntPrdtCd,
-          AFHR_FLPR_YN: 'N',
-          OFL_YN: '',
-          INQR_DVSN: '02',
-          UNPR_DVSN: '01',
-          FUND_STTL_ICLD_YN: 'N',
-          FNCG_AMT_AUTO_RDPT_YN: 'N',
-          PRCS_DVSN: '01',
-          CTX_AREA_FK100: '',
-          CTX_AREA_NK100: '',
-        },
-      })
-      console.log('[KisService] deposit raw response:', JSON.stringify(depositData.output2, null, 2))
-      cash = Number(depositData.output2?.dnca_tot_amt ?? 0)
-    } catch (e) {
-      console.warn('[KisService] 예수금 조회 실패:', e)
-    }
+    // 2. 예수금 조회 — 모의투자 통합증거금 계좌는 별도 TR_ID 필요 (추후 구현)
+    const cash = 0
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
       ticker: item.ovrs_pdno,
