@@ -1,12 +1,65 @@
 import axios from 'axios'
 import keytar from 'keytar'
+import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
+import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
 // 모의투자 URL (실전: https://openapi.koreainvestment.com:9443)
 const KIS_BASE_URL = 'https://openapivts.koreainvestment.com:29443'
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 const kisHttp = axios.create({ baseURL: KIS_BASE_URL, timeout: 10_000 })
+
+function pushToRenderer(channel: string, payload: unknown) {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload)
+  })
+}
+
+// EGW00133 fallback 시 복원 토큰 최소 잔여 시간
+const MIN_REMAINING_SEC_FOR_RESTORE = 600
+
+async function saveTokenToVault(token: string, expiresIn: number): Promise<void> {
+  try {
+    const expiresAt = Date.now() + expiresIn * 1000
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', token)
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+  } catch (e) {
+    console.warn('[KisService] keytar 토큰 저장 실패 (세션 중 동작에는 영향 없음):', e)
+  }
+}
+
+async function loadTokenFromVault(): Promise<boolean> {
+  const token = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
+  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+  if (!token || !expiresAtStr) return false
+
+  const expiresAt = Number(expiresAtStr)
+  const remainingSec = Math.floor((expiresAt - Date.now()) / 1000)
+  if (remainingSec < 60) return false // 만료됨
+
+  mainState.setKisAccessToken(token, remainingSec)
+  scheduleTokenRefresh(remainingSec)
+  return true
+}
+
+async function loadTokenFromVaultForFallback(): Promise<boolean> {
+  const token = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
+  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+  if (!token || !expiresAtStr) return false
+
+  const expiresAt = Number(expiresAtStr)
+  const remainingSec = Math.floor((expiresAt - Date.now()) / 1000)
+  // fallback은 잔여 시간이 충분할 때만 허용 (10분 미만이면 거부)
+  if (remainingSec < MIN_REMAINING_SEC_FOR_RESTORE) {
+    console.warn(`[KisService] EGW00133 fallback 거부 — 저장 토큰 잔여 ${remainingSec}초, 최소 ${MIN_REMAINING_SEC_FOR_RESTORE}초 필요`)
+    return false
+  }
+
+  mainState.setKisAccessToken(token, remainingSec)
+  scheduleTokenRefresh(remainingSec)
+  return true
+}
 
 export interface KisBalance {
   cash: number
@@ -42,7 +95,13 @@ export const KisService = {
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-appKey'),
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-appSecret'),
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt'),
     ])
+  },
+
+  async loadSavedToken(): Promise<boolean> {
+    return loadTokenFromVault()
   },
 
   // ── OAuth 토큰 ───────────────────────────────────────────────
@@ -52,14 +111,28 @@ export const KisService = {
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
     if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
 
-    const { data } = await kisHttp.post('/oauth2/tokenP', {
-      grant_type: 'client_credentials',
-      appkey: appKey,
-      appsecret: appSecret,
-    })
+    try {
+      const { data } = await kisHttp.post('/oauth2/tokenP', {
+        grant_type: 'client_credentials',
+        appkey: appKey,
+        appsecret: appSecret,
+      })
 
-    mainState.setKisAccessToken(data.access_token, data.expires_in)
-    scheduleTokenRefresh(data.expires_in)
+      mainState.setKisAccessToken(data.access_token, data.expires_in)
+      await saveTokenToVault(data.access_token, data.expires_in)
+      scheduleTokenRefresh(data.expires_in)
+    } catch (e: any) {
+      // EGW00133: KIS 토큰 발급 rate limit 초과 (분 단위 제한) — keytar 저장 토큰으로 복원 시도
+      const errorCode = e?.response?.data?.error_code
+      if (errorCode === 'EGW00133') {
+        const restored = await loadTokenFromVaultForFallback()
+        if (restored) {
+          console.info('[KisService] EGW00133 — keytar 저장 토큰으로 복원 성공')
+          return
+        }
+      }
+      throw e
+    }
   },
 
   async ensureToken(): Promise<void> {
@@ -167,6 +240,7 @@ function scheduleTokenRefresh(expiresIn: number) {
   refreshTimer = setTimeout(async () => {
     try {
       await KisService.issueToken()
+      pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, KisService.getTokenStatus())
     } catch (e) {
       console.error('[KisService] 토큰 자동 갱신 실패:', e)
     }

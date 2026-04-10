@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { mainState, TradingMode } from '../store/mainState'
 import { BackendClient } from '../services/BackendClient'
 import { StompService } from '../services/StompService'
+import { KisService } from '../services/KisService'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
 export function registerAuthHandlers() {
@@ -21,6 +22,13 @@ export function registerAuthHandlers() {
       }
     } catch (e) {
       console.warn('[Auth] 설정 로드 실패, 기본값 사용:', e)
+    }
+
+    // KIS 토큰 복원 (선택 — 실패해도 로그인 진행)
+    try {
+      await KisService.loadSavedToken()
+    } catch (e) {
+      console.warn('[Auth] KIS 토큰 복원 실패:', e)
     }
 
     return { user, settings }

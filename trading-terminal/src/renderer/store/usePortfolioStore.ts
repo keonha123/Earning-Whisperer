@@ -12,9 +12,12 @@ interface PortfolioState {
   holdings: Holding[]
   lastSyncedAt: number | null
   isSyncing: boolean
+  error: string | null
 
   setBalance: (cash: number, holdings: Holding[]) => void
+  startSync: () => void
   setSyncing: (v: boolean) => void
+  setError: (msg: string | null) => void
 }
 
 export const usePortfolioStore = create<PortfolioState>((set) => ({
@@ -22,9 +25,14 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
   holdings: [],
   lastSyncedAt: null,
   isSyncing: false,
+  error: null,
 
   setBalance: (cash, holdings) =>
-    set({ cash, holdings, lastSyncedAt: Math.floor(Date.now() / 1000) }),
+    set({ cash, holdings, lastSyncedAt: Math.floor(Date.now() / 1000), error: null }),
+
+  startSync: () => set({ isSyncing: true, error: null }),
 
   setSyncing: (isSyncing) => set({ isSyncing }),
+
+  setError: (error) => set({ error }),
 }))

@@ -9,7 +9,7 @@ import PortfolioCard from '../components/portfolio/PortfolioCard'
 
 export default function DashboardPage() {
   const { mode, setMode, signalHistory } = useTradingStore()
-  const { cash, holdings, lastSyncedAt, isSyncing, setBalance, setSyncing } = usePortfolioStore()
+  const { cash, holdings, lastSyncedAt, isSyncing, error, setBalance, startSync, setSyncing, setError } = usePortfolioStore()
   const { plan, settings, setSettings } = useUserStore()
 
   useEffect(() => {
@@ -17,12 +17,13 @@ export default function DashboardPage() {
   }, [])
 
   async function syncBalance() {
-    setSyncing(true)
+    startSync()
     try {
       const balance = await ipc.invoke<{ cash: number; holdings: any[] }>(IPC_CHANNELS.KIS_GET_BALANCE)
       setBalance(balance.cash, balance.holdings)
-    } catch (e) {
+    } catch (e: any) {
       console.error('잔고 조회 실패:', e)
+      setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
     } finally {
       setSyncing(false)
     }
@@ -77,6 +78,13 @@ export default function DashboardPage() {
           <ModeSelector currentMode={mode} userPlan={plan} onChange={handleModeChange} size="compact" />
         </div>
       </div>
+
+      {/* 잔고 조회 에러 */}
+      {error && (
+        <div className="shrink-0 px-3 py-2 rounded bg-red-900/30 border border-red-700/50 text-xs text-red-400">
+          {error}
+        </div>
+      )}
 
       {/* 메인 그리드 */}
       <div className="grid grid-cols-5 gap-4 flex-1 min-h-0">
