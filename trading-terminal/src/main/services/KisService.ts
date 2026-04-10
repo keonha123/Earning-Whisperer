@@ -156,12 +156,15 @@ export const KisService = {
     const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
+    const cano = accountNo!.slice(0, 8)
+    const acntPrdtCd = accountNo!.slice(8) || '01'
 
+    // 1. 해외주식 잔고 (보유종목)
     const { data } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-balance', {
       headers: buildKisHeaders(appKey!, appSecret!, 'VTTS3012R'),
       params: {
-        CANO: accountNo!.slice(0, 8),
-        ACNT_PRDT_CD: accountNo!.slice(8) || '01',
+        CANO: cano,
+        ACNT_PRDT_CD: acntPrdtCd,
         OVRS_EXCG_CD: 'NASD',
         TR_CRCY_CD: 'USD',
         CTX_AREA_FK200: '',
@@ -169,7 +172,30 @@ export const KisService = {
       },
     })
 
-    console.log('[KisService] getBalance raw response:', JSON.stringify(data, null, 2))
+    // 2. 원화 예수금 조회 (통합증거금 — 원화+외화 합산 기준)
+    let cash = 0
+    try {
+      const { data: depositData } = await kisHttp.get('/uapi/domestic-stock/v1/trading/inquire-balance', {
+        headers: buildKisHeaders(appKey!, appSecret!, 'VTTC8434R'),
+        params: {
+          CANO: cano,
+          ACNT_PRDT_CD: acntPrdtCd,
+          AFHR_FLPR_YN: 'N',
+          OFL_YN: '',
+          INQR_DVSN: '02',
+          UNPR_DVSN: '01',
+          FUND_STTL_ICLD_YN: 'N',
+          FNCG_AMT_AUTO_RDPT_YN: 'N',
+          PRCS_DVSN: '01',
+          CTX_AREA_FK100: '',
+          CTX_AREA_NK100: '',
+        },
+      })
+      console.log('[KisService] deposit raw response:', JSON.stringify(depositData.output2, null, 2))
+      cash = Number(depositData.output2?.dnca_tot_amt ?? 0)
+    } catch (e) {
+      console.warn('[KisService] 예수금 조회 실패:', e)
+    }
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
       ticker: item.ovrs_pdno,
@@ -178,10 +204,7 @@ export const KisService = {
       currentPrice: Number(item.now_pric2),
     }))
 
-    return {
-      cash: Number(data.output2?.frcr_dncl_amt_2 ?? 0),
-      holdings,
-    }
+    return { cash, holdings }
   },
 
   // ── 주문 실행 ────────────────────────────────────────────────
