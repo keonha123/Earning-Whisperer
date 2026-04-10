@@ -169,6 +169,8 @@ export const KisService = {
       },
     })
 
+    console.log('[KisService] getBalance raw response:', JSON.stringify(data, null, 2))
+
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
       ticker: item.ovrs_pdno,
       qty: Number(item.ovrs_cblc_qty),
