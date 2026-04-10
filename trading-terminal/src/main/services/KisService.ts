@@ -180,9 +180,9 @@ export const KisService = {
         params: {
           CANO: cano,
           ACNT_PRDT_CD: acntPrdtCd,
-          OVRS_EXCG_CD: '',
+          OVRS_EXCG_CD: 'NASD',
           OVRS_ORD_UNPR: '0',
-          ITEM_CD: '',
+          ITEM_CD: 'AAPL',
           CTX_AREA_FK100: '',
           CTX_AREA_NK100: '',
         },
