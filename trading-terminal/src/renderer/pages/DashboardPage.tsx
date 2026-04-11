@@ -9,7 +9,7 @@ import PortfolioCard from '../components/portfolio/PortfolioCard'
 
 export default function DashboardPage() {
   const { mode, setMode, signalHistory } = useTradingStore()
-  const { cash, holdings, lastSyncedAt, isSyncing, error, setBalance, startSync, setSyncing, setError } = usePortfolioStore()
+  const { orderableCash, totalCash, holdings, lastSyncedAt, isSyncing, error, setBalance, startSync, setSyncing, setError } = usePortfolioStore()
   const { plan, settings, setSettings } = useUserStore()
 
   useEffect(() => {
@@ -19,8 +19,8 @@ export default function DashboardPage() {
   async function syncBalance() {
     startSync()
     try {
-      const balance = await ipc.invoke<{ cash: number; holdings: any[] }>(IPC_CHANNELS.KIS_GET_BALANCE)
-      setBalance(balance.cash, balance.holdings)
+      const balance = await ipc.invoke<{ orderableCash: number; totalCash: number; holdings: any[] }>(IPC_CHANNELS.KIS_GET_BALANCE)
+      setBalance(balance.orderableCash, balance.totalCash, balance.holdings)
     } catch (e: any) {
       console.error('잔고 조회 실패:', e)
       setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
@@ -44,7 +44,7 @@ export default function DashboardPage() {
     }
   }
 
-  const totalAsset = cash + holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)
+  const totalAsset = totalCash + holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -90,7 +90,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-5 gap-4 flex-1 min-h-0">
         {/* 포트폴리오 (40%) */}
         <div className="col-span-2 card flex flex-col gap-0 p-0 overflow-hidden">
-          <PortfolioCard cash={cash} holdings={holdings} totalAsset={totalAsset} />
+          <PortfolioCard orderableCash={orderableCash} totalCash={totalCash} holdings={holdings} totalAsset={totalAsset} />
         </div>
 
         {/* 신호 피드 (60%) */}

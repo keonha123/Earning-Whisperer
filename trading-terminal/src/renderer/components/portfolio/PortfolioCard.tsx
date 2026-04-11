@@ -1,7 +1,8 @@
 import type { Holding } from '../../store/usePortfolioStore'
 
 interface Props {
-  cash: number
+  orderableCash: number
+  totalCash: number
   holdings: Holding[]
   totalAsset: number
 }
@@ -17,9 +18,9 @@ function AssetBar({ ratio, color }: { ratio: number; color: string }) {
   )
 }
 
-export default function PortfolioCard({ cash, holdings, totalAsset }: Props) {
+export default function PortfolioCard({ orderableCash, totalCash, holdings, totalAsset }: Props) {
   const stockValue = holdings.reduce((s, h) => s + h.qty * (h.currentPrice ?? 0), 0)
-  const cashRatio = totalAsset > 0 ? cash / totalAsset : 1
+  const cashRatio = totalAsset > 0 ? totalCash / totalAsset : 1
   const stockRatio = totalAsset > 0 ? stockValue / totalAsset : 0
 
   return (
@@ -38,9 +39,14 @@ export default function PortfolioCard({ cash, holdings, totalAsset }: Props) {
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] text-text-disabled uppercase tracking-wide">현금</span>
             <div className="flex items-center gap-2">
-              <span className="num text-sm text-text-primary">
-                ${cash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </span>
+              <div className="text-right">
+                <span className="num text-sm text-text-primary">
+                  ${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+                <p className="num text-[10px] text-text-disabled">
+                  주문가능 ${orderableCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
               <span className="num text-[10px] text-text-disabled w-8 text-right">
                 {(cashRatio * 100).toFixed(0)}%
               </span>

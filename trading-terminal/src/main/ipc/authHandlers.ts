@@ -21,14 +21,14 @@ export function registerAuthHandlers() {
         mainState.setTradingMode(settings.tradingMode as TradingMode)
       }
     } catch (e) {
-      console.warn('[Auth] 설정 로드 실패, 기본값 사용:', e)
+      console.warn('[Auth] 설정 로드 실패, 기본값 사용:', e instanceof Error ? e.message : 'unknown error')
     }
 
     // KIS 토큰 복원 (선택 — 실패해도 로그인 진행)
     try {
       await KisService.loadSavedToken()
     } catch (e) {
-      console.warn('[Auth] KIS 토큰 복원 실패:', e)
+      console.warn('[Auth] KIS 토큰 복원 실패:', e instanceof Error ? e.message : 'unknown error')
     }
 
     return { user, settings }

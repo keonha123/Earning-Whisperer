@@ -19,6 +19,10 @@ function pushToRenderer(channel: string, payload: unknown) {
 // EGW00133 fallback 시 복원 토큰 최소 잔여 시간
 const MIN_REMAINING_SEC_FOR_RESTORE = 600
 
+// 동시 호출 방지용 in-flight promise
+let issueTokenInFlight: Promise<void> | null = null
+let getBalanceInFlight: Promise<KisBalance> | null = null
+
 async function saveTokenToVault(token: string, expiresIn: number): Promise<void> {
   try {
     const expiresAt = Date.now() + expiresIn * 1000
@@ -40,6 +44,7 @@ async function loadTokenFromVault(): Promise<boolean> {
 
   mainState.setKisAccessToken(token, remainingSec)
   scheduleTokenRefresh(remainingSec)
+  pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, { isValid: true, expiresAt })
   return true
 }
 
@@ -58,11 +63,13 @@ async function loadTokenFromVaultForFallback(): Promise<boolean> {
 
   mainState.setKisAccessToken(token, remainingSec)
   scheduleTokenRefresh(remainingSec)
+  pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, { isValid: true, expiresAt })
   return true
 }
 
 export interface KisBalance {
-  cash: number
+  orderableCash: number  // 즉시 주문가능 외화금액 (매매 판단용)
+  totalCash: number      // 외화 총 보유금액 (포트폴리오 표시용, 없으면 orderableCash와 동일)
   holdings: { ticker: string; qty: number; avgPrice: number; currentPrice: number }[]
 }
 
@@ -107,36 +114,49 @@ export const KisService = {
   // ── OAuth 토큰 ───────────────────────────────────────────────
 
   async issueToken(): Promise<void> {
-    const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
-    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
-    if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
+    // 동시 호출 방지 — in-flight 요청이 있으면 재사용
+    if (issueTokenInFlight) return issueTokenInFlight
+
+    issueTokenInFlight = (async () => {
+      const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
+      const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
+      if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
+
+      try {
+        const { data } = await kisHttp.post('/oauth2/tokenP', {
+          grant_type: 'client_credentials',
+          appkey: appKey,
+          appsecret: appSecret,
+        })
+
+        console.info(`[KisService] 토큰 발급 성공 — expires_in: ${data.expires_in}초`)
+        mainState.setKisAccessToken(data.access_token, data.expires_in)
+        await saveTokenToVault(data.access_token, data.expires_in)
+        scheduleTokenRefresh(data.expires_in)
+      } catch (e: any) {
+        // EGW00133: KIS 토큰 발급 1초당 1회 제한 초과
+        const errorCode = e?.response?.data?.error_code
+        if (errorCode === 'EGW00133') {
+          const restored = await loadTokenFromVaultForFallback()
+          if (restored) {
+            console.info('[KisService] EGW00133 — keytar 저장 토큰으로 복원 성공')
+            return
+          }
+        }
+        throw e
+      }
+    })()
 
     try {
-      const { data } = await kisHttp.post('/oauth2/tokenP', {
-        grant_type: 'client_credentials',
-        appkey: appKey,
-        appsecret: appSecret,
-      })
-
-      mainState.setKisAccessToken(data.access_token, data.expires_in)
-      await saveTokenToVault(data.access_token, data.expires_in)
-      scheduleTokenRefresh(data.expires_in)
-    } catch (e: any) {
-      // EGW00133: KIS 토큰 발급 rate limit 초과 (분 단위 제한) — keytar 저장 토큰으로 복원 시도
-      const errorCode = e?.response?.data?.error_code
-      if (errorCode === 'EGW00133') {
-        const restored = await loadTokenFromVaultForFallback()
-        if (restored) {
-          console.info('[KisService] EGW00133 — keytar 저장 토큰으로 복원 성공')
-          return
-        }
-      }
-      throw e
+      await issueTokenInFlight
+    } finally {
+      issueTokenInFlight = null
     }
   },
 
   async ensureToken(): Promise<void> {
     if (!mainState.isKisTokenValid()) {
+      console.info('[KisService] ensureToken — 토큰 없음/만료, 발급 시도')
       await KisService.issueToken()
     }
   },
@@ -151,17 +171,33 @@ export const KisService = {
   // ── 잔고 조회 ────────────────────────────────────────────────
 
   async getBalance(): Promise<KisBalance> {
+    // 동시 호출 방지 — KIS API 초당 거래건수 초과 (EGW00201) 회피
+    if (getBalanceInFlight) return getBalanceInFlight
+
+    getBalanceInFlight = (async () => {
+      return KisService._getBalanceImpl()
+    })()
+
+    try {
+      return await getBalanceInFlight
+    } finally {
+      getBalanceInFlight = null
+    }
+  },
+
+  async _getBalanceImpl(): Promise<KisBalance> {
     await KisService.ensureToken()
 
     const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
-    const cano = accountNo!.slice(0, 8)
-    const acntPrdtCd = accountNo!.slice(8) || '01'
+    if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
+    const cano = accountNo.slice(0, 8)
+    const acntPrdtCd = accountNo.slice(8) || '01'
 
     // 1. 해외주식 잔고 (보유종목)
     const { data } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-balance', {
-      headers: buildKisHeaders(appKey!, appSecret!, 'VTTS3012R'),
+      headers: buildKisHeaders(appKey, appSecret, 'VTTS3012R'),
       params: {
         CANO: cano,
         ACNT_PRDT_CD: acntPrdtCd,
@@ -172,8 +208,28 @@ export const KisService = {
       },
     })
 
-    // 모의투자 서버에서 예수금 조회 TR_ID 미지원 — 현금은 0으로 표시
-    const cash = 0
+    // KIS 해외주식 조회 API 초당 1회 제한 회피 — VTTS3012R과 VTTS3007R 사이 지연
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+
+    // 2. 주문가능외화금액 조회 (VTTS3007R) — 실패 시 cash=0으로 계속 진행
+    let orderableCash = 0
+    try {
+      const { data: psData } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-psamount', {
+        headers: buildKisHeaders(appKey, appSecret, 'VTTS3007R'),
+        params: {
+          CANO: cano,
+          ACNT_PRDT_CD: acntPrdtCd,
+          OVRS_EXCG_CD: 'NASD',
+          OVRS_ORD_UNPR: '0',
+          ITEM_CD: 'AAPL',
+          CTX_AREA_FK100: '',
+          CTX_AREA_NK100: '',
+        },
+      })
+      orderableCash = Number(psData.output?.ord_psbl_frcr_amt ?? 0)
+    } catch (e: any) {
+      console.error('[KisService] VTTS3007R 오류:', e?.response?.data?.message ?? e?.message)
+    }
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
       ticker: item.ovrs_pdno,
@@ -182,7 +238,7 @@ export const KisService = {
       currentPrice: Number(item.now_pric2),
     }))
 
-    return { cash, holdings }
+    return { orderableCash, totalCash: orderableCash, holdings }
   },
 
   // ── 주문 실행 ────────────────────────────────────────────────
@@ -197,6 +253,7 @@ export const KisService = {
     const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
+    if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
 
     // 모의투자 TR_ID: 매수 VTTT1002U / 매도 VTTT1006U
     const trId = action === 'BUY' ? 'VTTT1002U' : 'VTTT1006U'
@@ -204,8 +261,8 @@ export const KisService = {
     const { data } = await kisHttp.post(
       '/uapi/overseas-stock/v1/trading/order',
       {
-        CANO: accountNo!.slice(0, 8),
-        ACNT_PRDT_CD: accountNo!.slice(8) || '01',
+        CANO: accountNo.slice(0, 8),
+        ACNT_PRDT_CD: accountNo.slice(8) || '01',
         OVRS_EXCG_CD: 'NASD',
         PDNO: ticker,
         ORD_DVSN: '00', // 시장가
@@ -213,7 +270,7 @@ export const KisService = {
         OVRS_ORD_UNPR: '0',
         ORD_SVR_DVSN_CD: '0',
       },
-      { headers: buildKisHeaders(appKey!, appSecret!, trId) },
+      { headers: buildKisHeaders(appKey, appSecret, trId) },
     )
 
     return {
@@ -245,7 +302,8 @@ function scheduleTokenRefresh(expiresIn: number) {
       await KisService.issueToken()
       pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, KisService.getTokenStatus())
     } catch (e) {
-      console.error('[KisService] 토큰 자동 갱신 실패:', e)
+      console.error('[KisService] 토큰 자동 갱신 실패:', e instanceof Error ? e.message : 'unknown error')
+      scheduleTokenRefresh(360) // 6분 후 재시도
     }
   }, delay)
 }

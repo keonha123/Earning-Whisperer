@@ -9,7 +9,7 @@ export function registerVaultHandlers() {
     try {
       await KisService.issueToken()
     } catch (e) {
-      console.warn('[Vault] 자격증명 저장 후 KIS 토큰 발급 실패:', e)
+      console.warn('[Vault] 자격증명 저장 후 KIS 토큰 발급 실패:', e instanceof Error ? e.message : 'unknown error')
     }
     return { success: true }
   })

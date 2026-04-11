@@ -82,10 +82,10 @@ export const TradeExecutor = {
   },
 }
 
-function adjustQty(signal: TradeSignal, balance: { cash: number; holdings: { ticker: string; qty: number }[] }): number {
+function adjustQty(signal: TradeSignal, balance: { orderableCash: number; holdings: { ticker: string; qty: number }[] }): number {
   if (signal.action === 'BUY') {
     // 예수금 기반 단순 검증 (실제 수량 보정은 백엔드 target_qty 기준)
-    if (balance.cash <= 0) return 0
+    if (balance.orderableCash <= 0) return 0
     return signal.target_qty
   } else {
     const holding = balance.holdings.find((h) => h.ticker === signal.ticker)
@@ -128,7 +128,7 @@ function syncPortfolioAsync() {
   KisService.getBalance()
     .then((balance) =>
       BackendClient.syncPortfolio({
-        total_cash: balance.cash,
+        total_cash: balance.totalCash,
         holdings: balance.holdings.map((h) => ({
           ticker: h.ticker,
           qty: h.qty,
