@@ -5,8 +5,12 @@ import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
 export function registerKisHandlers() {
   ipcMain.handle(IPC_CHANNELS.KIS_ISSUE_TOKEN, async () => {
-    await KisService.issueToken()
-    return KisService.getTokenStatus()
+    try {
+      await KisService.issueToken()
+      return KisService.getTokenStatus()
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'KIS 토큰 발급 실패')
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.KIS_GET_TOKEN_STATUS, () => {
@@ -14,10 +18,18 @@ export function registerKisHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.KIS_GET_BALANCE, async () => {
-    return KisService.getBalance()
+    try {
+      return await KisService.getBalance()
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : '잔고 조회 실패')
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.KIS_PLACE_ORDER, async (_e, signal) => {
-    return TradeExecutor.execute(signal)
+    try {
+      return await TradeExecutor.execute(signal)
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : '주문 실패')
+    }
   })
 }
