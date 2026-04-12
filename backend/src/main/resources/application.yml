@@ -33,7 +33,15 @@ ema:
 jwt:
   # 운영 환경에서는 반드시 환경변수로 주입. 최소 32자(256-bit) 이상.
   secret: ${JWT_SECRET:earning-whisperer-dev-secret-key-minimum-32-chars}
-  expiration-ms: 86400000  # 24시간 (ms)
+  expiration-ms: 900000  # 15분 (ms)
+  refresh-expiration-seconds: 604800  # 7일 (s)
+  cookie-secure: ${JWT_COOKIE_SECURE:false}  # 운영: true (HTTPS only)
+
+oauth:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    allowed-redirect-uris: ${GOOGLE_REDIRECT_URIS:http://localhost:3000/auth/callback}
 
 finnhub:
   base-url: https://finnhub.io/api/v1
