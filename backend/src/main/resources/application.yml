@@ -42,6 +42,10 @@ oauth:
     client-id: ${GOOGLE_CLIENT_ID:}
     client-secret: ${GOOGLE_CLIENT_SECRET:}
     allowed-redirect-uris: ${GOOGLE_REDIRECT_URIS:http://localhost:3000/auth/callback}
+  kakao:
+    client-id: ${KAKAO_CLIENT_ID:}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    allowed-redirect-uris: ${KAKAO_REDIRECT_URIS:http://localhost:3000/auth/callback}
 
 finnhub:
   base-url: https://finnhub.io/api/v1
