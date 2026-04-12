@@ -10,4 +10,6 @@ package com.earningwhisperer.domain.user;
 public interface TokenProvider {
 
     String generateToken(Long userId);
+
+    String generateRefreshToken();
 }

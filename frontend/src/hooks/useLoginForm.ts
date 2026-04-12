@@ -27,7 +27,7 @@ interface UseLoginFormOptions {
 
 export function useLoginForm({ onLoadingChange }: UseLoginFormOptions = {}) {
   const router = useRouter();
-  const { setToken } = useAuthStore();
+  const { setTokens } = useAuthStore();
   const abortRef = useRef<AbortController | null>(null);
 
   const [email, setEmail] = useState("");
@@ -76,6 +76,7 @@ export function useLoginForm({ onLoadingChange }: UseLoginFormOptions = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
         signal: abortRef.current.signal,
       });
 
@@ -86,7 +87,7 @@ export function useLoginForm({ onLoadingChange }: UseLoginFormOptions = {}) {
       }
 
       const data = await res.json();
-      setToken(data.accessToken);
+      setTokens(data.access_token, data.refresh_token);
       router.push("/");
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
