@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { verifyOAuthState, getGoogleRedirectUri } from "@/lib/oauthConfig";
+import { verifyOAuthState, getOAuthProvider, getRedirectUri } from "@/lib/oauthConfig";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8082";
 
@@ -26,6 +26,9 @@ function CallbackInner() {
       return;
     }
 
+    const provider = getOAuthProvider();
+    const redirectUri = getRedirectUri(provider);
+
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/v1/auth/oauth/callback`, {
@@ -34,8 +37,8 @@ function CallbackInner() {
           credentials: "include",
           body: JSON.stringify({
             code,
-            redirect_uri: getGoogleRedirectUri(),
-            provider: "GOOGLE",
+            redirect_uri: redirectUri,
+            provider,
           }),
         });
 
@@ -49,6 +52,8 @@ function CallbackInner() {
         router.replace("/");
       } catch {
         router.replace("/auth?error=oauth_failed");
+      } finally {
+        sessionStorage.removeItem("oauth_provider");
       }
     })();
   }, [searchParams, router, setTokens]);

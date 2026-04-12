@@ -5,6 +5,7 @@ import AuthTabSwitcher from "./AuthTabSwitcher";
 import LoginForm from "./LoginForm";
 import SignupForm from "./SignupForm";
 import GoogleLoginButton from "./GoogleLoginButton";
+import KakaoLoginButton from "./KakaoLoginButton";
 
 type Tab = "login" | "signup";
 
@@ -57,7 +58,10 @@ export default function AuthCard({ activeTab, onTabChange }: AuthCardProps) {
       />
 
       {/* 소셜 로그인 */}
-      <GoogleLoginButton />
+      <div className="space-y-2">
+        <GoogleLoginButton />
+        <KakaoLoginButton />
+      </div>
 
       {/* 구분선 */}
       <div className="flex items-center gap-3">
