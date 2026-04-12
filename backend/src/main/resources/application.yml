@@ -37,6 +37,12 @@ jwt:
   refresh-expiration-seconds: 604800  # 7일 (s)
   cookie-secure: ${JWT_COOKIE_SECURE:false}  # 운영: true (HTTPS only)
 
+oauth:
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    allowed-redirect-uris: ${GOOGLE_REDIRECT_URIS:http://localhost:3000/auth/callback}
+
 finnhub:
   base-url: https://finnhub.io/api/v1
   api-key: ${FINNHUB_API_KEY:}   # 미설정 시 어닝 일정 스케줄러 비활성화

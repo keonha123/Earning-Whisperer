@@ -63,6 +63,10 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."));
 
+        if (!user.isLocal()) {
+            throw new IllegalArgumentException("소셜 로그인으로 가입된 계정입니다. " + user.getProvider() + " 로그인을 이용해주세요.");
+        }
+
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
             throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
         }
