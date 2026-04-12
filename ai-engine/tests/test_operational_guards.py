@@ -113,6 +113,7 @@ def test_live_path_falls_back_cleanly_when_one_call_budget_blocks_review(monkeyp
             ],
             market_data=MarketData(volume_ratio=2.0, vix=18.0),
             section_type=SectionType.Q_AND_A,
+            chunk_timestamp=1,
             request_priority=8,
             is_final=False,
             phase1_result=type(

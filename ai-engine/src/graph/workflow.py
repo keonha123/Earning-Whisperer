@@ -1,13 +1,13 @@
-"""Graph-based workflow with a no-dependency fallback implementation."""
+"""Graph-based workflow with an agentic RAG front-end and fallback mode."""
 
 from __future__ import annotations
 
-from .nodes.adjudication_llm_call import adjudication_llm_call
-from .nodes.build_prompt import build_prompt_node
-from .nodes.parse_and_finalize import parse_and_finalize
-from .nodes.primary_llm_call import primary_llm_call
-from .nodes.review_gate import review_gate
-from .nodes.route_decision import route_decision
+from .nodes.agent import agent as agent_node
+from .nodes.generate import generate
+from .nodes.rag_decision import rag_decision
+from .nodes.relevance_check import relevance_check
+from .nodes.retrieve import retrieve
+from .nodes.rewrite import rewrite
 from .state import AgentState
 
 try:  # pragma: no cover - optional dependency
@@ -18,45 +18,59 @@ except ImportError:  # pragma: no cover - exercised when langgraph is absent
     StateGraph = None
 
 
+def rag_decision_branch(state: AgentState) -> str:
+    return "retrieve" if state.get("use_external_rag") else "generate"
+
+
+def evidence_decision(state: AgentState) -> str:
+    return "query_rewrite" if state.get("should_rewrite") else "generate"
+
+
 class _FallbackAgent:
     async def ainvoke(self, state: AgentState) -> AgentState:
-        state = await route_decision(state)
-        state = await build_prompt_node(state)
-        state = await primary_llm_call(state)
-        state = await review_gate(state)
-        if state.get("needs_review"):
-            state = await adjudication_llm_call(state)
-        state = await parse_and_finalize(state)
-        return state
+        state = await agent_node(state)
+        state = await rag_decision(state)
 
-
-def _review_edge(state: AgentState) -> str:
-    return "adjudication_llm_call" if state.get("needs_review") else "parse_and_finalize"
+        while True:
+            if rag_decision_branch(state) == "retrieve":
+                state = await retrieve(state)
+                state = await relevance_check(state)
+                if evidence_decision(state) == "query_rewrite":
+                    state = await rewrite(state)
+                    continue
+            return await generate(state)
 
 
 if StateGraph is None:  # pragma: no cover - depends on environment
     agent = _FallbackAgent()
 else:  # pragma: no cover - depends on environment
-    agent_builder = StateGraph(AgentState)
-    agent_builder.add_node("route_decision", route_decision)
-    agent_builder.add_node("build_prompt", build_prompt_node)
-    agent_builder.add_node("primary_llm_call", primary_llm_call)
-    agent_builder.add_node("review_gate", review_gate)
-    agent_builder.add_node("adjudication_llm_call", adjudication_llm_call)
-    agent_builder.add_node("parse_and_finalize", parse_and_finalize)
+    workflow = StateGraph(AgentState)
+    workflow.add_node("agent", agent_node)
+    workflow.add_node("rag_decision", rag_decision)
+    workflow.add_node("retrieve", retrieve)
+    workflow.add_node("relevance_check", relevance_check)
+    workflow.add_node("query_rewrite", rewrite)
+    workflow.add_node("generate", generate)
 
-    agent_builder.add_edge(START, "route_decision")
-    agent_builder.add_edge("route_decision", "build_prompt")
-    agent_builder.add_edge("build_prompt", "primary_llm_call")
-    agent_builder.add_edge("primary_llm_call", "review_gate")
-    agent_builder.add_conditional_edges(
-        "review_gate",
-        _review_edge,
+    workflow.add_edge(START, "agent")
+    workflow.add_edge("agent", "rag_decision")
+    workflow.add_conditional_edges(
+        "rag_decision",
+        rag_decision_branch,
         {
-            "adjudication_llm_call": "adjudication_llm_call",
-            "parse_and_finalize": "parse_and_finalize",
+            "retrieve": "retrieve",
+            "generate": "generate",
         },
     )
-    agent_builder.add_edge("adjudication_llm_call", "parse_and_finalize")
-    agent_builder.add_edge("parse_and_finalize", END)
-    agent = agent_builder.compile()
+    workflow.add_edge("retrieve", "relevance_check")
+    workflow.add_conditional_edges(
+        "relevance_check",
+        evidence_decision,
+        {
+            "generate": "generate",
+            "query_rewrite": "query_rewrite",
+        },
+    )
+    workflow.add_edge("query_rewrite", "retrieve")
+    workflow.add_edge("generate", END)
+    agent = workflow.compile()

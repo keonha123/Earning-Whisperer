@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     gemini_consensus_min_confidence: float = Field(default=0.78, ge=0.0, le=1.0)
     gemini_consensus_disagreement_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
 
-    llm_router_max_calls_per_chunk: int = Field(default=2, ge=1, le=2)
+    llm_router_max_calls_per_chunk: int = Field(default=6, ge=1, le=6)
     llm_router_novelty_threshold: float = Field(default=0.18, ge=0.0, le=1.0)
     llm_router_high_signal_raw_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
     llm_router_high_priority: int = Field(default=8, ge=1, le=10)
@@ -86,6 +86,17 @@ class Settings(BaseSettings):
     analysis_target_chunk_tokens: int = Field(default=2500, ge=256, le=16000)
     analysis_batch_concurrency: int = Field(default=4, ge=1, le=32)
     analysis_consensus_max_parallel: int = Field(default=2, ge=1, le=8)
+    rag_enabled: bool = Field(default=True)
+    rag_top_k: int = Field(default=3, ge=1, le=8)
+    rag_max_rewrites: int = Field(default=1, ge=0, le=3)
+    rag_min_relevance_score: float = Field(default=0.18, ge=0.0, le=1.0)
+    rag_context_chars_per_doc: int = Field(default=320, ge=80, le=2000)
+    rag_decision_max_output_tokens: int = Field(default=256, ge=64, le=1024)
+    rag_decision_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
+        default="minimal"
+    )
+    rag_external_default_lookback_days: int = Field(default=7, ge=1, le=30)
+    rag_external_max_lookback_days: int = Field(default=30, ge=1, le=30)
 
     composite_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     confidence_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
