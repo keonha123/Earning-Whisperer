@@ -2,6 +2,7 @@ package com.earningwhisperer.domain.user;
 
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,12 +20,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("AuthService 단위 테스트")
 class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PortfolioSettingsRepository portfolioSettingsRepository;
     @Mock private PasswordEncoder passwordEncoder;
-    @Mock private TokenProvider tokenProvider;
+    @Mock private RefreshTokenService refreshTokenService;
 
     @InjectMocks
     private AuthService authService;
@@ -61,18 +63,21 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_올바른_자격증명_JWT_반환() {
+    @DisplayName("로그인 성공 시 TokenPair(AT+RT)가 반환된다")
+    void login_올바른_자격증명_TokenPair_반환() {
         // Arrange
         User user = User.builder().email("test@example.com").password("encoded").nickname("테스터").build();
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123", "encoded")).thenReturn(true);
-        when(tokenProvider.generateToken(user.getId())).thenReturn("jwt-token");
+        when(refreshTokenService.issue(user.getId()))
+                .thenReturn(new TokenPair("access-jwt", "refresh-uuid"));
 
         // Act
-        String token = authService.login("test@example.com", "password123");
+        TokenPair result = authService.login("test@example.com", "password123");
 
         // Assert
-        assertThat(token).isEqualTo("jwt-token");
+        assertThat(result.accessToken()).isEqualTo("access-jwt");
+        assertThat(result.refreshToken()).isEqualTo("refresh-uuid");
     }
 
     @Test
@@ -97,6 +102,31 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login("test@example.com", "wrong"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("이메일 또는 비밀번호가 올바르지 않습니다.");
-        verify(tokenProvider, never()).generateToken(any());
+        verify(refreshTokenService, never()).issue(any());
+    }
+
+    @Test
+    @DisplayName("refresh 호출 시 RefreshTokenService.rotate에 위임된다")
+    void refresh_위임_테스트() {
+        // Arrange
+        when(refreshTokenService.rotate("old-rt"))
+                .thenReturn(new TokenPair("new-access", "new-refresh"));
+
+        // Act
+        TokenPair result = authService.refresh("old-rt");
+
+        // Assert
+        assertThat(result.accessToken()).isEqualTo("new-access");
+        assertThat(result.refreshToken()).isEqualTo("new-refresh");
+    }
+
+    @Test
+    @DisplayName("logout 호출 시 RefreshTokenService.revoke에 위임된다")
+    void logout_위임_테스트() {
+        // Act
+        authService.logout("some-rt");
+
+        // Assert
+        verify(refreshTokenService).revoke("some-rt");
     }
 }

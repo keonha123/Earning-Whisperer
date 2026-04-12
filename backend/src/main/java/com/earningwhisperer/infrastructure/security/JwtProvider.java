@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * JWT 토큰 생성·검증·파싱 컴포넌트.
@@ -63,5 +64,10 @@ public class JwtProvider implements TokenProvider {
                 .getPayload()
                 .getSubject();
         return Long.parseLong(subject);
+    }
+
+    @Override
+    public String generateRefreshToken() {
+        return UUID.randomUUID().toString();
     }
 }
