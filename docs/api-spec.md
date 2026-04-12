@@ -93,13 +93,17 @@
 ### 4.3. Private Routing (Trading Terminal 주문 지시용)
 - **Queue:** `/user/{userId}/queue/signals`
 - **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
-- **수량 처리 원칙:** 백엔드는 자체 장부(Ledger) 기준으로 `target_qty`를 산출하여 전송합니다. Trading Terminal은 주문 직전 실제 KIS 증권사 잔고를 조회하여 수량을 보정(예: 예수금 부족 시 하향 조정)한 뒤 매매를 실행합니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고하여 백엔드 장부의 오차를 교정합니다.
+- **수량 결정 원칙 (자본시장법 준수):** 백엔드는 **수량을 직접 계산하지 않고**, 사용자의 `PortfolioSettings.buyAmountRatio`를 `order_ratio` 필드로 실어 보냅니다. Trading Terminal이 주문 직전 실제 KIS 잔고·현재가를 조회하여 **사용자 로컬 PC에서 최종 수량을 산출**합니다. 이는 "중앙 서버가 사용자 대신 종목·수량·시점을 결정"하는 행위(미등록 투자일임업)를 회피하기 위한 설계입니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고되며, 백엔드는 이 값으로 `Trade.orderQty`를 덮어씁니다(PENDING 시점엔 0 센티널).
+
+**수량 산출 공식 (Trading Terminal에서 적용):**
+- BUY: `qty = floor(orderableCash × order_ratio / currentPrice)`
+- SELL: `qty = floor(holdingQty × order_ratio)` (0이면 주문 안 함 — 서버 의도 비율 초과 매도 방지)
 
 | 필드명 | 타입 | 필수 | 설명 |
 | :--- | :--- | :---: | :--- |
 | `trade_id` | String | Y | 백엔드가 DB에 생성한 `PENDING` 상태의 고유 거래 ID |
 | `action` | String | Y | 최종 매매 방향 (`BUY`, `SELL`) |
-| `target_qty` | Integer | Y | 백엔드 장부(Ledger) 기준으로 산출한 목표 주문 수량. Terminal이 실제 잔고 조회 후 보정할 수 있음 |
+| `order_ratio` | Double | Y | 주문 비율 (0.0 ~ 1.0). BUY: 예수금 대비 매수 비율. SELL: 보유수량 대비 매도 비율 |
 | `ticker` | String | Y | 종목 심볼 |
 | `ema_score` | Double | Y | 최종 결정에 사용된 EMA 점수 |
 
@@ -110,7 +114,7 @@
 
 ### 5.1. 매매 체결 결과 보고 (Callback)
 - **엔드포인트:** `POST /api/v1/trades/{tradeId}/callback`
-- **설명:** Trading Terminal이 실제 KIS 잔고를 조회하여 수량을 보정한 뒤 주문을 실행하고, 체결 결과를 백엔드로 보고하여 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. `executed_qty`는 백엔드가 산출한 `target_qty`와 다를 수 있으며, 이 값으로 자체 장부(Ledger)의 오차를 교정합니다.
+- **설명:** Trading Terminal이 실제 KIS 잔고와 현재가를 조회하여 `order_ratio`에 따라 최종 수량을 산출하고 주문을 실행한 뒤, 체결 결과를 백엔드로 보고하여 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. `Trade.orderQty`는 PENDING 시점엔 0(센티널)이며 본 콜백 수신 시 `executed_qty`로 덮어써집니다.
 
     {
       "status": "EXECUTED",

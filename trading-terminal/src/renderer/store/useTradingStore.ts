@@ -6,7 +6,8 @@ export type SignalStatus = 'PENDING' | 'EXECUTED' | 'FAILED' | 'IGNORED' | 'REJE
 export interface TradeSignal {
   trade_id: string
   action: 'BUY' | 'SELL'
-  target_qty: number
+  /** 서버가 내려준 주문 비율. 실제 수량은 터미널이 현재가·잔고로 산출한다. */
+  order_ratio: number
   ticker: string
   ai_score: number
 }

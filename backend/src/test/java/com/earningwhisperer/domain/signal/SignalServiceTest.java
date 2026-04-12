@@ -47,6 +47,7 @@ class SignalServiceTest {
         given(settings.getCooldownMinutes()).willReturn(5);
         given(settings.getAiScoreThreshold()).willReturn(threshold);
         given(settings.getTradingMode()).willReturn(mode);
+        given(settings.getBuyAmountRatio()).willReturn(0.1);
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
         return settings;
     }
@@ -145,11 +146,13 @@ class SignalServiceTest {
         given(settingsA.getCooldownMinutes()).willReturn(5);
         given(settingsA.getAiScoreThreshold()).willReturn(0.6);
         given(settingsA.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
+        given(settingsA.getBuyAmountRatio()).willReturn(0.1);
 
         given(settingsB.getUser()).willReturn(userB);
         given(settingsB.getCooldownMinutes()).willReturn(5);
         given(settingsB.getAiScoreThreshold()).willReturn(0.9);
         given(settingsB.getTradingMode()).willReturn(TradingMode.MANUAL);
+        given(settingsB.getBuyAmountRatio()).willReturn(0.1);
 
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settingsA, settingsB));
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))

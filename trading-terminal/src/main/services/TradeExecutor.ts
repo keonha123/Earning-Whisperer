@@ -8,7 +8,12 @@ import { IPC_CHANNELS } from '../../lib/ipcChannels'
 export interface TradeSignal {
   trade_id: string
   action: 'BUY' | 'SELL'
-  target_qty: number
+  /**
+   * 주문 비율. 서버 PortfolioSettings.buyAmountRatio 값이 실려 온다.
+   * BUY: 예수금 대비 매수 비율 → qty = floor(orderableCash × ratio / currentPrice)
+   * SELL: 보유수량 대비 매도 비율 → qty = max(1, floor(holdingQty × ratio))
+   */
+  order_ratio: number
   ticker: string
   ai_score: number
 }
@@ -37,12 +42,15 @@ export const TradeExecutor = {
     mainState.setOrderInProgress(true)
 
     try {
-      // Step 1: 잔고 조회 + 수량 보정
+      // Step 1: 잔고 조회 (+ BUY 시 현재가 조회) → 수량 산출
       const balance = await KisService.getBalance()
-      const finalQty = adjustQty(signal, balance)
+      const currentPrice = signal.action === 'BUY'
+        ? await KisService.getCurrentPrice(signal.ticker)
+        : 0
+      const finalQty = calcQty(signal, balance, currentPrice)
 
       if (finalQty <= 0) {
-        const reason = signal.action === 'BUY' ? '예수금 부족' : '보유 수량 없음'
+        const reason = failureReason(signal, balance, currentPrice)
         return await sendFailCallback(signal.trade_id, reason)
       }
 
@@ -82,16 +90,41 @@ export const TradeExecutor = {
   },
 }
 
-function adjustQty(signal: TradeSignal, balance: { orderableCash: number; holdings: { ticker: string; qty: number }[] }): number {
+type BalanceLite = { orderableCash: number; holdings: { ticker: string; qty: number }[] }
+
+/**
+ * 주문 수량 산출 — 서버가 내려준 order_ratio를 로컬 실잔고·실가격에 적용한다.
+ * 자본시장법상 수량 결정 주체는 사용자 로컬(본 함수)이며, 서버는 비율까지만 결정한다.
+ */
+function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number): number {
+  const ratio = signal.order_ratio
+  if (!(ratio > 0 && ratio <= 1)) return 0
+
   if (signal.action === 'BUY') {
-    // 예수금 기반 단순 검증 (실제 수량 보정은 백엔드 target_qty 기준)
-    if (balance.orderableCash <= 0) return 0
-    return signal.target_qty
-  } else {
-    const holding = balance.holdings.find((h) => h.ticker === signal.ticker)
-    const available = holding?.qty ?? 0
-    return Math.min(signal.target_qty, available)
+    const cash = Number.isFinite(balance.orderableCash) ? balance.orderableCash : 0
+    if (cash <= 0 || !Number.isFinite(currentPrice) || currentPrice <= 0) return 0
+    const qty = Math.floor(cash * ratio / currentPrice)
+    return Number.isFinite(qty) ? qty : 0
   }
+
+  // SELL: 보유수량 × ratio. floor=0이면 주문 안 함 (서버 의도 비율 초과 매도 방지)
+  const rawQty = balance.holdings.find((h) => h.ticker === signal.ticker)?.qty
+  const available = Number.isFinite(rawQty) ? rawQty! : 0
+  if (available <= 0) return 0
+  return Math.floor(available * ratio)
+}
+
+function failureReason(signal: TradeSignal, balance: BalanceLite, currentPrice: number): string {
+  if (!(signal.order_ratio > 0 && signal.order_ratio <= 1)) return `비정상 order_ratio=${signal.order_ratio}`
+  if (signal.action === 'BUY') {
+    if (currentPrice <= 0) return '현재가 조회 실패'
+    if (balance.orderableCash <= 0) return '예수금 부족'
+    return '예수금 대비 주문 비율이 1주 가격에 못 미침'
+  }
+  const rawQty = balance.holdings.find((h) => h.ticker === signal.ticker)?.qty
+  const available = Number.isFinite(rawQty) ? rawQty! : 0
+  if (available <= 0) return '보유 수량 없음'
+  return '보유수량 대비 비율이 1주에 못 미침'
 }
 
 async function sendFailCallback(tradeId: string, reason: string): Promise<TradeResult> {

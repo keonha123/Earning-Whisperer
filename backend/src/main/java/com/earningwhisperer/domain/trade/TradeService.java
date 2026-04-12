@@ -26,8 +26,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class TradeService {
 
-    // TODO: Phase 6에서 buyAmountRatio 기반 수량 계산으로 교체
-    private static final int FIXED_ORDER_QTY = 1;
+    /**
+     * PENDING 시점 orderQty 센티널. 실제 수량은 Trading Terminal이 산출해
+     * 체결 콜백으로 보고하며, Trade.executed()가 executedQty로 덮어쓴다.
+     */
+    private static final int PENDING_ORDER_QTY_SENTINEL = 0;
 
     private final TradeRepository tradeRepository;
 
@@ -65,7 +68,7 @@ public class TradeService {
                 .ticker(ticker)
                 .side(action)
                 .orderType(OrderType.MARKET)
-                .orderQty(FIXED_ORDER_QTY)
+                .orderQty(PENDING_ORDER_QTY_SENTINEL)
                 .price(0.0)
                 .build();
 

@@ -65,6 +65,27 @@ class TradeTest {
     }
 
     @Test
+    @DisplayName("executed() 호출 시 센티널 orderQty(0)가 실체결 수량으로 갱신된다")
+    void executed_호출시_센티널_orderQty가_실수량으로_갱신된다() {
+        // Arrange — PENDING 시점엔 orderQty=0 센티널
+        Trade trade = Trade.builder()
+                .user(user)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .build();
+
+        // Act — Trading Terminal이 3주 체결 보고
+        trade.executed(3, 125.50, "BROKER-ORDER-777");
+
+        // Assert — orderQty, executedQty 모두 3
+        assertThat(trade.getOrderQty()).isEqualTo(3);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("failed() 호출 시 status가 FAILED로 변경된다")
     void failed_호출시_상태가_FAILED로_변경된다() {
         // Arrange

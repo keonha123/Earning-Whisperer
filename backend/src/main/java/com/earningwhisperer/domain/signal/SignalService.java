@@ -48,6 +48,13 @@ public class SignalService {
                 boolean inCooldown = isInCooldown(
                         user.getId(), signal.getTicker(), settings.getCooldownMinutes());
 
+                Double ratio = settings.getBuyAmountRatio();
+                if (ratio == null || ratio <= 0 || ratio > 1) {
+                    log.warn("[SignalService] buyAmountRatio 이상 — userId={} ratio={}, 건너뜀",
+                            user.getId(), ratio);
+                    continue;
+                }
+
                 TradeAction action = RuleEngine.evaluate(
                         aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown);
 
@@ -62,7 +69,8 @@ public class SignalService {
                         .build();
                 histories.add(history);
 
-                results.add(new UserProcessedSignal(user, action, aiScore, settings.getTradingMode()));
+                results.add(new UserProcessedSignal(
+                        user, action, aiScore, settings.getTradingMode(), ratio));
             } catch (Exception e) {
                 Long userId = settings.getUser() != null ? settings.getUser().getId() : null;
                 log.error("[SignalService] 사용자별 처리 실패 - userId={} ticker={}",

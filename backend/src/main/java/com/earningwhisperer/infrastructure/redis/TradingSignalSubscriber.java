@@ -63,7 +63,7 @@ public class TradingSignalSubscriber {
             return;
         }
 
-        // Step 1: 글로벌 EMA 계산 + 전체 사용자 RuleEngine 평가 + SignalHistory batch 저장
+        // Step 1: 전체 사용자 RuleEngine 평가 + SignalHistory batch 저장
         List<UserProcessedSignal> userResults = signalService.processSignalForAllUsers(signal);
 
         // Step 2: 사용자별 Trade 생성 + Private WebSocket 라우팅
@@ -76,7 +76,7 @@ public class TradingSignalSubscriber {
                     TradeCommandMessage command = TradeCommandMessage.builder()
                             .tradeId(tradeResult.tradeId())
                             .action(result.action().name())
-                            .targetQty(1) // TODO: buyAmountRatio 기반 동적 수량 계산 (Phase 후속)
+                            .orderRatio(result.orderRatio())
                             .ticker(signal.getTicker())
                             .aiScore(result.aiScore())
                             .build();

@@ -43,7 +43,9 @@
 
 ### KIS OpenAPI 통신
 - Access Token 로컬 메모리 캐싱, 만료 전 선제 갱신
-- 주문 직전 실계좌 잔고 조회 → 수량 보정 후 실행
+- **주문 수량 산출 주체:** 본 터미널. 백엔드는 비율(`order_ratio`)까지만 결정하고, 터미널이 실계좌 잔고·현재가를 조회하여 최종 수량을 산출한다. 서버 측 수량 결정을 배제함으로써 자본시장법상 미등록 투자일임업 리스크를 회피한다.
+  - BUY: `floor(orderableCash × order_ratio / currentPrice)`
+  - SELL: `floor(holdingQty × order_ratio)` (0이면 주문 안 함)
 - **모의투자 URL:** `https://openapivts.koreainvestment.com:29443`
 
 ### 체결 결과 콜백
