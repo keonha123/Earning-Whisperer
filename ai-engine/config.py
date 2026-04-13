@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=3, ge=1, le=8)
     rag_max_rewrites: int = Field(default=1, ge=0, le=3)
     rag_min_relevance_score: float = Field(default=0.18, ge=0.0, le=1.0)
+    rag_hybrid_alpha: float = Field(default=0.70, ge=0.0, le=1.0)
+    rag_dense_candidate_limit: int = Field(default=12, ge=3, le=128)
+    rag_keyword_candidate_limit: int = Field(default=24, ge=3, le=256)
+    rag_bm25_k1: float = Field(default=1.2, ge=0.1, le=3.0)
+    rag_bm25_b: float = Field(default=0.75, ge=0.0, le=1.0)
+    rag_score_dense_weight: float = Field(default=0.55, ge=0.0, le=1.0)
+    rag_score_lexical_weight: float = Field(default=0.30, ge=0.0, le=1.0)
+    rag_score_business_weight: float = Field(default=0.15, ge=0.0, le=1.0)
     rag_context_chars_per_doc: int = Field(default=320, ge=80, le=2000)
     rag_decision_max_output_tokens: int = Field(default=256, ge=64, le=1024)
     rag_decision_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
@@ -97,6 +105,18 @@ class Settings(BaseSettings):
     )
     rag_external_default_lookback_days: int = Field(default=7, ge=1, le=30)
     rag_external_max_lookback_days: int = Field(default=30, ge=1, le=30)
+    vector_store_backend: Literal["memory", "qdrant"] = Field(default="qdrant")
+    qdrant_url: str = Field(default="")
+    qdrant_path: str = Field(default="")
+    qdrant_api_key: str = Field(default="")
+    qdrant_collection_name: str = Field(default="external_evidence")
+    qdrant_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
+    qdrant_prefer_grpc: bool = Field(default=False)
+    embedding_provider: Literal["hash", "gemini"] = Field(default="hash")
+    embedding_model: str = Field(default="gemini-embedding-001")
+    embedding_dimension: int = Field(default=256, ge=64, le=3072)
+    external_chunk_size_chars: int = Field(default=3200, ge=400, le=12000)
+    external_chunk_overlap_chars: int = Field(default=400, ge=0, le=4000)
 
     composite_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     confidence_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
@@ -156,6 +176,18 @@ class Settings(BaseSettings):
                 "Composite weights must sum to 1.0: "
                 f"{self.w_sentiment} + {self.w_sue} + "
                 f"{self.w_momentum} + {self.w_volume} = {total}"
+            )
+        retrieval_total = round(
+            self.rag_score_dense_weight
+            + self.rag_score_lexical_weight
+            + self.rag_score_business_weight,
+            6,
+        )
+        if abs(retrieval_total - 1.0) > 1e-5:
+            raise ValueError(
+                "Retrieval weights must sum to 1.0: "
+                f"{self.rag_score_dense_weight} + {self.rag_score_lexical_weight} + "
+                f"{self.rag_score_business_weight} = {retrieval_total}"
             )
         return self
 

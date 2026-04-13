@@ -17,6 +17,7 @@ from api.research_router import router as research_router
 from config import get_settings
 from core.analysis_service import analysis_service
 from core.context_manager import ContextManager
+from core.external_retriever import external_retriever
 from core.five_gate_filter import FiveGateFilter
 from core.gemini_client import gemini_client
 from core.integration_state import IntegrationStateStore
@@ -93,11 +94,13 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["monitoring"])
     async def health():
+        retriever_stats = external_retriever.get_stats()
         return {
             "status": "ok",
             "model": settings.gemini_primary_model,
             "primary_model": settings.gemini_primary_model,
             "review_model": settings.gemini_review_model,
+            "vector_store_backend": retriever_stats["effective_backend"],
             "version": settings.app_version,
         }
 
@@ -107,6 +110,7 @@ def create_app() -> FastAPI:
         analysis_stats = await analysis_service.get_stats()
         gate_pass_rates = app.state.gate_filter.get_pass_rates()
         active_tickers = await app.state.context_manager.get_active_tickers()
+        retriever_stats = external_retriever.get_stats()
         return {
             "active_tickers": active_tickers,
             "gemini_stats": gemini_stats,
@@ -118,6 +122,7 @@ def create_app() -> FastAPI:
             "economy_prompt_rate": analysis_stats["economy_prompt_rate"],
             "phase1_status": phase1_scorer.status_snapshot(),
             "gate_pass_rates": gate_pass_rates,
+            "external_retriever": retriever_stats,
             "redis_connected": app.state.redis_publisher.is_connected,
             "redis_backup_queue": app.state.redis_publisher.backup_queue_size,
             "integration_state_ready": app.state.integration_state is not None,

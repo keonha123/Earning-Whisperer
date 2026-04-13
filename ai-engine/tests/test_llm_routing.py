@@ -6,6 +6,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from config import get_settings
 from core.analysis_service import AnalysisService
 from core.context_manager import ChunkRecord
 from core.external_retriever import ExternalDocument, external_retriever
@@ -25,10 +26,17 @@ from src.graph.nodes.rewrite import rewrite
 
 
 @pytest.fixture(autouse=True)
-def clear_external_retriever():
+def clear_external_retriever(monkeypatch):
+    monkeypatch.setenv("VECTOR_STORE_BACKEND", "memory")
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.delenv("QDRANT_PATH", raising=False)
+    get_settings.cache_clear()
+    external_retriever.reset_backend()
     external_retriever.clear()
     yield
     external_retriever.clear()
+    external_retriever.reset_backend()
+    get_settings.cache_clear()
 
 
 def test_decide_route_prefers_economy_for_basic_chunk():

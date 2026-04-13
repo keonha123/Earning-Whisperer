@@ -44,6 +44,15 @@ def test_legacy_model_mapping_still_fills_when_new_fields_are_absent():
     assert settings.gemini_review_model == "legacy-review-model"
 
 
+def test_retrieval_weights_must_sum_to_one():
+    with pytest.raises(ValueError, match="Retrieval weights must sum to 1.0"):
+        Settings(
+            rag_score_dense_weight=0.60,
+            rag_score_lexical_weight=0.30,
+            rag_score_business_weight=0.20,
+        )
+
+
 def test_novelty_threshold_can_force_delta_context_for_important_chunks(monkeypatch):
     monkeypatch.setenv("LLM_ROUTER_NOVELTY_THRESHOLD", "0.95")
     decision = decide_route(
