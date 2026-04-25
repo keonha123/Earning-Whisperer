@@ -34,7 +34,7 @@ export interface UserSettings {
 export const BackendClient = {
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
     const { data } = await http.post('/api/v1/auth/login', { email, password })
-    return { token: data.accessToken, user: data }
+    return { token: data.access_token, user: data }
   },
 
   async getMe(): Promise<{ id: number; email: string; nickname: string; role: string }> {
