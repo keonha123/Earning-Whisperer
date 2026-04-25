@@ -1,6 +1,7 @@
 # Java (Gradle)
 .gradle/
 build/
+**/bin/
 !gradle/wrapper/gradle-wrapper.jar
 
 # 로컬 설정 파일 (API 키 등 민감 정보)
@@ -45,7 +46,9 @@ Thumbs.db
 
 # Personal
 learning/
+**/.scratch/
 
 # Claude
 CLAUDE.md
 **/CLAUDE.md
+.claude/settings.local.json
