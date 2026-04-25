@@ -63,7 +63,7 @@ export const BackendClient = {
     buyAmountRatio: number
     maxPositionRatio: number
     cooldownMinutes: number
-    emaThreshold: number
+    aiScoreThreshold: number
     tradingMode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
   }> {
     const { data } = await http.get('/api/v1/portfolio/settings')

@@ -47,7 +47,7 @@ public class AuthService {
                 .buyAmountRatio(0.1)
                 .maxPositionRatio(0.3)
                 .cooldownMinutes(5)
-                .emaThreshold(0.6)
+                .aiScoreThreshold(0.6)
                 .tradingMode(TradingMode.MANUAL)
                 .build();
         portfolioSettingsRepository.save(defaultSettings);

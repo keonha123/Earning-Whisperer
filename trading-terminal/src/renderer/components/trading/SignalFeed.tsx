@@ -49,7 +49,7 @@ export default function SignalFeed({ items, maxItems = 50 }: SignalFeedProps) {
           </span>
           <div className="flex-1 min-w-0">
             <p className="num font-medium text-text-primary">{item.ticker}</p>
-            <p className="num text-xs text-text-secondary">EMA {item.ema_score.toFixed(3)}</p>
+            <p className="num text-xs text-text-secondary">Score {item.ai_score.toFixed(3)}</p>
           </div>
           <span className={STATUS_CLASS[item.status]}>{STATUS_LABEL[item.status]}</span>
           <span className="num text-xs text-text-disabled ml-2">{formatTime(item.receivedAt)}</span>

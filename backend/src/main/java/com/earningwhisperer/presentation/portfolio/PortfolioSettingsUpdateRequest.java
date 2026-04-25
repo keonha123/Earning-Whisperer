@@ -26,7 +26,7 @@ public class PortfolioSettingsUpdateRequest {
 
     @NotNull
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double emaThreshold;
+    private Double aiScoreThreshold;
 
     @NotNull
     private TradingMode tradingMode;

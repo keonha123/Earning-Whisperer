@@ -58,7 +58,7 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
             {activeSignal.action}
           </span>
           <span className="num text-xs text-text-disabled">
-            {(activeSignal.ema_score * 100).toFixed(0)}
+            {(activeSignal.ai_score * 100).toFixed(0)}
           </span>
         </div>
       )}

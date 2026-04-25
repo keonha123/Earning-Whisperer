@@ -25,6 +25,6 @@ public class TradeCommandMessage {
 
     private final String ticker;
 
-    @JsonProperty("ema_score")
-    private final double emaScore;
+    @JsonProperty("ai_score")
+    private final double aiScore;
 }

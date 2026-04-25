@@ -10,7 +10,7 @@ export interface TradeSignal {
   action: 'BUY' | 'SELL'
   target_qty: number
   ticker: string
-  ema_score: number
+  ai_score: number
 }
 
 export interface TradeResult {

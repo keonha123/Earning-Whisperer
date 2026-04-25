@@ -47,7 +47,7 @@ export default function SignalFeed({ signals }: SignalFeedProps) {
                 <p className="text-xs text-gray-300 leading-relaxed">{signal.rationale}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-gray-600 font-mono">
-                    EMA: {signal.emaScore.toFixed(3)}
+                    Score: {signal.aiScore.toFixed(3)}
                   </span>
                   <span className="text-xs text-gray-500">
                     {formatTime(signal.timestamp)}

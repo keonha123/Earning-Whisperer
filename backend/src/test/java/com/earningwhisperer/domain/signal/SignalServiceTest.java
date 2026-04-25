@@ -26,7 +26,6 @@ import static org.mockito.Mockito.verify;
 @DisplayName("SignalService 단위 테스트")
 class SignalServiceTest {
 
-    @Mock private EmaService emaService;
     @Mock private PortfolioSettingsService portfolioSettingsService;
     @Mock private SignalHistoryRepository signalHistoryRepository;
 
@@ -37,7 +36,7 @@ class SignalServiceTest {
 
     @BeforeEach
     void setUp() {
-        signal = buildSignal("NVDA", 0.85);
+        signal = buildSignal("NVDA", 0.75);
     }
 
     private PortfolioSettings stubSingleUser(TradingMode mode, double threshold) {
@@ -46,60 +45,48 @@ class SignalServiceTest {
         PortfolioSettings settings = org.mockito.Mockito.mock(PortfolioSettings.class);
         given(settings.getUser()).willReturn(user);
         given(settings.getCooldownMinutes()).willReturn(5);
-        given(settings.getEmaThreshold()).willReturn(threshold);
+        given(settings.getAiScoreThreshold()).willReturn(threshold);
         given(settings.getTradingMode()).willReturn(mode);
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
         return settings;
     }
 
     @Test
-    @DisplayName("임계치 초과 emaScore이면 BUY action이 반환된다")
+    @DisplayName("임계치 초과 aiScore이면 BUY action이 반환된다")
     void 임계치_초과이면_BUY_반환() {
-        // Arrange
         stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.75);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.BUY);
-        assertThat(results.get(0).emaScore()).isEqualTo(0.75);
+        assertThat(results.get(0).aiScore()).isEqualTo(0.75);
     }
 
     @Test
-    @DisplayName("임계치 미달 emaScore이면 HOLD action이 반환된다")
+    @DisplayName("임계치 미달 aiScore이면 HOLD action이 반환된다")
     void 임계치_미달이면_HOLD_반환() {
-        // Arrange
-        stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
+        stubSingleUser(TradingMode.AUTO_PILOT, 0.9);
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.3);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
     }
 
     @Test
-    @DisplayName("MANUAL 모드이면 emaScore에 관계없이 HOLD가 반환된다")
+    @DisplayName("MANUAL 모드이면 aiScore에 관계없이 HOLD가 반환된다")
     void MANUAL_모드이면_HOLD_반환() {
-        // Arrange
         stubSingleUser(TradingMode.MANUAL, 0.6);
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.9);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
     }
@@ -107,17 +94,13 @@ class SignalServiceTest {
     @Test
     @DisplayName("쿨다운 중이면 HOLD가 반환되고 SignalHistory는 저장된다")
     void 쿨다운_중이면_HOLD_반환() {
-        // Arrange
         stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
         SignalHistory recentSignal = mockRecentSignal(LocalDateTime.now().minusMinutes(1));
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.of(recentSignal));
-        given(emaService.process("NVDA", 0.85)).willReturn(0.9);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
     }
@@ -125,33 +108,25 @@ class SignalServiceTest {
     @Test
     @DisplayName("processSignalForAllUsers 호출 시 SignalHistory가 batch 저장된다")
     void processSignalForAllUsers_호출시_SignalHistory가_저장된다() {
-        // Arrange
         stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.75);
 
-        // Act
         signalService.processSignalForAllUsers(signal);
 
-        // Assert
         verify(signalHistoryRepository).saveAll(anyList());
     }
 
     @Test
     @DisplayName("쿨다운 만료 후 신호는 정상 처리된다")
     void 쿨다운_만료_후_신호는_정상처리된다() {
-        // Arrange
         stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
         SignalHistory oldSignal = mockRecentSignal(LocalDateTime.now().minusMinutes(10));
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.of(oldSignal));
-        given(emaService.process("NVDA", 0.85)).willReturn(0.75);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.BUY);
     }
@@ -159,7 +134,6 @@ class SignalServiceTest {
     @Test
     @DisplayName("다중 사용자는 각자의 설정으로 다른 action이 반환된다")
     void 다중_사용자_각각_다른_설정으로_다른_action이_반환된다() {
-        // Arrange
         User userA = org.mockito.Mockito.mock(User.class);
         User userB = org.mockito.Mockito.mock(User.class);
         given(userA.getId()).willReturn(1L);
@@ -169,23 +143,20 @@ class SignalServiceTest {
         PortfolioSettings settingsB = org.mockito.Mockito.mock(PortfolioSettings.class);
         given(settingsA.getUser()).willReturn(userA);
         given(settingsA.getCooldownMinutes()).willReturn(5);
-        given(settingsA.getEmaThreshold()).willReturn(0.6);
+        given(settingsA.getAiScoreThreshold()).willReturn(0.6);
         given(settingsA.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
 
         given(settingsB.getUser()).willReturn(userB);
         given(settingsB.getCooldownMinutes()).willReturn(5);
-        given(settingsB.getEmaThreshold()).willReturn(0.9);
+        given(settingsB.getAiScoreThreshold()).willReturn(0.9);
         given(settingsB.getTradingMode()).willReturn(TradingMode.MANUAL);
 
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settingsA, settingsB));
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.75);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).hasSize(2);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.BUY);   // threshold=0.6, AUTO_PILOT
         assertThat(results.get(1).action()).isEqualTo(TradeAction.HOLD);  // MANUAL → 항상 HOLD
@@ -194,24 +165,20 @@ class SignalServiceTest {
     @Test
     @DisplayName("사용자가 없으면 빈 리스트가 반환된다")
     void 사용자가_없으면_빈_리스트가_반환된다() {
-        // Arrange
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of());
-        given(emaService.process("NVDA", 0.85)).willReturn(0.75);
 
-        // Act
         List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
 
-        // Assert
         assertThat(results).isEmpty();
     }
 
     // --- 헬퍼 ---
 
-    private TradingSignalMessage buildSignal(String ticker, double rawScore) {
+    private TradingSignalMessage buildSignal(String ticker, double aiScore) {
         try {
             String json = """
-                    {"ticker":"%s","raw_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
-                    """.formatted(ticker, rawScore);
+                    {"ticker":"%s","ai_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
+                    """.formatted(ticker, aiScore);
             return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, TradingSignalMessage.class);
         } catch (Exception e) {
             throw new RuntimeException(e);

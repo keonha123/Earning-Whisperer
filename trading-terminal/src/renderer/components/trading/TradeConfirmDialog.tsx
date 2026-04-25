@@ -72,7 +72,7 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-text-secondary">수량: <span className="num text-text-primary">{signal.target_qty}</span></span>
-            <span className="text-text-secondary">EMA: <span className="num text-text-primary">{signal.ema_score.toFixed(3)}</span></span>
+            <span className="text-text-secondary">Score: <span className="num text-text-primary">{signal.ai_score.toFixed(3)}</span></span>
           </div>
         </div>
 
