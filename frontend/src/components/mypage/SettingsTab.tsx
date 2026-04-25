@@ -9,11 +9,11 @@ interface SettingsTabProps {
 }
 
 export default function SettingsTab({ email }: SettingsTabProps) {
-  const clearToken = useAuthStore((s) => s.clearToken);
+  const clearTokens = useAuthStore((s) => s.clearTokens);
   const router = useRouter();
 
   const handleLogout = () => {
-    clearToken();
+    clearTokens();
     router.push("/");
   };
 
