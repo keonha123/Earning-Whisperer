@@ -13,8 +13,7 @@ interface DemoState {
   ticker: string;
   currentText: string;
   textHistory: string[];
-  rawScore: number;
-  emaScore: number;
+  aiScore: number;
   emaHistory: EmaDataPoint[];
   signals: SignalEntry[];
   isSessionEnd: boolean;
@@ -29,8 +28,7 @@ interface DemoState {
   receiveSignal: (msg: {
     ticker: string;
     text_chunk: string;
-    raw_score: number;
-    ema_score: number;
+    ai_score: number;
     rationale: string;
     action: "BUY" | "SELL" | "HOLD";
     timestamp: number;
@@ -49,8 +47,7 @@ export const useDemoStore = create<DemoState>((set) => ({
   ticker: "NVDA",
   currentText: "",
   textHistory: [],
-  rawScore: 0,
-  emaScore: 0,
+  aiScore: 0,
   emaHistory: [],
   signals: [],
   isSessionEnd: false,
@@ -67,12 +64,11 @@ export const useDemoStore = create<DemoState>((set) => ({
         msg.text_chunk,
       ].slice(-MAX_TEXT_CHUNKS);
 
-      const newEmaPoint: EmaDataPoint = {
+      const newPoint: EmaDataPoint = {
         time: msg.timestamp,
-        ema: msg.ema_score,
-        raw: msg.raw_score,
+        score: msg.ai_score,
       };
-      const newEmaHistory = [...state.emaHistory, newEmaPoint].slice(
+      const newEmaHistory = [...state.emaHistory, newPoint].slice(
         -MAX_EMA_HISTORY
       );
 
@@ -81,7 +77,7 @@ export const useDemoStore = create<DemoState>((set) => ({
           ? [
               {
                 action: msg.action,
-                emaScore: msg.ema_score,
+                aiScore: msg.ai_score,
                 rationale: msg.rationale,
                 timestamp: msg.timestamp,
               },
@@ -93,8 +89,7 @@ export const useDemoStore = create<DemoState>((set) => ({
         ticker: msg.ticker,
         currentText: msg.text_chunk,
         textHistory: newHistory,
-        rawScore: msg.raw_score,
-        emaScore: msg.ema_score,
+        aiScore: msg.ai_score,
         emaHistory: newEmaHistory,
         signals: newSignals,
         isSessionEnd: msg.is_session_end,
@@ -112,8 +107,7 @@ export const useDemoStore = create<DemoState>((set) => ({
     set({
       currentText: "",
       textHistory: [],
-      rawScore: 0,
-      emaScore: 0,
+      aiScore: 0,
       emaHistory: [],
       signals: [],
       isSessionEnd: false,

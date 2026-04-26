@@ -56,7 +56,7 @@ public class DemoReplayService {
         while (!Thread.currentThread().isInterrupted()) {
             for (DemoReplayEvent event : events) {
                 messagingTemplate.convertAndSend(TOPIC, buildMessage(event, false));
-                log.debug("[DemoReplay] 브로드캐스트 - action={} ema={}", event.action(), event.emaScore());
+                log.debug("[DemoReplay] 브로드캐스트 - action={} aiScore={}", event.action(), event.aiScore());
 
                 try {
                     Thread.sleep(INTERVAL_MS);
@@ -89,8 +89,7 @@ public class DemoReplayService {
         return DemoSignalMessage.builder()
                 .ticker(event.ticker())
                 .textChunk(event.textChunk())
-                .rawScore(event.rawScore())
-                .emaScore(event.emaScore())
+                .aiScore(event.aiScore())
                 .rationale(event.rationale())
                 .action(event.action())
                 .timestamp(event.timestamp())

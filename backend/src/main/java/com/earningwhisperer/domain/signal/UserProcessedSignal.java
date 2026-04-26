@@ -10,6 +10,6 @@ import com.earningwhisperer.domain.user.User;
 public record UserProcessedSignal(
         User user,
         TradeAction action,
-        double emaScore,
+        double aiScore,
         TradingMode mode
 ) {}

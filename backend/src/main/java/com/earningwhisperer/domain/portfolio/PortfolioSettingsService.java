@@ -25,20 +25,20 @@ public class PortfolioSettingsService {
 
     @Transactional
     public PortfolioSettings updateSettings(Long userId, Double buyAmountRatio, Double maxPositionRatio,
-                                            Integer cooldownMinutes, Double emaThreshold, TradingMode tradingMode) {
+                                            Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         PortfolioSettings settings = getSettings(userId);
-        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, emaThreshold, tradingMode);
+        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, aiScoreThreshold, tradingMode);
         return settings;
     }
 
     /**
-     * Trading Terminal 전용 — emaThreshold는 기존 값을 유지한다.
+     * Trading Terminal 전용 — aiScoreThreshold는 기존 값을 유지한다.
      */
     @Transactional
     public PortfolioSettings updateFromTerminal(Long userId, Double buyAmountRatio, Double maxPositionRatio,
                                                 Integer cooldownMinutes, TradingMode tradingMode) {
         PortfolioSettings settings = getSettings(userId);
-        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, settings.getEmaThreshold(), tradingMode);
+        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, settings.getAiScoreThreshold(), tradingMode);
         return settings;
     }
 

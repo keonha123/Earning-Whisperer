@@ -41,10 +41,10 @@ public class PortfolioSettings extends BaseEntity {
     private Integer cooldownMinutes;
 
     /**
-     * EMA 스코어 임계치 — 이 값을 초과해야 BUY/SELL 실행 (예: 0.6)
+     * AI 점수 임계치 — 이 값 이상이면 BUY/SELL 실행 (예: 0.6)
      */
     @Column(nullable = false)
-    private Double emaThreshold;
+    private Double aiScoreThreshold;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -60,21 +60,21 @@ public class PortfolioSettings extends BaseEntity {
 
     @Builder
     public PortfolioSettings(User user, Double buyAmountRatio, Double maxPositionRatio,
-                              Integer cooldownMinutes, Double emaThreshold, TradingMode tradingMode) {
+                              Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         this.user = user;
         this.buyAmountRatio = buyAmountRatio;
         this.maxPositionRatio = maxPositionRatio;
         this.cooldownMinutes = cooldownMinutes;
-        this.emaThreshold = emaThreshold;
+        this.aiScoreThreshold = aiScoreThreshold;
         this.tradingMode = tradingMode;
     }
 
     public void update(Double buyAmountRatio, Double maxPositionRatio,
-                       Integer cooldownMinutes, Double emaThreshold, TradingMode tradingMode) {
+                       Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         this.buyAmountRatio = buyAmountRatio;
         this.maxPositionRatio = maxPositionRatio;
         this.cooldownMinutes = cooldownMinutes;
-        this.emaThreshold = emaThreshold;
+        this.aiScoreThreshold = aiScoreThreshold;
         this.tradingMode = tradingMode;
     }
 

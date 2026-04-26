@@ -88,7 +88,7 @@ export default function RawScoreGauge({ score }: RawScoreGaugeProps) {
           fill="#475569"
           fontFamily="sans-serif"
         >
-          Raw EMA Score
+          AI Score
         </text>
       </svg>
     </div>

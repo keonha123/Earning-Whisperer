@@ -17,11 +17,11 @@ import java.util.List;
  * 수신된 AI 신호를 전체 사용자에게 팬아웃 처리하는 서비스.
  *
  * 처리 흐름:
- * 1. EMA 글로벌 1회 계산 (ticker 기준, 모든 사용자 공통)
- * 2. 전체 사용자 PortfolioSettings 일괄 조회
- * 3. 사용자별: 쿨다운 체크 → RuleEngine 평가 → SignalHistory 생성
- * 4. SignalHistory batch 저장
+ * 1. 전체 사용자 PortfolioSettings 일괄 조회
+ * 2. 사용자별: 쿨다운 체크 → RuleEngine 평가 → SignalHistory 생성
+ * 3. SignalHistory batch 저장
  *
+ * AI 엔진이 시계열 맥락까지 반영한 최종 점수(aiScore)를 보내주므로 백엔드는 평활화 없이 직접 평가한다.
  * 개별 사용자 처리 실패 시 해당 사용자만 건너뛰고 나머지는 정상 처리된다.
  */
 @Slf4j
@@ -29,13 +29,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SignalService {
 
-    private final EmaService emaService;
     private final PortfolioSettingsService portfolioSettingsService;
     private final SignalHistoryRepository signalHistoryRepository;
 
     @Transactional
     public List<UserProcessedSignal> processSignalForAllUsers(TradingSignalMessage signal) {
-        double emaScore = emaService.process(signal.getTicker(), signal.getRawScore());
+        double aiScore = signal.getAiScore();
 
         List<PortfolioSettings> allSettings = portfolioSettingsService.getAllSettings();
 
@@ -50,13 +49,12 @@ public class SignalService {
                         user.getId(), signal.getTicker(), settings.getCooldownMinutes());
 
                 TradeAction action = RuleEngine.evaluate(
-                        emaScore, settings.getEmaThreshold(), settings.getTradingMode(), inCooldown);
+                        aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown);
 
                 SignalHistory history = SignalHistory.builder()
                         .user(user)
                         .ticker(signal.getTicker())
-                        .rawScore(signal.getRawScore())
-                        .emaScore(emaScore)
+                        .aiScore(aiScore)
                         .rationale(signal.getRationale())
                         .textChunk(signal.getTextChunk())
                         .action(action)
@@ -64,7 +62,7 @@ public class SignalService {
                         .build();
                 histories.add(history);
 
-                results.add(new UserProcessedSignal(user, action, emaScore, settings.getTradingMode()));
+                results.add(new UserProcessedSignal(user, action, aiScore, settings.getTradingMode()));
             } catch (Exception e) {
                 Long userId = settings.getUser() != null ? settings.getUser().getId() : null;
                 log.error("[SignalService] 사용자별 처리 실패 - userId={} ticker={}",
@@ -76,8 +74,8 @@ public class SignalService {
             signalHistoryRepository.saveAll(histories);
         }
 
-        log.info("[SignalService] ticker={} emaScore={} 처리 사용자 수={}",
-                signal.getTicker(), emaScore, results.size());
+        log.info("[SignalService] ticker={} aiScore={} 처리 사용자 수={}",
+                signal.getTicker(), aiScore, results.size());
         return results;
     }
 

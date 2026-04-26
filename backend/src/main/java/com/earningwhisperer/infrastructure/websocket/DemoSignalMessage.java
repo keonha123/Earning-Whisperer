@@ -20,11 +20,8 @@ public class DemoSignalMessage {
     @JsonProperty("text_chunk")
     private String textChunk;
 
-    @JsonProperty("raw_score")
-    private double rawScore;
-
-    @JsonProperty("ema_score")
-    private double emaScore;
+    @JsonProperty("ai_score")
+    private double aiScore;
 
     private String rationale;
     private String action;

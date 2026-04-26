@@ -22,7 +22,7 @@ import java.util.List;
  *
  * 처리 흐름:
  * 1. JSON → TradingSignalMessage 역직렬화
- * 2. SignalService.processSignalForAllUsers() — 글로벌 EMA + 전체 사용자 룰 평가 + SignalHistory 저장
+ * 2. SignalService.processSignalForAllUsers() — AI 점수 기반 전체 사용자 룰 평가 + SignalHistory 저장
  * 3. 사용자별 TradeService.createPendingTrade() — PENDING Trade 생성 (SEMI_AUTO/AUTO_PILOT)
  *    (실제 주문 실행은 Trading Terminal이 담당. 체결 결과는 콜백 API로 수신)
  * 4. LiveSignalPublisher.publish() — WebSocket 브로드캐스트 (Frontend 데모용)
@@ -78,7 +78,7 @@ public class TradingSignalSubscriber {
                             .action(result.action().name())
                             .targetQty(1) // TODO: buyAmountRatio 기반 동적 수량 계산 (Phase 후속)
                             .ticker(signal.getTicker())
-                            .emaScore(result.emaScore())
+                            .aiScore(result.aiScore())
                             .build();
                     tradeCommandPublisher.publish(tradeResult.userId(), command);
                 }
@@ -90,14 +90,13 @@ public class TradingSignalSubscriber {
         }
 
         // Step 3: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)
-        // 공개 채널의 action은 EMA 부호 기반 방향성 표시 (개인화 판단 아님)
-        double emaScore = userResults.isEmpty() ? 0.0 : userResults.get(0).emaScore();
-        String publicAction = emaScore >= 0.6 ? "BUY" : emaScore <= -0.6 ? "SELL" : "HOLD";
+        // 공개 채널의 action은 점수 부호 기반 방향성 표시 (개인화 판단 아님)
+        double aiScore = signal.getAiScore();
+        String publicAction = aiScore >= 0.6 ? "BUY" : aiScore <= -0.6 ? "SELL" : "HOLD";
         LiveSignalMessage liveMessage = LiveSignalMessage.builder()
                 .ticker(signal.getTicker())
                 .textChunk(signal.getTextChunk())
-                .rawScore(signal.getRawScore())
-                .emaScore(emaScore)
+                .aiScore(aiScore)
                 .rationale(signal.getRationale())
                 .action(publicAction)
                 .executedQty(0)

@@ -14,8 +14,8 @@ public class TradingSignalMessage {
 
     private String ticker;
 
-    @JsonProperty("raw_score")
-    private double rawScore;
+    @JsonProperty("ai_score")
+    private double aiScore;
 
     private String rationale;
 

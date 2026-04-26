@@ -72,7 +72,7 @@ export default function EmaChart({ signalHistory }: EmaChartProps) {
       const count = timeCount[base] ?? 0
       timeCount[base] = count + 1
       const time = (base + count / 1000) as Time
-      return { time, value: item.ema_score }
+      return { time, value: item.ai_score }
     })
 
     series.setData(lineData)

@@ -33,7 +33,7 @@ public class PortfolioSettingsController {
                 request.getBuyAmountRatio(),
                 request.getMaxPositionRatio(),
                 request.getCooldownMinutes(),
-                request.getEmaThreshold(),
+                request.getAiScoreThreshold(),
                 request.getTradingMode()
         ));
     }

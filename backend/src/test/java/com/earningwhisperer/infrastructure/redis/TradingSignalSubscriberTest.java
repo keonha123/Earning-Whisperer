@@ -41,7 +41,7 @@ class TradingSignalSubscriberTest {
     private static final String VALID_MESSAGE = """
             {
               "ticker": "NVDA",
-              "raw_score": 0.85,
+              "ai_score": 0.85,
               "rationale": "Strong earnings beat",
               "text_chunk": "Revenue exceeded expectations",
               "timestamp": 1710000000

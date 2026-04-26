@@ -63,7 +63,7 @@ export default function TradingRoomPage() {
                                 ${activeSignal.action === 'BUY'
                                   ? 'bg-buy/15 text-buy'
                                   : 'bg-sell/15 text-sell'}`}>
-                  {(activeSignal.ema_score * 100).toFixed(1)}
+                  {(activeSignal.ai_score * 100).toFixed(1)}
                 </span>
               )}
             </div>
@@ -92,13 +92,13 @@ export default function TradingRoomPage() {
           <div className="shrink-0 border-t border-[#1e2738] px-4 py-3">
             <div className="flex items-center gap-4">
               <div className="w-24 h-24 shrink-0">
-                <RawScoreGauge score={activeSignal?.ema_score ?? null} />
+                <RawScoreGauge score={activeSignal?.ai_score ?? null} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <div>
                   <p className="text-[10px] text-text-disabled uppercase tracking-wide">EMA Score</p>
-                  <p className={`num text-2xl font-bold ${getScoreColor(activeSignal?.ema_score ?? null)}`}>
-                    {activeSignal ? (activeSignal.ema_score * 100).toFixed(0) : '--'}
+                  <p className={`num text-2xl font-bold ${getScoreColor(activeSignal?.ai_score ?? null)}`}>
+                    {activeSignal ? (activeSignal.ai_score * 100).toFixed(0) : '--'}
                   </p>
                 </div>
                 {activeSignal && (
