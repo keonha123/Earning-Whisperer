@@ -96,7 +96,7 @@ type BalanceLite = { orderableCash: number; holdings: { ticker: string; qty: num
  * 주문 수량 산출 — 서버가 내려준 order_ratio를 로컬 실잔고·실가격에 적용한다.
  * 자본시장법상 수량 결정 주체는 사용자 로컬(본 함수)이며, 서버는 비율까지만 결정한다.
  */
-function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number): number {
+export function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number): number {
   const ratio = signal.order_ratio
   if (!(ratio > 0 && ratio <= 1)) return 0
 
@@ -114,7 +114,7 @@ function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number
   return Math.floor(available * ratio)
 }
 
-function failureReason(signal: TradeSignal, balance: BalanceLite, currentPrice: number): string {
+export function failureReason(signal: TradeSignal, balance: BalanceLite, currentPrice: number): string {
   if (!(signal.order_ratio > 0 && signal.order_ratio <= 1)) return `비정상 order_ratio=${signal.order_ratio}`
   if (signal.action === 'BUY') {
     if (currentPrice <= 0) return '현재가 조회 실패'

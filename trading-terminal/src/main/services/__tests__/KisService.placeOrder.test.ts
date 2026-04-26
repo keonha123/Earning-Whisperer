@@ -1,0 +1,169 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// 공유 axios mock — setup.ts에서 vi.mock('axios') 등록 + 매 테스트마다 reset.
+import { kisHttpMock } from '../../../test/setup'
+
+import keytar from 'keytar'
+import { KisService } from '../KisService'
+import { mainState } from '../../store/mainState'
+import { orderSuccessResponse } from '../../../test/fixtures/kisResponses'
+
+const KEYTAR_SERVICE = 'EarningWhisperer'
+
+async function seedCredentials(accountNo = '1234567801'): Promise<void> {
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-accountNo', accountNo)
+}
+
+beforeEach(() => {
+  mainState.clear()
+  // 토큰 미리 발급해둔 상태에서 placeOrder만 검증 (issueToken 흐름은 별도 테스트)
+  mainState.setKisAccessToken('valid-token', 86400)
+  kisHttpMock.get.mockReset()
+  kisHttpMock.post.mockReset()
+})
+
+afterEach(() => {
+  // 토큰 자동 발급 케이스에서 scheduleTokenRefresh 타이머가 누수될 수 있음
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})
+
+describe('KisService.placeOrder', () => {
+  it('BUY → tr_id=VTTT1002U 헤더로 호출', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD1') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 3)
+
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(1)
+    const [url, , config] = kisHttpMock.post.mock.calls[0]
+    expect(url).toBe('/uapi/overseas-stock/v1/trading/order')
+    expect(config.headers.tr_id).toBe('VTTT1002U')
+  })
+
+  it('SELL → tr_id=VTTT1006U 헤더로 호출', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD2') })
+
+    await KisService.placeOrder('SELL', 'AAPL', 1)
+
+    const [, , config] = kisHttpMock.post.mock.calls[0]
+    expect(config.headers.tr_id).toBe('VTTT1006U')
+  })
+
+  it('주문 페이로드 구조 — 시장가/NASDAQ/qty 문자열 변환', async () => {
+    await seedCredentials('1234567801')
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD3') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 7)
+
+    const [, body] = kisHttpMock.post.mock.calls[0]
+    expect(body).toMatchObject({
+      ORD_DVSN: '00',
+      ORD_QTY: '7',
+      OVRS_EXCG_CD: 'NASD',
+      PDNO: 'TSLA',
+      OVRS_ORD_UNPR: '0',
+    })
+    expect(typeof body.ORD_QTY).toBe('string')
+  })
+
+  it('계좌번호 분해: 10자리 → CANO=앞8 / ACNT_PRDT_CD=뒤2', async () => {
+    await seedCredentials('1234567899')
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD4') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const [, body] = kisHttpMock.post.mock.calls[0]
+    expect(body.CANO).toBe('12345678')
+    expect(body.ACNT_PRDT_CD).toBe('99')
+  })
+
+  it('계좌번호 8자리: ACNT_PRDT_CD 기본값 "01"', async () => {
+    await seedCredentials('12345678') // 정확히 8자리
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD5') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const [, body] = kisHttpMock.post.mock.calls[0]
+    expect(body.CANO).toBe('12345678')
+    expect(body.ACNT_PRDT_CD).toBe('01')
+  })
+
+  it('응답 ODNO → orderId 매핑', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('K-987654') })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    expect(result.orderId).toBe('K-987654')
+    expect(result.executedPrice).toBeNull()
+    expect(result.executedQty).toBe(1)
+  })
+
+  it('응답에 ODNO 없을 때 빈 문자열 fallback', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: { rt_cd: '0', output: {} } })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 1)
+    expect(result.orderId).toBe('')
+  })
+
+  it('토큰 미발급(invalid) 시 issueToken 자동 호출', async () => {
+    mainState.clear() // 토큰 무효 상태
+    await seedCredentials()
+    // issueToken은 axios.post('/oauth2/tokenP', ...)를 호출함
+    kisHttpMock.post.mockImplementation(async (url: string) => {
+      if (url === '/oauth2/tokenP') {
+        return { data: { access_token: 'fresh', token_type: 'Bearer', expires_in: 86400 } }
+      }
+      return { data: orderSuccessResponse('OD-AFTER-TOKEN') }
+    })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    // 첫 호출: tokenP, 두번째: 주문
+    expect(kisHttpMock.post.mock.calls[0][0]).toBe('/oauth2/tokenP')
+    expect(kisHttpMock.post.mock.calls[1][0]).toBe('/uapi/overseas-stock/v1/trading/order')
+    expect(result.orderId).toBe('OD-AFTER-TOKEN')
+  })
+
+  it('placeOrder — issueToken 단계: appKey/appSecret 둘 다 누락 시 issueToken 내부 가드에서 throw', async () => {
+    // mainState 토큰 없음 (beforeEach에서 setKisAccessToken을 했지만 여기서 clear)
+    // keytar에 자격증명도 없음 → ensureToken → issueToken → "KIS API 키가 등록되지 않았" throw
+    mainState.clear()
+
+    await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
+      /KIS API 키가 등록되지 않았/,
+    )
+    // 주문 자체도 안 나가야 한다 (tokenP 호출조차 가지 않음 — keytar 단계에서 throw)
+    expect(kisHttpMock.post).not.toHaveBeenCalled()
+  })
+
+  it('placeOrder — placeOrder 본체 가드: 토큰은 유효하나 accountNo만 누락', async () => {
+    // 1. 자격증명 + 토큰 시드
+    await seedCredentials() // appKey/appSecret/accountNo 모두 저장
+    // (토큰은 beforeEach에서 setKisAccessToken으로 valid 상태)
+    // 2. accountNo만 삭제 → ensureToken은 통과, placeOrder 본체 가드(라인 286)에서 throw
+    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo')
+
+    // 3. 호출 → "자격 증명이 등록되지 않았" throw
+    await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
+      /자격 증명이 등록되지 않았/,
+    )
+    // 토큰이 유효하므로 issueToken 경로(/oauth2/tokenP)도, 주문 경로도 호출되지 않아야 한다
+    expect(kisHttpMock.post).not.toHaveBeenCalled()
+  })
+
+  it('placeOrder — appKey만 있고 appSecret 누락 시 placeOrder 본체 가드에서 throw (토큰 유효)', async () => {
+    // 토큰은 유효(beforeEach), appKey만 등록 — appSecret/accountNo 모두 누락
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
+
+    await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
+      /자격 증명이 등록되지 않았/,
+    )
+    expect(kisHttpMock.post).not.toHaveBeenCalled()
+  })
+})

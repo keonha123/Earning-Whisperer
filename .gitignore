@@ -32,6 +32,9 @@ htmlcov/
 node_modules/
 .next/
 out/
+dist/
+*.tsbuildinfo
+coverage/
 
 # 기타
 *.log
