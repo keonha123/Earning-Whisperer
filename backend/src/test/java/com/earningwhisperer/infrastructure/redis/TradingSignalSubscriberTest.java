@@ -54,7 +54,7 @@ class TradingSignalSubscriberTest {
         // Arrange
         User user1 = mock(User.class);
         List<UserProcessedSignal> results = List.of(
-                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT));
+                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
         when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
                 .thenReturn(new PendingTradeResult(1L, 1L));
@@ -78,8 +78,8 @@ class TradingSignalSubscriberTest {
         User user2 = mock(User.class);
 
         List<UserProcessedSignal> results = List.of(
-                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT),
-                new UserProcessedSignal(user2, TradeAction.BUY, 0.8, TradingMode.SEMI_AUTO));
+                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1),
+                new UserProcessedSignal(user2, TradeAction.BUY, 0.8, TradingMode.SEMI_AUTO, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
         when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
                 .thenReturn(new PendingTradeResult(10L, 1L));
@@ -101,7 +101,7 @@ class TradingSignalSubscriberTest {
         // Arrange
         User user1 = mock(User.class);
         List<UserProcessedSignal> results = List.of(
-                new UserProcessedSignal(user1, TradeAction.HOLD, 0.8, TradingMode.MANUAL));
+                new UserProcessedSignal(user1, TradeAction.HOLD, 0.8, TradingMode.MANUAL, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
         when(tradeService.createPendingTrade(any(User.class), anyString(), any(), any()))
                 .thenReturn(null);
@@ -147,8 +147,8 @@ class TradingSignalSubscriberTest {
         User user2 = mock(User.class);
 
         List<UserProcessedSignal> results = List.of(
-                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT),
-                new UserProcessedSignal(user2, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT));
+                new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1),
+                new UserProcessedSignal(user2, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
 
         // user1 Trade 생성 시 예외 발생
@@ -171,7 +171,7 @@ class TradingSignalSubscriberTest {
         // Arrange
         User user1 = mock(User.class);
         List<UserProcessedSignal> results = List.of(
-                new UserProcessedSignal(user1, TradeAction.SELL, -0.8, TradingMode.AUTO_PILOT));
+                new UserProcessedSignal(user1, TradeAction.SELL, -0.8, TradingMode.AUTO_PILOT, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
         when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
                 .thenReturn(new PendingTradeResult(20L, 1L));

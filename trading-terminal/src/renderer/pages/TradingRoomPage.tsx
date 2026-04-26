@@ -57,7 +57,7 @@ export default function TradingRoomPage() {
         <div className="col-span-3 card p-0 flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-[#1e2738] flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-text-primary uppercase tracking-wide">EMA 추세</span>
+              <span className="text-xs font-semibold text-text-primary uppercase tracking-wide">AI Score 추세</span>
               {activeSignal && (
                 <span className={`num text-xs font-medium px-1.5 py-0.5 rounded
                                 ${activeSignal.action === 'BUY'
@@ -88,7 +88,7 @@ export default function TradingRoomPage() {
             <SignalFeed items={signalHistory} />
           </div>
 
-          {/* EMA 게이지 — 하단 고정 */}
+          {/* AI Score 게이지 — 하단 고정 */}
           <div className="shrink-0 border-t border-[#1e2738] px-4 py-3">
             <div className="flex items-center gap-4">
               <div className="w-24 h-24 shrink-0">
@@ -96,7 +96,7 @@ export default function TradingRoomPage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <div>
-                  <p className="text-[10px] text-text-disabled uppercase tracking-wide">EMA Score</p>
+                  <p className="text-[10px] text-text-disabled uppercase tracking-wide">AI Score</p>
                   <p className={`num text-2xl font-bold ${getScoreColor(activeSignal?.ai_score ?? null)}`}>
                     {activeSignal ? (activeSignal.ai_score * 100).toFixed(0) : '--'}
                   </p>
@@ -108,7 +108,7 @@ export default function TradingRoomPage() {
                                     : 'bg-sell/15 text-sell'}`}>
                     <span>{activeSignal.action === 'BUY' ? '▲' : '▼'}</span>
                     <span>{activeSignal.action}</span>
-                    <span className="num font-normal text-text-disabled">×{activeSignal.target_qty}</span>
+                    <span className="num font-normal text-text-disabled">{Math.round(activeSignal.order_ratio * 100)}%</span>
                   </div>
                 )}
               </div>

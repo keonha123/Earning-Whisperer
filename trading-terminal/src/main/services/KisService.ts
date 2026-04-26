@@ -241,6 +241,36 @@ export const KisService = {
     return { orderableCash, totalCash: orderableCash, holdings }
   },
 
+  // ── 현재가 조회 ──────────────────────────────────────────────
+
+  /**
+   * 해외주식 현재가 조회 (HHDFS00000300). 수량 계산에 사용.
+   * 실패 시 0을 반환 — 호출 측이 0 가드로 주문 진입을 막는다.
+   */
+  async getCurrentPrice(ticker: string): Promise<number> {
+    await KisService.ensureToken()
+
+    const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
+    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
+    if (!appKey || !appSecret) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
+
+    try {
+      const { data } = await kisHttp.get('/uapi/overseas-price/v1/quotations/price', {
+        headers: buildKisHeaders(appKey, appSecret, 'HHDFS00000300'),
+        params: {
+          AUTH: '',
+          EXCD: 'NAS',
+          SYMB: ticker,
+        },
+      })
+      const last = Number(data.output?.last ?? 0)
+      return Number.isFinite(last) && last > 0 ? last : 0
+    } catch (e: any) {
+      console.error('[KisService] HHDFS00000300 현재가 조회 실패:', e?.response?.data?.message ?? e?.message)
+      return 0
+    }
+  },
+
   // ── 주문 실행 ────────────────────────────────────────────────
 
   async placeOrder(
