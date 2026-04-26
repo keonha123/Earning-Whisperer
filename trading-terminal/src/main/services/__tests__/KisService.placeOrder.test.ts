@@ -6,7 +6,7 @@ import { kisHttpMock } from '../../../test/setup'
 import keytar from 'keytar'
 import { KisService } from '../KisService'
 import { mainState } from '../../store/mainState'
-import { orderSuccessResponse } from '../../../test/fixtures/kisResponses'
+import { orderSuccessResponse, kisOrderRejectResponse } from '../../../test/fixtures/kisResponses'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
@@ -165,5 +165,53 @@ describe('KisService.placeOrder', () => {
       /자격 증명이 등록되지 않았/,
     )
     expect(kisHttpMock.post).not.toHaveBeenCalled()
+  })
+})
+
+describe('KisService.placeOrder — KIS rt_cd 비즈니스 실패 처리', () => {
+  it("rt_cd='1' (APBK0918 주문가능금액 부족) → throw + msg1 포함", async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({
+      data: kisOrderRejectResponse('APBK0918', '주문가능금액이 부족합니다.'),
+    })
+
+    await expect(KisService.placeOrder('BUY', 'TSLA', 3)).rejects.toThrow(
+      /주문가능금액이 부족합니다/,
+    )
+    // 호출 자체는 1회 (재시도 없음)
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(1)
+  })
+
+  it("rt_cd='1' (시장 휴장 등 임의 메시지) → throw + 메시지 전파", async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({
+      data: kisOrderRejectResponse('APBK1234', '시장 휴장으로 주문이 거부되었습니다.'),
+    })
+
+    await expect(KisService.placeOrder('SELL', 'AAPL', 1)).rejects.toThrow(
+      /시장 휴장/,
+    )
+  })
+
+  it("rt_cd='1' + msg1 누락 시 msg_cd로 fallback", async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({
+      data: { rt_cd: '1', msg_cd: 'APBK9999', output: {} },
+    })
+
+    await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
+      /APBK9999/,
+    )
+  })
+
+  it("rt_cd='0' + 정상 ODNO → 기존 동작 유지 (회귀 보호)", async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-OK') })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    expect(result.orderId).toBe('OD-OK')
+    expect(result.executedQty).toBe(1)
+    expect(result.executedPrice).toBeNull()
   })
 })

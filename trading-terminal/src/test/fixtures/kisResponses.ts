@@ -87,3 +87,45 @@ export function orderSuccessResponse(odno: string) {
     },
   }
 }
+
+// ── KIS rt_cd 비즈니스 실패 응답 (HTTP 200이지만 rt_cd='1') ──────────
+/**
+ * KIS Open API는 HTTP 200으로 응답하면서 rt_cd 필드로 비즈니스 성공/실패를 구분.
+ * 실패 시: rt_cd='1', msg_cd/msg1에 사유 (예: APBK0918 = 주문가능금액 부족).
+ */
+export function kisOrderRejectResponse(msgCd: string, msg1: string) {
+  return {
+    rt_cd: '1',
+    msg_cd: msgCd,
+    msg1,
+    output: {},
+  }
+}
+
+export function kisBalanceRejectResponse(msgCd: string, msg1: string) {
+  return {
+    rt_cd: '1',
+    msg_cd: msgCd,
+    msg1,
+    output1: [],
+    output2: {},
+  }
+}
+
+export function kisPsamountRejectResponse(msgCd: string, msg1: string) {
+  return {
+    rt_cd: '1',
+    msg_cd: msgCd,
+    msg1,
+    output: {},
+  }
+}
+
+export function kisCurrentPriceRejectResponse(msgCd: string, msg1: string) {
+  return {
+    rt_cd: '1',
+    msg_cd: msgCd,
+    msg1,
+    output: {},
+  }
+}

@@ -6,7 +6,11 @@ import { kisHttpMock } from '../../../test/setup'
 import keytar from 'keytar'
 import { KisService } from '../KisService'
 import { mainState } from '../../store/mainState'
-import { currentPriceResponse, currentPriceUndefinedResponse } from '../../../test/fixtures/kisResponses'
+import {
+  currentPriceResponse,
+  currentPriceUndefinedResponse,
+  kisCurrentPriceRejectResponse,
+} from '../../../test/fixtures/kisResponses'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
@@ -88,5 +92,25 @@ describe('KisService.getCurrentPrice', () => {
 
     expect(kisHttpMock.post).toHaveBeenCalledWith('/oauth2/tokenP', expect.any(Object))
     expect(price).toBe(100)
+  })
+
+  it("rt_cd='1' → 0 반환 (호출자 0 가드와 호환)", async () => {
+    await seedCredentials()
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: kisCurrentPriceRejectResponse('OPSF0001', '시세 조회 일시 오류'),
+    })
+
+    const price = await KisService.getCurrentPrice('TSLA')
+
+    expect(price).toBe(0)
+  })
+
+  it("rt_cd='0' + last 정상 → 기존 동작 유지 (회귀 보호)", async () => {
+    await seedCredentials()
+    kisHttpMock.get.mockResolvedValueOnce({ data: currentPriceResponse(180.5) })
+
+    const price = await KisService.getCurrentPrice('AAPL')
+
+    expect(price).toBe(180.5)
   })
 })

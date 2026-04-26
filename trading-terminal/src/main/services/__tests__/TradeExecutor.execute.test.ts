@@ -256,6 +256,153 @@ describe('TradeExecutor.execute — 예외 처리', () => {
   })
 })
 
+describe('TradeExecutor.execute — KIS rt_cd 실패 통합', () => {
+  it('placeOrder가 KIS rt_cd 실패로 throw하면 FAILED 콜백 + errorMessage에 msg1 포함', async () => {
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue(10)
+    // KIS가 rt_cd='1'로 거부 → KisService.placeOrder가 throw
+    Kis.placeOrder.mockRejectedValue(
+      new Error('KIS 주문 거부: 주문가능금액이 부족합니다.'),
+    )
+    Backend.sendCallback.mockResolvedValue(undefined)
+
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('주문가능금액이 부족')
+    expect(result.errorMessage).toContain('KIS 주문 거부')
+    expect(Backend.sendCallback).toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({
+        status: 'FAILED',
+        error_message: expect.stringContaining('주문가능금액이 부족'),
+      }),
+    )
+    expect(Notify.notifyTradeFailed).toHaveBeenCalled()
+  })
+})
+
+describe('TradeExecutor.execute — 시그널 검증 (validateSignal)', () => {
+  beforeEach(() => {
+    Backend.sendCallback.mockResolvedValue(undefined)
+  })
+
+  it('action이 BUY/SELL이 아니면 즉시 FAILED, KisService 호출되지 않음', async () => {
+    const result = await TradeExecutor.execute(
+      buySignal({ action: 'HOLD' as unknown as 'BUY' }),
+    )
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 action')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+    expect(Kis.placeOrder).not.toHaveBeenCalled()
+    expect(Backend.sendCallback).toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({ status: 'FAILED', error_message: expect.stringContaining('비정상 action') }),
+    )
+    expect(Notify.notifyTradeFailed).toHaveBeenCalled()
+  })
+
+  it('ticker가 빈 문자열이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ ticker: '' }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 ticker')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('ticker가 공백만 있는 문자열이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ ticker: '   ' }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 ticker')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('trade_id가 빈 문자열이면 fallback id로 콜백 전송', async () => {
+    const result = await TradeExecutor.execute(buySignal({ trade_id: '' }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 trade_id')
+    // 빈 trade_id → 'invalid' fallback id로 콜백
+    expect(Backend.sendCallback).toHaveBeenCalledWith(
+      'invalid',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('order_ratio가 NaN이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: NaN }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 order_ratio')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('order_ratio가 Infinity이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: Infinity }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 order_ratio')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('order_ratio가 0이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0 }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 order_ratio')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('order_ratio가 1.01이면 즉시 FAILED (calcQty의 (0,1] 정책과 일관)', async () => {
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 1.01 }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 order_ratio')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('order_ratio가 음수이면 즉시 FAILED', async () => {
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: -0.5 }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('비정상 order_ratio')
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+  })
+
+  it('정상 시그널은 검증 통과 — KisService.getBalance 호출됨 (회귀 보호)', async () => {
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.placeOrder.mockResolvedValue({ orderId: 'OK', executedPrice: null, executedQty: 10 })
+
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+
+    expect(result.status).toBe('EXECUTED')
+    expect(Kis.getBalance).toHaveBeenCalled()
+    expect(Kis.placeOrder).toHaveBeenCalledWith('BUY', 'TSLA', 10)
+  })
+
+  it('TRADE_FAILED IPC 이벤트 발화 (validateSignal 실패 경로)', async () => {
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValueOnce([
+      { isDestroyed: () => false, webContents: { send: sendSpy } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any)
+
+    await TradeExecutor.execute(buySignal({ order_ratio: NaN }))
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      IPC_CHANNELS.TRADE_FAILED,
+      expect.objectContaining({
+        status: 'FAILED',
+        errorMessage: expect.stringContaining('비정상 order_ratio'),
+      }),
+    )
+  })
+})
+
 describe('TradeExecutor.execute — SELL 흐름', () => {
   it('SELL은 현재가 조회를 호출하지 않는다', async () => {
     Kis.getBalance.mockResolvedValue({

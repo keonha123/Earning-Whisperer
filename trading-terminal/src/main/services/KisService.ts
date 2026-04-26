@@ -208,10 +208,16 @@ export const KisService = {
       },
     })
 
+    // VTTS3012R rt_cd 실패 시 throw — holdings가 부정확하면 SELL 위험.
+    if (data.rt_cd !== '0') {
+      const msg = data.msg1 || data.msg_cd || '잔고 조회 실패'
+      throw new Error(`KIS 잔고 조회 실패: ${msg}`)
+    }
+
     // KIS 해외주식 조회 API 초당 1회 제한 회피 — VTTS3012R과 VTTS3007R 사이 지연
     await new Promise((resolve) => setTimeout(resolve, 1100))
 
-    // 2. 주문가능외화금액 조회 (VTTS3007R) — 실패 시 cash=0으로 계속 진행
+    // 2. 주문가능외화금액 조회 (VTTS3007R) — 실패 시 cash=0으로 계속 진행 (부분 fallback)
     let orderableCash = 0
     try {
       const { data: psData } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-psamount', {
@@ -226,7 +232,12 @@ export const KisService = {
           CTX_AREA_NK100: '',
         },
       })
-      orderableCash = Number(psData.output?.ord_psbl_frcr_amt ?? 0)
+      if (psData.rt_cd === '0') {
+        orderableCash = Number(psData.output?.ord_psbl_frcr_amt ?? 0)
+      } else {
+        console.error('[KisService] VTTS3007R rt_cd 실패:', psData.msg1 || psData.msg_cd)
+        // orderableCash는 0 유지
+      }
     } catch (e: any) {
       console.error('[KisService] VTTS3007R 오류:', e?.response?.data?.message ?? e?.message)
     }
@@ -263,6 +274,11 @@ export const KisService = {
           SYMB: ticker,
         },
       })
+      // rt_cd 실패 시 0 반환 (호출자의 0 가드와 일관)
+      if (data.rt_cd !== '0') {
+        console.error('[KisService] HHDFS00000300 rt_cd 실패:', data.msg1 || data.msg_cd)
+        return 0
+      }
       const last = Number(data.output?.last ?? 0)
       return Number.isFinite(last) && last > 0 ? last : 0
     } catch (e: any) {
@@ -302,6 +318,14 @@ export const KisService = {
       },
       { headers: buildKisHeaders(appKey, appSecret, trId) },
     )
+
+    // KIS는 HTTP 200으로 응답하면서 rt_cd='1' 등으로 비즈니스 실패를 보고한다.
+    // 예: APBK0918 주문가능금액 부족, 시장 휴장, 종목 거래정지.
+    // throw하면 TradeExecutor.execute의 catch에서 FAILED 콜백으로 처리된다.
+    if (data.rt_cd !== '0') {
+      const msg = data.msg1 || data.msg_cd || '주문 거부'
+      throw new Error(`KIS 주문 거부: ${msg}`)
+    }
 
     return {
       orderId: data.output?.ODNO ?? '',

@@ -6,7 +6,13 @@ import { kisHttpMock } from '../../../test/setup'
 import keytar from 'keytar'
 import { KisService } from '../KisService'
 import { mainState } from '../../store/mainState'
-import { balanceWithHoldings, balanceEmpty, psAmountSuccess } from '../../../test/fixtures/kisResponses'
+import {
+  balanceWithHoldings,
+  balanceEmpty,
+  psAmountSuccess,
+  kisBalanceRejectResponse,
+  kisPsamountRejectResponse,
+} from '../../../test/fixtures/kisResponses'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
@@ -111,6 +117,39 @@ describe('KisService.getBalance — 동시 호출 (in-flight)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('KisService.getBalance — KIS rt_cd 비즈니스 실패 처리', () => {
+  it("VTTS3012R rt_cd='1' → throw (잔고 부정확 시 SELL 위험 차단)", async () => {
+    await seedCredentials()
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: kisBalanceRejectResponse('OPSP0002', '계좌 조회 권한이 없습니다.'),
+    })
+
+    // VTTS3012R가 rt_cd='1'로 즉시 throw되므로 1100ms 대기에 도달하지 않는다.
+    // → fake timers 불필요. real timers로 직접 await하여 unhandled rejection 경고 방지.
+    await expect(KisService.getBalance()).rejects.toThrow(/계좌 조회 권한이 없습니다/)
+
+    // VTTS3012R 1회만 호출되고 VTTS3007R로 진입하지 않아야 한다
+    expect(kisHttpMock.get).toHaveBeenCalledTimes(1)
+  })
+
+  it("VTTS3007R rt_cd='1' → orderableCash=0이지만 holdings는 정상 반환 (부분 fallback)", async () => {
+    await seedCredentials()
+    kisHttpMock.get
+      .mockResolvedValueOnce({ data: balanceWithHoldings })
+      .mockResolvedValueOnce({
+        data: kisPsamountRejectResponse('APBK0001', '주문가능금액 조회 일시 오류'),
+      })
+
+    const result = await runBalanceWithFakeTimers(() => KisService.getBalance())
+
+    expect(result.orderableCash).toBe(0)
+    expect(result.totalCash).toBe(0)
+    expect(result.holdings).toHaveLength(2)
+    expect(result.holdings[0].ticker).toBe('TSLA')
+    expect(result.holdings[1].ticker).toBe('AAPL')
   })
 })
 
