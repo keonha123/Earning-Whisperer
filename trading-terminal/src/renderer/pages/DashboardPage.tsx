@@ -1,25 +1,73 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useTradingStore } from '../store/useTradingStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
 import { useUserStore } from '../store/useUserStore'
+import { useDrawerStore } from '../store/useDrawerStore'
+
 import ModeSelector from '../components/common/ModeSelector'
-import SignalFeed from '../components/trading/SignalFeed'
 import PortfolioCard from '../components/portfolio/PortfolioCard'
 
+import MarketStrip from '../components/dashboard/MarketStrip'
+import EarningsTimeline from '../components/dashboard/EarningsTimeline'
+import HoldingsTable, { type HoldingsTableRow } from '../components/dashboard/HoldingsTable'
+import MiniLineChart from '../components/dashboard/MiniLineChart'
+import CompanyDrawer from '../components/dashboard/CompanyDrawer'
+
+import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
+import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
+import { holdingsDevMock, watchlistDevMock } from '../fixtures/holdings.dev-mock'
+import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
+import { useNavigate } from 'react-router-dom'
+
+/**
+ * DashboardPage — 4-Row 레이아웃.
+ *
+ *  Row 0 (헤더): 제목 + 마지막 동기화 + 동기화 버튼 + ModeSelector.
+ *  Row 1 (MarketStrip): 글로벌 지수 5종 (DEV 가드).
+ *  Row 2 (Portfolio + AssetChart): PortfolioCard + 30D SVG 차트.
+ *  Row 3 (Holdings + Earnings): HoldingsTable + EarningsTimeline.
+ *
+ *  Drawer: CompanyDrawer 가 페이지 하단에 mount, useDrawerStore 가 트리거.
+ *
+ * 보존 동작:
+ *  - 마운트 시 KIS_GET_BALANCE 1회.
+ *  - 모드 변경 시 SETTINGS_UPDATE.
+ *  - PortfolioCard 컴포넌트 (PR #1 잔존) 그대로 사용.
+ *  - SignalFeed 는 import 제거 — PR #4 TradingRoom 에서 사용 예정.
+ */
 export default function DashboardPage() {
-  const { mode, setMode, signalHistory } = useTradingStore()
-  const { orderableCash, totalCash, holdings, lastSyncedAt, isSyncing, error, setBalance, startSync, setSyncing, setError } = usePortfolioStore()
+  const { mode, setMode } = useTradingStore()
+  const {
+    orderableCash,
+    totalCash,
+    holdings: storeHoldings,
+    lastSyncedAt,
+    isSyncing,
+    error,
+    setBalance,
+    startSync,
+    setSyncing,
+    setError,
+  } = usePortfolioStore()
   const { plan, settings, setSettings } = useUserStore()
+
+  const openDrawer = useDrawerStore((s) => s.open)
+  const navigate = useNavigate()
 
   useEffect(() => {
     syncBalance()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function syncBalance() {
     startSync()
     try {
-      const balance = await ipc.invoke<{ orderableCash: number; totalCash: number; holdings: any[] }>(IPC_CHANNELS.KIS_GET_BALANCE)
+      const balance = await ipc.invoke<{
+        orderableCash: number
+        totalCash: number
+        holdings: any[]
+      }>(IPC_CHANNELS.KIS_GET_BALANCE)
       setBalance(balance.orderableCash, balance.totalCash, balance.holdings)
     } catch (e: any) {
       console.error('잔고 조회 실패:', e)
@@ -44,68 +92,317 @@ export default function DashboardPage() {
     }
   }
 
-  const totalAsset = totalCash + holdings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)
+  const totalAsset =
+    totalCash + storeHoldings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)
+
+  // Holdings/Watchlist 표시 행:
+  //  - 실제 store 의 holdings 우선 사용. fixture 의 메타데이터 (회사명/로고색) 와 매핑.
+  //  - store 가 비어있는 DEV 환경에서는 fixture rows 자체를 표시.
+  //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
+  const holdingRows: HoldingsTableRow[] = useMemo(() => {
+    if (storeHoldings.length === 0 && import.meta.env.DEV) {
+      return holdingsDevMock.map((h) => ({
+        ticker: h.ticker,
+        name: h.name,
+        currentPrice: h.currentPrice,
+        dailyChangePercent: h.dailyChangePercent,
+        pnlPercent: h.pnlPercent,
+        earningsBadge: h.earningsBadge,
+        logoBg: h.logoBg,
+        logoFg: h.logoFg,
+        logoLabel: h.logoLabel,
+      }))
+    }
+    return storeHoldings.map((h) => {
+      const meta = holdingsDevMock.find((m) => m.ticker === h.ticker)
+      const pnlPct =
+        h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0
+      return {
+        ticker: h.ticker,
+        name: meta?.name ?? h.ticker,
+        currentPrice: h.currentPrice,
+        dailyChangePercent: meta?.dailyChangePercent ?? 0,
+        pnlPercent: pnlPct,
+        earningsBadge: meta?.earningsBadge ?? null,
+        logoBg: meta?.logoBg,
+        logoFg: meta?.logoFg,
+        logoLabel: meta?.logoLabel,
+      }
+    })
+  }, [storeHoldings])
+
+  const watchRows: HoldingsTableRow[] = useMemo(() => {
+    // Watchlist IPC 미존재 — DEV 만 fixture, prod 는 빈 배열.
+    if (!import.meta.env.DEV) return []
+    return watchlistDevMock.map((w) => ({
+      ticker: w.ticker,
+      name: w.name,
+      currentPrice: w.currentPrice,
+      dailyChangePercent: w.dailyChangePercent,
+      earningsBadge: w.earningsBadge,
+      logoBg: w.logoBg,
+      logoFg: w.logoFg,
+      logoLabel: w.logoLabel,
+    }))
+  }, [])
+
+  // MarketStrip 데이터: DEV 만 fixture, prod 빈 배열 → placeholder.
+  const marketItems = import.meta.env.DEV ? marketIndexDevMock : []
+  // EarningsTimeline 데이터: DEV 만 fixture, prod 빈 그룹 + null live.
+  const earningsData = import.meta.env.DEV
+    ? earningsTimelineDevMock
+    : { live: null, groups: [] }
+
+  // Asset chart: 현재 IPC 미존재 — NVDA fixture 차트를 시각화 더미로 사용 (DEV).
+  //  TODO(impl): KIS_GET_ASSET_TIMESERIES 도입 후 실제 시계열 사용.
+  //  (보안: 시계열은 사용자별이므로 IPC payload 에 userId 필요 + main 측 인증 검증).
+  const assetChartPoints = useMemo(() => {
+    if (!import.meta.env.DEV) return []
+    return companyDetailDevMock.NVDA.chart30d.map((p) => ({
+      date: p.date,
+      // 가격 → 가공된 자산 추정치 (실제 수치는 실제 데이터로 교체 필요)
+      price: 11900 + (p.price - 110) * 25,
+    }))
+  }, [])
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* 헤더 행 */}
-      <div className="flex items-center justify-between shrink-0">
-        <div>
-          <h2 className="text-sm font-semibold text-text-primary">대시보드</h2>
-          {lastSyncedAt && (
-            <p className="num text-[10px] text-text-disabled mt-0.5">
-              마지막 동기화 {new Date(lastSyncedAt * 1000).toLocaleTimeString('ko-KR')}
-            </p>
-          )}
+    <div className="flex flex-col gap-2.5 h-full min-h-0">
+      {/* Row 0: 헤더 */}
+      <div className="flex items-center justify-between shrink-0 h-9">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-[18px] font-bold text-text-primary tracking-[-0.01em]">
+            대시보드
+          </h2>
+          <p className="text-[11px] text-text-tertiary">
+            마지막 동기화{' '}
+            <b className="num text-text-secondary font-medium">
+              {lastSyncedAt
+                ? new Date(lastSyncedAt * 1000).toLocaleTimeString('ko-KR')
+                : '—'}
+            </b>{' '}
+            · KIS 모의투자
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
-            className="flex items-center gap-1.5 text-xs text-text-disabled hover:text-text-primary
-                       transition-colors duration-100 px-2 py-1 rounded hover:bg-[#1c2330]"
+            type="button"
             onClick={syncBalance}
             disabled={isSyncing}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-md
+                       bg-surface-2 border border-border-strong text-text-primary
+                       hover:bg-surface-3 text-[12px] font-medium disabled:opacity-40"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                 className={isSyncing ? 'animate-spin' : ''}>
-              <path d="M21 2v6h-6" />
-              <path d="M3 12a9 9 0 0115-6.7L21 8" />
-              <path d="M3 22v-6h6" />
-              <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className={isSyncing ? 'animate-spin' : ''}
+            >
+              <path d="M2 6a4 4 0 017-2.5M10 6a4 4 0 01-7 2.5M9 2v2h-2M3 10V8h2" />
             </svg>
             {isSyncing ? '동기화 중' : '동기화'}
           </button>
-          <ModeSelector currentMode={mode} userPlan={plan} onChange={handleModeChange} size="compact" />
+          <ModeSelector
+            currentMode={mode}
+            userPlan={plan}
+            onChange={handleModeChange}
+            size="compact"
+          />
         </div>
       </div>
 
-      {/* 잔고 조회 에러 */}
       {error && (
-        <div className="shrink-0 px-3 py-2 rounded bg-red-900/30 border border-red-700/50 text-xs text-red-400">
+        <div className="shrink-0 px-3 py-2 rounded bg-sell/20 border border-sell/40 text-xs text-sell">
           {error}
         </div>
       )}
 
-      {/* 메인 그리드 */}
-      <div className="grid grid-cols-5 gap-4 flex-1 min-h-0">
-        {/* 포트폴리오 (40%) */}
-        <div className="col-span-2 card flex flex-col gap-0 p-0 overflow-hidden">
-          <PortfolioCard orderableCash={orderableCash} totalCash={totalCash} holdings={holdings} totalAsset={totalAsset} />
-        </div>
+      {/* Row 1: Market strip */}
+      <MarketStrip items={marketItems} />
 
-        {/* 신호 피드 (60%) */}
-        <div className="col-span-3 card flex flex-col p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#1e2738] shrink-0 flex items-center justify-between">
-            <span className="text-xs font-semibold text-text-primary uppercase tracking-wide">최근 신호</span>
-            <span className="num text-[10px] text-text-disabled">
-              최근 {Math.min(signalHistory.length, 5)}건
-            </span>
+      {/* Row 2: Portfolio + Asset chart */}
+      <div className="grid grid-cols-[40fr_60fr] gap-2.5 shrink-0 h-[180px]">
+        {/* Portfolio card (좌측 emerald gradient 바 추가는 PortfolioCard 컨테이너에서) */}
+        <section className="rounded-lg bg-surface-1 border border-border-subtle relative overflow-hidden">
+          {/* 좌측 2px gradient 바 — 디자인 캔버스 `.pf::before` */}
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-0 bottom-0 w-0.5 opacity-50"
+            style={{
+              background:
+                'linear-gradient(180deg, #34d399, transparent)',
+            }}
+          />
+          <PortfolioCard
+            orderableCash={orderableCash}
+            totalCash={totalCash}
+            holdings={storeHoldings}
+            totalAsset={totalAsset}
+          />
+        </section>
+
+        <AssetChartCard points={assetChartPoints} />
+      </div>
+
+      {/* Row 3: Holdings + Earnings timeline */}
+      <div className="grid grid-cols-2 gap-2.5 flex-1 min-h-0">
+        <HoldingsTable
+          holdings={holdingRows}
+          watchlist={watchRows}
+          onRowClick={(t) => openDrawer(t)}
+          rightMeta={
+            totalAsset > 0
+              ? `평가 $${(totalAsset - totalCash).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : undefined
+          }
+        />
+        <EarningsTimeline
+          data={earningsData}
+          onPickTicker={(t) => openDrawer(t)}
+          onEnterLive={(t) =>
+            navigate(`/trading-room?ticker=${encodeURIComponent(t)}`)
+          }
+        />
+      </div>
+
+      {/* CompanyDrawer (전역 마운트 — useDrawerStore 가 트리거) */}
+      <CompanyDrawer />
+    </div>
+  )
+}
+
+/**
+ * Row 2 의 자산 추이 카드. 30D 라인 차트 + Y/X 축 라벨 + 범위 버튼 (UI 전용).
+ * 별도 컴포넌트로 분리하지 않고 페이지 내부 헬퍼로 (재사용 없음).
+ */
+function AssetChartCard({ points }: { points: { date: string; price: number }[] }) {
+  if (points.length === 0) {
+    return (
+      <section className="rounded-lg bg-surface-1 border border-border-subtle flex items-center justify-center text-[11px] text-text-disabled">
+        자산 추이 동기화 중…
+      </section>
+    )
+  }
+
+  const prices = points.map((p) => p.price)
+  const start = prices[0]
+  const end = prices[prices.length - 1]
+  const change = end - start
+  const changePct = (change / start) * 100
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+
+  return (
+    <section className="rounded-lg bg-surface-1 border border-border-subtle flex flex-col min-h-0 overflow-hidden">
+      {/* card header */}
+      <div className="h-[38px] px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
+        <div className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
+          자산 추이
+        </div>
+        <div className="inline-flex bg-surface-2 border border-border-subtle rounded-md p-0.5">
+          {(['7D', '30D', '90D'] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={`num px-2.5 py-0.5 rounded text-[10px] font-semibold tracking-[0.08em]
+                          ${r === '30D' ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}`}
+              // TODO(impl): 범위 변경 → IPC fetch (KIS_GET_ASSET_TIMESERIES)
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-3 px-3.5 pt-2.5 pb-1">
+        <div className="flex gap-3.5 text-[10px] text-text-tertiary">
+          <div>
+            시작{' '}
+            <b className="num text-text-secondary font-medium">
+              ${start.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </b>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            <SignalFeed items={signalHistory.slice(0, 5)} />
+          <div>
+            고점{' '}
+            <b className="num text-text-secondary font-medium">
+              ${max.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </b>
+          </div>
+          <div>
+            저점{' '}
+            <b className="num text-text-secondary font-medium">
+              ${min.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </b>
+          </div>
+        </div>
+        <div className="flex gap-3.5 text-[10px] text-text-secondary">
+          <div>
+            기간 손익{' '}
+            <b className={`num font-medium ${change >= 0 ? 'text-buy' : 'text-sell'}`}>
+              {change >= 0 ? '+' : ''}${change.toFixed(2)}
+            </b>
+          </div>
+          <div>
+            수익률{' '}
+            <b className={`num font-medium ${changePct >= 0 ? 'text-buy' : 'text-sell'}`}>
+              {changePct >= 0 ? '+' : ''}
+              {changePct.toFixed(2)}%
+            </b>
           </div>
         </div>
       </div>
-    </div>
+
+      <div className="relative flex-1 px-2.5 pb-2 min-h-0">
+        <div className="absolute left-0.5 top-1 bottom-4 w-11 flex flex-col justify-between
+                        num text-[9px] text-text-tertiary text-right pr-1">
+          {pickYTicks(prices).map((y) => (
+            <span key={y}>${y.toLocaleString()}</span>
+          ))}
+        </div>
+        {/* Y축 라벨 영역(w-11=44px) + 8px 갭 = 52px. tailwind 기본 spacing 에 13(52px) 이
+            없으므로 임의값 사용. CompanyDrawer (w-10 + left-11=4px gap) 와는 의도적으로
+            다름 — 자산 추이 카드의 Y축 라벨이 더 길다 ($1,234,567 등). */}
+        <div className="absolute left-[52px] right-2.5 top-1 bottom-4">
+          <MiniLineChart
+            points={points}
+            color={change >= 0 ? 'accent' : 'sell'}
+            viewWidth={600}
+            viewHeight={110}
+          />
+        </div>
+        <div className="absolute left-[52px] right-2.5 bottom-1 flex justify-between
+                        num text-[9px] text-text-tertiary">
+          {pickXLabels(points).map((d) => (
+            <span key={d}>{d}</span>
+          ))}
+        </div>
+      </div>
+    </section>
   )
+}
+
+function pickYTicks(prices: number[]): number[] {
+  if (prices.length === 0) return [0]
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 1
+  const step = range / 3
+  return [max, max - step, max - step * 2, min].map((v) => Math.round(v / 100) * 100)
+}
+
+function pickXLabels(points: { date: string }[]): string[] {
+  if (points.length === 0) return []
+  if (points.length <= 5) return points.map((p) => p.date)
+  const result: string[] = []
+  for (let i = 0; i < 5; i++) {
+    const idx = Math.round((i * (points.length - 1)) / 4)
+    result.push(points[idx].date)
+  }
+  return result
 }
