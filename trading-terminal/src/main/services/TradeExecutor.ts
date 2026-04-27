@@ -33,10 +33,37 @@ function pushToRenderer(channel: string, payload: unknown) {
   })
 }
 
+/**
+ * 시그널 페이로드 검증 — 백엔드 송신 오류·악의적 페이로드를 단일 진입점에서 차단.
+ * 정상 시 null, 비정상 시 실패 사유 문자열 반환.
+ */
+function validateSignal(signal: TradeSignal): string | null {
+  if (!signal) return '시그널 페이로드 없음'
+  if (signal.action !== 'BUY' && signal.action !== 'SELL') {
+    return `비정상 action=${signal.action}`
+  }
+  if (typeof signal.ticker !== 'string' || signal.ticker.trim().length === 0) {
+    return '비정상 ticker (빈 값)'
+  }
+  if (typeof signal.trade_id !== 'string' || signal.trade_id.trim().length === 0) {
+    return '비정상 trade_id (빈 값)'
+  }
+  // order_ratio: NaN/Infinity 등은 calcQty가 0주로 막지만 빠른 실패가 더 명확
+  if (!Number.isFinite(signal.order_ratio) || signal.order_ratio <= 0 || signal.order_ratio > 1) {
+    return `비정상 order_ratio=${signal.order_ratio}`
+  }
+  return null
+}
+
 export const TradeExecutor = {
   async execute(signal: TradeSignal): Promise<TradeResult> {
     if (mainState.isOrderInProgress) {
       return failResult(signal.trade_id, '이미 주문이 진행 중입니다.')
+    }
+
+    const validationError = validateSignal(signal)
+    if (validationError) {
+      return await sendFailCallback(signal?.trade_id || 'invalid', validationError)
     }
 
     mainState.setOrderInProgress(true)
@@ -96,7 +123,7 @@ type BalanceLite = { orderableCash: number; holdings: { ticker: string; qty: num
  * 주문 수량 산출 — 서버가 내려준 order_ratio를 로컬 실잔고·실가격에 적용한다.
  * 자본시장법상 수량 결정 주체는 사용자 로컬(본 함수)이며, 서버는 비율까지만 결정한다.
  */
-function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number): number {
+export function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number): number {
   const ratio = signal.order_ratio
   if (!(ratio > 0 && ratio <= 1)) return 0
 
@@ -114,7 +141,7 @@ function calcQty(signal: TradeSignal, balance: BalanceLite, currentPrice: number
   return Math.floor(available * ratio)
 }
 
-function failureReason(signal: TradeSignal, balance: BalanceLite, currentPrice: number): string {
+export function failureReason(signal: TradeSignal, balance: BalanceLite, currentPrice: number): string {
   if (!(signal.order_ratio > 0 && signal.order_ratio <= 1)) return `비정상 order_ratio=${signal.order_ratio}`
   if (signal.action === 'BUY') {
     if (currentPrice <= 0) return '현재가 조회 실패'
