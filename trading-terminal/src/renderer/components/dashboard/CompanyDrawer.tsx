@@ -7,6 +7,9 @@ import EarningsHistoryTable from './EarningsHistoryTable'
 import MiniLineChart from './MiniLineChart'
 import { useDrawerStore } from '../../store/useDrawerStore'
 import { companyDetailDevMock, type CompanyDetailFixture } from '../../fixtures/companyDetail.dev-mock'
+// chartUtils 통합 (PR #4) — DashboardPage 와 중복이었던 pickXLabels/pickYTicks 추출.
+// 30일 일봉은 수백 단위 가격이므로 step=10 으로 호출.
+import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../../lib/chartUtils'
 
 /**
  * CompanyDrawer — 우측 400px 슬라이드 패널.
@@ -369,23 +372,10 @@ function KV({ k, v, kind }: { k: string; v: string; kind?: 'sub' }) {
 
 /** 가격 시계열 → 4단계 Y축 레이블 (디자인 캔버스: $130/$120/$110/$100). */
 function pickYTicks(prices: number[]): number[] {
-  if (prices.length === 0) return [0]
-  const min = Math.min(...prices)
-  const max = Math.max(...prices)
-  const range = max - min || 1
-  const step = range / 3
-  // 위에서 아래로 (max → min)
-  return [max, max - step, max - step * 2, min].map((v) => Math.round(v / 10) * 10)
+  return pickYTicksUtil(prices, 4, 10)
 }
 
 /** 시계열에서 5개 X축 레이블 균등 추출 (디자인 캔버스: 03-20 / 03-28 / 04-05 / 04-13 / 04-20). */
 function pickXLabels(points: { date: string }[]): string[] {
-  if (points.length === 0) return []
-  if (points.length <= 5) return points.map((p) => p.date)
-  const result: string[] = []
-  for (let i = 0; i < 5; i++) {
-    const idx = Math.round((i * (points.length - 1)) / 4)
-    result.push(points[idx].date)
-  }
-  return result
+  return pickXLabelsUtil(points, 5).map((p) => p.date)
 }

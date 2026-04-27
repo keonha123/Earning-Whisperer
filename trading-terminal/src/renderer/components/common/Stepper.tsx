@@ -9,6 +9,8 @@ interface StepperProps {
   /** 값 표시 시 우측에 붙이는 단위 (예: "분") — 시각용, aria-valuetext 에는 사용 안함 */
   suffix?: string
   ariaLabel?: string
+  /** true 면 모든 입력/버튼 비활성 (시각적 잠금 + 인터랙션 차단) */
+  disabled?: boolean
 }
 
 /**
@@ -30,6 +32,7 @@ export default function Stepper({
   onChange,
   suffix,
   ariaLabel,
+  disabled = false,
 }: StepperProps) {
   const clamp = (v: number) => Math.min(max, Math.max(min, v))
 
@@ -68,11 +71,14 @@ export default function Stepper({
   }
 
   return (
-    <div className="flex items-center bg-surface-3 border border-border-strong rounded-md overflow-hidden h-8 focus-within:ring-2 focus-within:ring-accent-500/40">
+    <div
+      className={`flex items-center bg-surface-3 border border-border-strong rounded-md overflow-hidden h-8 focus-within:ring-2 focus-within:ring-accent-500/40 ${disabled ? 'opacity-40' : ''}`}
+      aria-disabled={disabled || undefined}
+    >
       <button
         type="button"
         onClick={decrement}
-        disabled={value <= min}
+        disabled={disabled || value <= min}
         aria-label="감소"
         className="w-8 h-full grid place-items-center text-text-tertiary hover:bg-surface-2 hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed text-base"
       >
@@ -92,8 +98,9 @@ export default function Stepper({
             ;(e.target as HTMLInputElement).blur()
           }
         }}
+        disabled={disabled}
         aria-label={ariaLabel}
-        className="flex-1 min-w-0 h-full bg-transparent text-center font-mono text-sm text-text-primary tabular-nums font-medium outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className="flex-1 min-w-0 h-full bg-transparent text-center font-mono text-sm text-text-primary tabular-nums font-medium outline-none disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
       />
       {suffix && (
         <span className="font-mono text-sm text-text-tertiary tabular-nums pr-1.5 select-none">
@@ -103,7 +110,7 @@ export default function Stepper({
       <button
         type="button"
         onClick={increment}
-        disabled={value >= max}
+        disabled={disabled || value >= max}
         aria-label="증가"
         className="w-8 h-full grid place-items-center text-text-tertiary hover:bg-surface-2 hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed text-base"
       >

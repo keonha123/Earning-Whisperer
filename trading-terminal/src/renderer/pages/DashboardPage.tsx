@@ -12,13 +12,15 @@ import MarketStrip from '../components/dashboard/MarketStrip'
 import EarningsTimeline from '../components/dashboard/EarningsTimeline'
 import HoldingsTable, { type HoldingsTableRow } from '../components/dashboard/HoldingsTable'
 import MiniLineChart from '../components/dashboard/MiniLineChart'
-import CompanyDrawer from '../components/dashboard/CompanyDrawer'
 
 import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
 import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 import { holdingsDevMock, watchlistDevMock } from '../fixtures/holdings.dev-mock'
 import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
+// chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
+// step=100 (수십만~수백만 단위 자산 차트) 으로 호출.
+import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
 
 /**
  * DashboardPage — 4-Row 레이아웃.
@@ -28,7 +30,8 @@ import { useNavigate } from 'react-router-dom'
  *  Row 2 (Portfolio + AssetChart): PortfolioCard + 30D SVG 차트.
  *  Row 3 (Holdings + Earnings): HoldingsTable + EarningsTimeline.
  *
- *  Drawer: CompanyDrawer 가 페이지 하단에 mount, useDrawerStore 가 트리거.
+ *  Drawer: CompanyDrawer 는 AppLayout 에 전역 단일 mount (PR #4 리뷰 반영).
+ *    페이지에서는 useDrawerStore.open(ticker) 호출만으로 트리거.
  *
  * 보존 동작:
  *  - 마운트 시 KIS_GET_BALANCE 1회.
@@ -270,9 +273,6 @@ export default function DashboardPage() {
           }
         />
       </div>
-
-      {/* CompanyDrawer (전역 마운트 — useDrawerStore 가 트리거) */}
-      <CompanyDrawer />
     </div>
   )
 }
@@ -388,21 +388,9 @@ function AssetChartCard({ points }: { points: { date: string; price: number }[] 
 }
 
 function pickYTicks(prices: number[]): number[] {
-  if (prices.length === 0) return [0]
-  const min = Math.min(...prices)
-  const max = Math.max(...prices)
-  const range = max - min || 1
-  const step = range / 3
-  return [max, max - step, max - step * 2, min].map((v) => Math.round(v / 100) * 100)
+  return pickYTicksUtil(prices, 4, 100)
 }
 
 function pickXLabels(points: { date: string }[]): string[] {
-  if (points.length === 0) return []
-  if (points.length <= 5) return points.map((p) => p.date)
-  const result: string[] = []
-  for (let i = 0; i < 5; i++) {
-    const idx = Math.round((i * (points.length - 1)) / 4)
-    result.push(points[idx].date)
-  }
-  return result
+  return pickXLabelsUtil(points, 5).map((p) => p.date)
 }
