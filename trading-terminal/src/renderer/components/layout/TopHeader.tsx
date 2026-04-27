@@ -1,6 +1,5 @@
 import { useConnectionStore } from '../../store/useConnectionStore'
 import { useUserStore } from '../../store/useUserStore'
-import { useTradingStore } from '../../store/useTradingStore'
 import { ipc, IPC_CHANNELS } from '../../lib/ipc'
 import type { WsStatus, KisTokenStatus } from '../../store/useConnectionStore'
 
@@ -27,7 +26,6 @@ const KIS_DOT_TONE: Record<KisTokenStatus, string> = {
 export default function TopHeader({ currentPath }: { currentPath: string }) {
   const { wsStatus, kisTokenStatus, setAuthenticated } = useConnectionStore()
   const { nickname, clear } = useUserStore()
-  const { activeSignal } = useTradingStore()
 
   async function handleLogout() {
     try {
@@ -43,7 +41,12 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
 
   return (
     <header className="h-12 bg-surface-0 border-b border-border-strong flex items-center px-4 gap-3">
-      {/* 좌측: 브레드크럼 + 페이지 타이틀 */}
+      {/*
+        좌측: 브레드크럼 + 페이지 타이틀.
+        모든 페이지에서 동일하게 워크스페이스 + 페이지 타이틀 + WS/KIS/유저 만 표시한다.
+        TradingRoom 의 ticker / 회사명 / LIVE / 종목정보 버튼은 TradingRoomHeader 가 흡수
+        (페이지 내부 상단 행). 두 곳에서 같은 ticker 가 중복 표시되지 않도록 분리.
+      */}
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
         <span className="text-text-tertiary text-[11px] font-medium uppercase tracking-[0.12em] shrink-0">
           Workspace /
@@ -52,26 +55,6 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
           {PAGE_TITLES[currentPath] ?? ''}
         </span>
       </div>
-
-      {/* 중앙: 활성 시그널 ticker (트레이딩 룸에서만) */}
-      {currentPath === '/trading-room' && activeSignal && (
-        <div className="flex items-center gap-2 bg-surface-1 border border-border-subtle rounded-md px-3 py-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-buy animate-pulse shrink-0" />
-          <span className="num text-sm font-semibold text-text-primary">
-            {activeSignal.ticker}
-          </span>
-          <span
-            className={`text-xs font-semibold num ${
-              activeSignal.action === 'BUY' ? 'text-buy' : 'text-sell'
-            }`}
-          >
-            {activeSignal.action}
-          </span>
-          <span className="num text-xs text-text-tertiary">
-            {(activeSignal.ai_score * 100).toFixed(0)}
-          </span>
-        </div>
-      )}
 
       {/* 우측: 연결 상태 + 유저 + 로그아웃 */}
       <div className="flex items-center gap-2 shrink-0">
