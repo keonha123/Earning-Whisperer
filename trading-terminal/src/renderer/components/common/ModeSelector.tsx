@@ -65,7 +65,7 @@ export default function ModeSelector({ currentMode, userPlan, onChange, size = '
   return (
     <div className={`flex gap-1.5 ${
       size === 'full'
-        ? 'p-3 bg-[#161b22] rounded-lg border border-[#2a3344]'
+        ? 'p-3 bg-surface-1 rounded-lg border border-border-strong'
         : ''
     }`}>
       {(Object.entries(MODE_CONFIG) as [TradingMode, typeof MODE_CONFIG[TradingMode]][]).map(([value, conf]) => {

@@ -125,7 +125,7 @@ export default function HistoryPage() {
                     key={t.id}
                     className="table-row-accent border-b border-[#1e2738] hover:bg-[#1c2330] transition-colors duration-100"
                   >
-                    <td className="px-4 py-3 num text-xs text-text-secondary">
+                    <td className="px-4 py-3 num text-xs text-text-tertiary">
                       {new Date(t.createdAt).toLocaleString('ko-KR')}
                     </td>
                     <td className="px-4 py-3 num text-sm font-semibold text-text-primary">

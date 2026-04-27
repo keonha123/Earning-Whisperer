@@ -12,7 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="h-screen overflow-hidden"
+      className="h-screen overflow-hidden bg-bg-base text-text-secondary"
       style={{
         display: 'grid',
         gridTemplateRows: 'auto 48px 1fr 32px',
@@ -39,11 +39,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <TopHeader currentPath={location.pathname} />
       </div>
 
-      <div style={{ gridArea: 'sidebar' }} className="bg-[#0f1215] border-r border-[#2a3344] overflow-y-auto">
+      <div
+        style={{ gridArea: 'sidebar' }}
+        className="bg-surface-0 border-r border-border-strong overflow-y-auto"
+      >
         <LeftSidebar activePath={location.pathname} onNavigate={navigate} />
       </div>
 
-      <main style={{ gridArea: 'content' }} className="overflow-y-auto p-6 bg-bg-base">
+      <main
+        style={{ gridArea: 'content' }}
+        className="overflow-y-auto p-6 bg-bg-base"
+      >
         {children}
       </main>
 

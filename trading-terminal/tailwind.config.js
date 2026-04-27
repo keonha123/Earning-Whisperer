@@ -4,41 +4,74 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Surface (배경 계층)
         bg: {
-          base: '#0a0c0f',
+          base: '#030712', // 가장 어두운 외곽 (앱 베이스)
         },
         surface: {
-          0: '#0f1215',
-          1: '#161b22',
-          2: '#1c2330',
-          3: '#232d3f',
+          0: '#0b1017', // AppShell, sidebar/header 배경
+          1: '#111827', // 카드, 테이블
+          2: '#1a2332', // hover, 활성
+          3: '#242e3f', // input, dropdown
         },
-        border: {
-          DEFAULT: '#2a3344',
-          subtle: '#1e2738',
-          focus: '#3b82f6',
+
+        // Accent (PRIMARY, 에메랄드 스케일)
+        accent: {
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981', // PRIMARY
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+          DEFAULT: '#10b981',
+          // accent 색 위에 올라가는 텍스트 (로고 텍스트, accent 버튼 텍스트 등)
+          foreground: '#041711',
         },
-        text: {
-          primary: '#e2e8f0',
-          secondary: '#94a3b8',
-          disabled: '#4a5568',
-        },
-        brand: {
-          DEFAULT: '#3b82f6',
-          hover: '#2563eb',
-        },
+
+        // Signal / Semantic
         buy: {
-          DEFAULT: '#22c55e',
-          hover: '#16a34a',
-          subtle: 'rgba(34,197,94,0.12)',
+          DEFAULT: '#10b981',
+          hover: '#059669',
+          subtle: 'rgba(16,185,129,0.12)',
         },
         sell: {
           DEFAULT: '#ef4444',
           hover: '#dc2626',
           subtle: 'rgba(239,68,68,0.12)',
         },
-        connected: '#22c55e',
-        connecting: '#f59e0b',
+        warning: {
+          DEFAULT: '#f59e0b',
+          subtle: 'rgba(245,158,11,0.12)',
+        },
+        info: {
+          DEFAULT: '#3b82f6',
+          subtle: 'rgba(59,130,246,0.12)',
+        },
+        neutral: {
+          DEFAULT: '#64748b',
+          subtle: 'rgba(100,116,139,0.12)',
+        },
+
+        // Border
+        border: {
+          DEFAULT: '#2a3344', // = strong (기존 호환)
+          subtle: '#1e2738',
+          strong: '#2a3344',
+          focus: '#10b981', // 파랑 → 에메랄드
+        },
+
+        // Text (4단계로 세분화)
+        text: {
+          primary: '#f9fafb',
+          secondary: '#cbd5e1',
+          tertiary: '#94a3b8',
+          disabled: '#64748b',
+        },
+
+        // 연결 상태 (기존 키 유지, 값만 에메랄드 통일)
+        connected: '#10b981',
+        connecting: '#f59e0b',  // = warning. WS 재연결 의미 한정 — 신규 코드는 warning 사용
         reconnecting: '#f97316',
         disconnected: '#ef4444',
       },
