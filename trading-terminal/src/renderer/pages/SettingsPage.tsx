@@ -1,22 +1,57 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useUserStore } from '../store/useUserStore'
 import { useConnectionStore } from '../store/useConnectionStore'
+import Slider from '../components/common/Slider'
+import Stepper from '../components/common/Stepper'
+import KisStatusTimeline, {
+  type KisTimelineStep,
+} from '../components/settings/KisStatusTimeline'
+import { kisStatusDevMock } from '../fixtures/kisStatus.dev-mock'
+
+// fixture 메타데이터(AppKey, 핑 지연 등)는 dev 빌드에서만 노출.
+// prod 에서는 generic 메시지만 표시 — 사용자가 더미 값을 진짜로 오인하지 않도록.
+const SHOW_DEV_KIS_META = import.meta.env.DEV
+
+const SETTINGS_DEFAULT = {
+  maxBuyRatio: 0.1,
+  maxHoldingRatio: 0.3,
+  cooldownMinutes: 5,
+  emaThreshold: 0.6,
+}
 
 export default function SettingsPage() {
-  const { settings, setSettings } = useUserStore()
-  const { kisTokenStatus, hasCredentials, setHasCredentials, setKisTokenStatus } = useConnectionStore()
+  const { settings, setSettings, setEmaThreshold } = useUserStore()
+  const {
+    kisTokenStatus,
+    hasCredentials,
+    setHasCredentials,
+    setKisTokenStatus,
+  } = useConnectionStore()
 
   const [form, setForm] = useState({ ...settings })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // "저장됨" 배지 자동 hide 타이머 — 연속 저장 race / 언마운트 후 setState 방지.
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current !== null) {
+        clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = null
+      }
+    }
+  }, [])
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     setSaveError(null)
     try {
+      // 주의: emaThreshold 는 IPC 페이로드에 포함하지 않음 — store 에만 반영.
+      // TODO: emaThreshold 백엔드 영속화 (SETTINGS_UPDATE 시그니처 확장 필요, 별도 PR)
       await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
         tradingMode: form.tradingMode,
         maxBuyRatio: form.maxBuyRatio,
@@ -24,13 +59,30 @@ export default function SettingsPage() {
         cooldownMinutes: form.cooldownMinutes,
       })
       setSettings(form)
+      setEmaThreshold(form.emaThreshold)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (e: any) {
-      setSaveError(e?.message ?? '저장에 실패했습니다.')
+      if (savedTimerRef.current !== null) {
+        clearTimeout(savedTimerRef.current)
+      }
+      savedTimerRef.current = setTimeout(() => {
+        setSaved(false)
+        savedTimerRef.current = null
+      }, 2000)
+    } catch (err: any) {
+      setSaveError(err?.message ?? '저장에 실패했습니다.')
     } finally {
       setSaving(false)
     }
+  }
+
+  function handleReset() {
+    setForm({
+      ...form,
+      maxBuyRatio: SETTINGS_DEFAULT.maxBuyRatio,
+      maxHoldingRatio: SETTINGS_DEFAULT.maxHoldingRatio,
+      cooldownMinutes: SETTINGS_DEFAULT.cooldownMinutes,
+      emaThreshold: SETTINGS_DEFAULT.emaThreshold,
+    })
   }
 
   async function handleDeleteCredentials() {
@@ -43,211 +95,376 @@ export default function SettingsPage() {
     try {
       await ipc.invoke(IPC_CHANNELS.KIS_ISSUE_TOKEN)
       setKisTokenStatus('VALID')
-    } catch (e: any) {
-      alert('토큰 발급 실패: ' + e?.message)
+    } catch (err: any) {
+      alert('토큰 발급 실패: ' + err?.message)
     }
   }
 
+  // KIS 라이브 상태 기반 타임라인.
+  // dev 빌드: fixture 메타(AppKey, 만료시간, 핑 등) 결합 표시
+  // prod 빌드: generic 메시지만 표시 (fixture 누출 방지)
+  const liveSteps: KisTimelineStep[] = [
+    {
+      id: 'apikey',
+      title: hasCredentials ? 'API 키 등록됨' : 'API 키 미등록',
+      sub: hasCredentials
+        ? SHOW_DEV_KIS_META
+          ? (
+              <>
+                AppKey: <b className="text-text-secondary font-medium">{kisStatusDevMock.appKey}</b> · 등록일{' '}
+                {kisStatusDevMock.registeredAt}
+              </>
+            )
+          : 'API 키가 안전하게 저장되어 있습니다'
+        : '등록된 API 키가 없습니다',
+      status: hasCredentials ? 'done' : 'pending',
+    },
+    {
+      id: 'token',
+      title:
+        kisTokenStatus === 'VALID'
+          ? '액세스 토큰 유효'
+          : kisTokenStatus === 'EXPIRED'
+            ? '액세스 토큰 만료'
+            : '액세스 토큰 미발급',
+      sub:
+        kisTokenStatus === 'VALID'
+          ? SHOW_DEV_KIS_META
+            ? (
+                <>
+                  만료까지 <b className="text-text-secondary font-medium">{kisStatusDevMock.tokenExpiresIn}</b> 남음 · 자동 갱신{' '}
+                  {kisStatusDevMock.autoRefresh ? 'ON' : 'OFF'}
+                </>
+              )
+            : '토큰이 정상 발급되어 있습니다'
+          : '토큰 재발급이 필요합니다',
+      status: kisTokenStatus === 'VALID' ? 'done' : kisTokenStatus === 'EXPIRED' ? 'error' : 'pending',
+    },
+    {
+      id: 'connection',
+      title:
+        hasCredentials && kisTokenStatus === 'VALID'
+          ? '서버 연결 정상'
+          : '서버 연결 대기',
+      sub:
+        hasCredentials && kisTokenStatus === 'VALID'
+          ? SHOW_DEV_KIS_META
+            ? (
+                <>
+                  마지막 핑 <b className="text-text-secondary font-medium">{kisStatusDevMock.lastPingAgo}</b> · 지연{' '}
+                  <b className="text-text-secondary font-medium">{kisStatusDevMock.pingMs}ms</b>
+                </>
+              )
+            : '정상 연결됨'
+          : 'API 키와 토큰 등록 후 연결됩니다',
+      status:
+        hasCredentials && kisTokenStatus === 'VALID' ? 'done' : 'pending',
+    },
+  ]
+
+  const isKisHealthy = hasCredentials && kisTokenStatus === 'VALID'
+
   return (
-    <div className="flex flex-col gap-4 max-w-2xl">
-      {/* 섹션: 리스크 파라미터 */}
-      <section className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#1e2738] flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-accent-500/10 border border-accent-500/20
-                          flex items-center justify-center shrink-0 text-accent-500">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <div className="max-w-2xl mx-auto py-8 flex flex-col gap-6">
+      {/* 페이지 헤더 */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-text-primary text-xl font-semibold tracking-tight">설정</h1>
+        <p className="text-text-tertiary text-base">
+          거래 위험 관리 파라미터와 KIS 연동 상태를 관리합니다.
+        </p>
+      </div>
+
+      {/* 카드 1 — 리스크 파라미터 */}
+      <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
+            style={{
+              background: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.2)',
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M8 1.5l5.5 2v4.25c0 3.25-2.3 5.75-5.5 6.5-3.2-.75-5.5-3.25-5.5-6.5V3.5L8 1.5z" />
             </svg>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-text-primary">리스크 파라미터</p>
-            <p className="text-[10px] text-text-disabled mt-0.5">자동 매매 시 적용되는 위험 관리 규칙</p>
+          <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
+            리스크 파라미터
           </div>
+          {saved && (
+            <span
+              className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider whitespace-nowrap"
+              style={{
+                background: 'rgba(16,185,129,0.10)',
+                color: '#34d399',
+                border: '1px solid rgba(16,185,129,0.25)',
+              }}
+            >
+              <span className="w-[5px] h-[5px] rounded-full bg-accent-500" />
+              저장됨
+            </span>
+          )}
         </div>
 
-        <form onSubmit={handleSave} className="px-5 py-5 flex flex-col gap-5">
-          <RatioField
-            label="1회 매수 비율"
-            description="신호 1건당 현금의 최대 사용 비율"
-            value={form.maxBuyRatio}
-            onChange={(v) => setForm({ ...form, maxBuyRatio: v })}
-            min={0} max={1} step={0.01}
-            color="#3b82f6"
-          />
-          <RatioField
-            label="최대 보유 비중"
-            description="단일 종목의 포트폴리오 최대 비중"
-            value={form.maxHoldingRatio}
-            onChange={(v) => setForm({ ...form, maxHoldingRatio: v })}
-            min={0} max={1} step={0.01}
-            color="#22c55e"
-          />
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-text-primary">쿨다운</p>
-                <p className="text-[10px] text-text-disabled mt-0.5">동일 종목 연속 매매 대기 시간</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  className="input-base w-20 text-right"
-                  type="number" min={0} max={60}
-                  value={form.cooldownMinutes}
-                  onChange={(e) => setForm({ ...form, cooldownMinutes: Number(e.target.value) })}
+        <form onSubmit={handleSave} className="flex flex-col">
+          <div className="flex flex-col">
+            {/* Row 1 — 1회 매수 비율 */}
+            <SettingsRow
+              label="1회 매수 비율"
+              description="1회 시그널당 총 자산 대비 매수 비중"
+              control={
+                <Slider
+                  value={Math.round(form.maxBuyRatio * 100)}
+                  min={5}
+                  max={50}
+                  step={1}
+                  onChange={(v) => setForm({ ...form, maxBuyRatio: v / 100 })}
+                  formatValue={(v) => `${v}%`}
+                  ariaLabel="1회 매수 비율"
                 />
-                <span className="text-text-disabled text-xs">분</span>
-              </div>
-            </div>
+              }
+              valueDisplay={
+                <>
+                  {Math.round(form.maxBuyRatio * 100)}
+                  <span className="text-sm text-text-tertiary font-medium ml-0.5">%</span>
+                </>
+              }
+            />
+
+            {/* Row 2 — 최대 보유 비중 */}
+            <SettingsRow
+              label="최대 보유 비중"
+              description="단일 종목 최대 포지션 한도"
+              control={
+                <Slider
+                  value={Math.round(form.maxHoldingRatio * 100)}
+                  min={10}
+                  max={100}
+                  step={1}
+                  onChange={(v) => setForm({ ...form, maxHoldingRatio: v / 100 })}
+                  formatValue={(v) => `${v}%`}
+                  ariaLabel="최대 보유 비중"
+                />
+              }
+              valueDisplay={
+                <>
+                  {Math.round(form.maxHoldingRatio * 100)}
+                  <span className="text-sm text-text-tertiary font-medium ml-0.5">%</span>
+                </>
+              }
+            />
+
+            {/* Row 3 — 쿨다운 */}
+            <SettingsRow
+              label="쿨다운"
+              description="동일 종목 재진입 대기 시간"
+              control={
+                <div className="flex flex-col gap-0.5">
+                  <Stepper
+                    value={form.cooldownMinutes}
+                    min={1}
+                    max={120}
+                    step={1}
+                    onChange={(v) => setForm({ ...form, cooldownMinutes: v })}
+                    ariaLabel="쿨다운"
+                  />
+                  <div className="flex justify-between font-mono text-xs text-text-disabled px-0.5 mt-0.5">
+                    <span>최소 1분</span>
+                    <span>최대 120분</span>
+                  </div>
+                </div>
+              }
+              valueDisplay={
+                <>
+                  {form.cooldownMinutes}
+                  <span className="text-sm text-text-tertiary font-medium ml-0.5">분</span>
+                </>
+              }
+            />
+
+            {/* Row 4 — 매매 Threshold (EMA) */}
+            <SettingsRow
+              label="매매 Threshold"
+              description="AI 점수가 이 값 이상일 때만 신호 발동 (0.0 ~ 1.0)"
+              control={
+                <Slider
+                  value={form.emaThreshold}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={(v) => setForm({ ...form, emaThreshold: v })}
+                  formatValue={(v) => v.toFixed(2)}
+                  ariaLabel="매매 Threshold"
+                />
+              }
+              valueDisplay={form.emaThreshold.toFixed(2)}
+              isLast
+            />
           </div>
 
           {saveError && (
-            <p className="text-sell text-xs">{saveError}</p>
+            <p className="text-sell text-sm mt-2">{saveError}</p>
           )}
 
-          <div className="pt-1">
+          <div className="flex gap-2 justify-end pt-1 mt-2">
+            <button
+              type="button"
+              onClick={handleReset}
+              className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent border border-border-strong text-text-tertiary hover:bg-surface-2 hover:text-text-primary transition-colors"
+            >
+              기본값으로 초기화
+            </button>
             <button
               type="submit"
-              className={`btn-primary w-full transition-all duration-200
-                          ${saved ? 'bg-buy hover:bg-buy' : ''}`}
               disabled={saving}
+              className="h-[34px] px-3.5 rounded-md text-sm font-bold tracking-wide inline-flex items-center justify-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-accent-foreground disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
-              {saved ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                       stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  저장됨
-                </span>
-              ) : saving ? '저장 중...' : '저장'}
+              {saving ? '저장 중...' : '저장'}
             </button>
           </div>
         </form>
       </section>
 
-      {/* 섹션: KIS 연동 */}
-      <section className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#1e2738] flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-[#1c2330] border border-[#2a3344]
-                          flex items-center justify-center shrink-0 text-text-tertiary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="5" width="20" height="14" rx="2" />
-              <line x1="2" y1="10" x2="22" y2="10" />
+      {/* 카드 2 — KIS Open API 연동 */}
+      <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
+            style={{
+              background: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.2)',
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M6.5 9.5l-2 2a2 2 0 01-2.83-2.83l3-3a2 2 0 012.83 0M9.5 6.5l2-2a2 2 0 012.83 2.83l-3 3a2 2 0 01-2.83 0" />
             </svg>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-text-primary">KIS 연동</p>
-            <p className="text-[10px] text-text-disabled mt-0.5">한국투자증권 Open API 연결 상태</p>
+          <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
+            KIS Open API 연동
           </div>
+          <span
+            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider whitespace-nowrap"
+            style={{
+              background: isKisHealthy
+                ? 'rgba(16,185,129,0.10)'
+                : 'rgba(245,158,11,0.10)',
+              color: isKisHealthy ? '#34d399' : '#f59e0b',
+              border: isKisHealthy
+                ? '1px solid rgba(16,185,129,0.25)'
+                : '1px solid rgba(245,158,11,0.25)',
+            }}
+          >
+            <span
+              className="w-[5px] h-[5px] rounded-full"
+              style={{ background: isKisHealthy ? '#10b981' : '#f59e0b' }}
+            />
+            {isKisHealthy ? '연결 정상' : '연결 대기'}
+          </span>
         </div>
 
-        <div className="px-5 py-5 flex flex-col gap-4">
-          {/* 상태 타임라인 */}
-          <div className="flex items-center gap-0">
-            <KisStep
-              done={hasCredentials}
-              label="API 키"
-              sublabel={hasCredentials ? '등록됨' : '미등록'}
-            />
-            <div className={`flex-1 h-px mx-2 ${hasCredentials ? 'bg-accent-500' : 'bg-[#2a3344]'}`} />
-            <KisStep
-              done={kisTokenStatus === 'VALID'}
-              label="토큰"
-              sublabel={kisTokenStatus === 'VALID' ? '유효' : kisTokenStatus === 'EXPIRED' ? '만료' : '미발급'}
-            />
-            <div className={`flex-1 h-px mx-2 ${kisTokenStatus === 'VALID' ? 'bg-buy' : 'bg-[#2a3344]'}`} />
-            <KisStep
-              done={hasCredentials && kisTokenStatus === 'VALID'}
-              label="연결"
-              sublabel={hasCredentials && kisTokenStatus === 'VALID' ? '정상' : '대기'}
-            />
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="grid grid-cols-2 gap-3 mt-1">
-            <button className="btn-ghost text-sm" onClick={handleIssueToken}>
-              토큰 재발급
-            </button>
-            <button
-              className="btn-danger-ghost text-sm"
-              onClick={handleDeleteCredentials}
-              disabled={!hasCredentials}
+        {/* 보안 안내 */}
+        <div className="text-sm text-text-secondary leading-[1.55] bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5 flex gap-2.5 items-start">
+          <span className="text-accent-400 flex-none mt-0.5" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
             >
-              API 키 삭제
-            </button>
-          </div>
+              <rect x="3" y="7" width="10" height="7" rx="1.5" />
+              <path d="M5 7V5a3 3 0 016 0v2" />
+            </svg>
+          </span>
+          <span>
+            API 키와 액세스 토큰은{' '}
+            <b className="text-text-primary font-semibold">OS Credential Manager (keytar)</b>에 암호화 저장됩니다.
+            본 앱은 평문 키를 파일로 보관하지 않습니다.
+          </span>
+        </div>
+
+        {/* 3-step 타임라인 */}
+        <KisStatusTimeline steps={liveSteps} />
+
+        {/* 액션 버튼 */}
+        <div className="flex items-center gap-2 pt-1.5">
+          <button
+            type="button"
+            onClick={handleIssueToken}
+            className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent text-accent-400 hover:bg-accent-500/10 transition-colors"
+            style={{ border: '1px solid rgba(16,185,129,0.35)' }}
+          >
+            토큰 재발급
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteCredentials}
+            disabled={!hasCredentials}
+            className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent text-sell hover:bg-sell/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            style={{ border: '1px solid #3f1d1d' }}
+          >
+            API 키 삭제
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // TODO(impl): shell.openExternal('https://apiportal.koreainvestment.com') (별도 PR)
+              // 보안: URL 화이트리스트 검증 (koreainvestment.com 도메인) + state 파라미터 + main 프로세스 IPC 경유
+              console.log('[SettingsPage] open KIS portal (noop)')
+            }}
+            className="ml-auto text-text-tertiary text-sm hover:text-text-primary inline-flex items-center gap-1 bg-transparent border-0 p-0 cursor-pointer"
+          >
+            KIS 개발자 포털 열기 ↗
+          </button>
         </div>
       </section>
     </div>
   )
 }
 
-function RatioField({ label, description, value, onChange, min, max, step, color }: {
+/* -------------------------------------------------------------------------- */
+/* SettingsRow — 라벨(설명) / 컨트롤 / 값 세 컬럼 그리드 행                    */
+/* -------------------------------------------------------------------------- */
+function SettingsRow({
+  label,
+  description,
+  control,
+  valueDisplay,
+  isLast = false,
+}: {
   label: string
   description: string
-  value: number
-  onChange: (v: number) => void
-  min: number
-  max: number
-  step: number
-  color: string
+  control: React.ReactNode
+  valueDisplay: React.ReactNode
+  isLast?: boolean
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-text-primary">{label}</p>
-          <p className="text-[10px] text-text-disabled mt-0.5">{description}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            className="input-base w-20 text-right"
-            type="number" min={min} max={max} step={step}
-            value={value}
-            onChange={(e) => onChange(Number(e.target.value))}
-          />
-          <span className="num text-xs text-text-disabled w-8 text-right">
-            {(value * 100).toFixed(0)}%
-          </span>
-        </div>
+    <div
+      className={`grid gap-4 items-center py-3.5 ${isLast ? '' : 'border-b border-border-subtle'}`}
+      style={{ gridTemplateColumns: '1fr 280px 80px' }}
+    >
+      <div className="flex flex-col gap-1 min-w-0">
+        <span className="text-text-primary text-base font-medium">{label}</span>
+        <span className="text-text-disabled text-xs leading-snug">{description}</span>
       </div>
-      <div className="w-full h-1 bg-[#1e2738] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${Math.min(value * 100, 100)}%`, backgroundColor: color }}
-        />
-      </div>
-    </div>
-  )
-}
-
-function KisStep({ done, label, sublabel }: {
-  done: boolean
-  label: string
-  sublabel: string
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs border
-                      transition-colors duration-200
-                      ${done
-                        ? 'bg-buy/15 border-buy/40 text-buy'
-                        : 'bg-[#1c2330] border-[#2a3344] text-text-disabled'}`}>
-        {done ? (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          <span className="w-1.5 h-1.5 rounded-full bg-current" />
-        )}
-      </div>
-      <div className="text-center">
-        <p className="text-[10px] font-medium text-text-tertiary">{label}</p>
-        <p className={`text-[10px] num ${done ? 'text-buy' : 'text-text-disabled'}`}>{sublabel}</p>
+      <div className="min-w-0">{control}</div>
+      <div className="font-mono text-lg font-semibold text-text-primary text-right tabular-nums tracking-tight">
+        {valueDisplay}
       </div>
     </div>
   )
