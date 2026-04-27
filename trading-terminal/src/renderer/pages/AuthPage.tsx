@@ -41,7 +41,7 @@ export default function AuthPage() {
     <div className="h-screen bg-bg-base flex flex-col items-center justify-center">
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold text-text-primary">EarningWhisperer</h1>
-        <p className="text-text-secondary text-sm mt-1">Trading Terminal</p>
+        <p className="text-text-tertiary text-sm mt-1">Trading Terminal</p>
       </div>
 
       {step === 'login' ? (
@@ -78,12 +78,12 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
       <h2 className="text-md font-semibold text-text-primary">로그인</h2>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-text-secondary">이메일</label>
+        <label className="text-sm text-text-tertiary">이메일</label>
         <input className="input-base" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-text-secondary">비밀번호</label>
+        <label className="text-sm text-text-tertiary">비밀번호</label>
         <input className="input-base" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </div>
 
@@ -121,7 +121,7 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
     <form onSubmit={handleSubmit} className="card w-96 flex flex-col gap-4">
       <div>
         <h2 className="text-md font-semibold text-text-primary">KIS API 키 등록</h2>
-        <p className="text-text-secondary text-xs mt-1">
+        <p className="text-text-tertiary text-xs mt-1">
           키는 이 PC의 OS 자격 증명 관리자에만 암호화 저장됩니다. 서버로 전송되지 않습니다.
         </p>
       </div>
@@ -131,17 +131,17 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-text-secondary">App Key</label>
+        <label className="text-sm text-text-tertiary">App Key</label>
         <input className="input-base" value={appKey} onChange={(e) => setAppKey(e.target.value)} required />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-text-secondary">App Secret</label>
+        <label className="text-sm text-text-tertiary">App Secret</label>
         <input className="input-base" type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} required />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm text-text-secondary">계좌번호 (예: 5012345601)</label>
+        <label className="text-sm text-text-tertiary">계좌번호 (예: 5012345601)</label>
         <input className="input-base" value={accountNo} onChange={(e) => setAccountNo(e.target.value)} required />
       </div>
 

@@ -58,7 +58,7 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
       <div className={isUrgent ? 'confirm-dialog-card-urgent' : 'confirm-dialog-card'}>
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-text-secondary text-sm">매매 신호 확인</span>
+          <span className="text-text-tertiary text-sm">매매 신호 확인</span>
           <CountdownRing remaining={remaining} total={timeoutSeconds} urgent={isUrgent} />
         </div>
 
@@ -71,8 +71,8 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-text-secondary">비중: <span className="num text-text-primary">{Math.round(signal.order_ratio * 100)}%</span></span>
-            <span className="text-text-secondary">Score: <span className="num text-text-primary">{signal.ai_score.toFixed(3)}</span></span>
+            <span className="text-text-tertiary">비중: <span className="num text-text-primary">{Math.round(signal.order_ratio * 100)}%</span></span>
+            <span className="text-text-tertiary">Score: <span className="num text-text-primary">{signal.ai_score.toFixed(3)}</span></span>
           </div>
         </div>
 

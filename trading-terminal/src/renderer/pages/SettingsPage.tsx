@@ -53,10 +53,10 @@ export default function SettingsPage() {
       {/* 섹션: 리스크 파라미터 */}
       <section className="card p-0 overflow-hidden">
         <div className="px-5 py-4 border-b border-[#1e2738] flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-brand/10 border border-brand/20
-                          flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-md bg-accent-500/10 border border-accent-500/20
+                          flex items-center justify-center shrink-0 text-accent-500">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
@@ -131,9 +131,9 @@ export default function SettingsPage() {
       <section className="card p-0 overflow-hidden">
         <div className="px-5 py-4 border-b border-[#1e2738] flex items-center gap-3">
           <div className="w-7 h-7 rounded-md bg-[#1c2330] border border-[#2a3344]
-                          flex items-center justify-center shrink-0">
+                          flex items-center justify-center shrink-0 text-text-tertiary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="5" width="20" height="14" rx="2" />
               <line x1="2" y1="10" x2="22" y2="10" />
             </svg>
@@ -152,7 +152,7 @@ export default function SettingsPage() {
               label="API 키"
               sublabel={hasCredentials ? '등록됨' : '미등록'}
             />
-            <div className={`flex-1 h-px mx-2 ${hasCredentials ? 'bg-brand' : 'bg-[#2a3344]'}`} />
+            <div className={`flex-1 h-px mx-2 ${hasCredentials ? 'bg-accent-500' : 'bg-[#2a3344]'}`} />
             <KisStep
               done={kisTokenStatus === 'VALID'}
               label="토큰"
@@ -246,7 +246,7 @@ function KisStep({ done, label, sublabel }: {
         )}
       </div>
       <div className="text-center">
-        <p className="text-[10px] font-medium text-text-secondary">{label}</p>
+        <p className="text-[10px] font-medium text-text-tertiary">{label}</p>
         <p className={`text-[10px] num ${done ? 'text-buy' : 'text-text-disabled'}`}>{sublabel}</p>
       </div>
     </div>

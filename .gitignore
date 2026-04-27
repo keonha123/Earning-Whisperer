@@ -36,6 +36,13 @@ dist/
 *.tsbuildinfo
 coverage/
 
+# Electron / Vite 빌드 부산물 (tsc -b emit)
+trading-terminal/src/**/*.js
+trading-terminal/src/**/*.jsx
+trading-terminal/src/**/*.d.ts
+trading-terminal/electron.vite.config.js
+trading-terminal/electron.vite.config.d.ts
+
 # 기타
 *.log
 *.zip
