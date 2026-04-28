@@ -11,6 +11,19 @@ http.interceptors.request.use((config) => {
   return config
 })
 
+/**
+ * Backend Contract 7.7 의 시장 지수 응답 (snake_case).
+ * 5종 (SPX/NDX/VIX/DXY/10Y) 배열, 빈 캐시 시 200 [].
+ */
+export interface MarketIndexPayload {
+  symbol: string
+  price: number
+  change_percent: number
+  trend: 'up' | 'down' | 'neutral'
+  format: 'index' | 'percent'
+  timestamp: number
+}
+
 export interface CallbackPayload {
   status: 'EXECUTED' | 'FAILED'
   broker_order_id: string | null
@@ -68,5 +81,15 @@ export const BackendClient = {
   }> {
     const { data } = await http.get('/api/v1/portfolio/settings')
     return data
+  },
+
+  /**
+   * 글로벌 시장 지수 5종 초기 스냅샷.
+   * Backend Contract 7.7 — 인증 불필요, 빈 캐시 시 200 [].
+   * 호출 실패 시 IPC handler 가 빈 배열로 graceful fallback.
+   */
+  async getMarketIndices(): Promise<MarketIndexPayload[]> {
+    const { data } = await http.get<MarketIndexPayload[]>('/api/v1/market/indices')
+    return Array.isArray(data) ? data : []
   },
 }

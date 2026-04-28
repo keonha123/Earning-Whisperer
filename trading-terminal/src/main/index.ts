@@ -6,6 +6,7 @@ import { registerVaultHandlers } from './ipc/vaultHandlers'
 import { registerKisHandlers } from './ipc/kisHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerWsHandlers } from './ipc/wsHandlers'
+import { registerMarketHandlers } from './ipc/marketHandlers'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -85,6 +86,7 @@ function registerAllHandlers() {
   registerKisHandlers()
   registerSettingsHandlers()
   registerWsHandlers()
+  registerMarketHandlers()
 }
 
 app.whenReady().then(() => {

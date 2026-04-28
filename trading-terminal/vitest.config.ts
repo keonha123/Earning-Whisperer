@@ -10,7 +10,13 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/main/**/__tests__/**/*.test.ts'],
+    include: [
+      'src/main/**/__tests__/**/*.test.ts',
+      // PR-B: 순수 zustand store 단위 테스트는 node 환경으로 충분.
+      'src/renderer/store/__tests__/**/*.test.ts',
+      // PR-B: hook 의 순수 helper(toCamel/isValidPayload) 도 node 환경에서 실행 가능.
+      'src/renderer/hooks/__tests__/**/*.test.ts',
+    ],
     clearMocks: true,
     restoreMocks: true,
   },

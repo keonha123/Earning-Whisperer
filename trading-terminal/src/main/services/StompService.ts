@@ -84,6 +84,23 @@ export const StompService = {
             }
           },
         )
+
+        /*
+         * Public 시장 지수 채널 구독 (Contract 4.4).
+         * 인증 불필요 토픽이지만 동일 STOMP 세션을 재사용해 추가 구독으로 처리한다.
+         * 5종 단건 메시지 (배열 X) — renderer 의 store 가 symbol 로 upsert.
+         */
+        client!.subscribe(
+          `/topic/market/indices`,
+          (message: IMessage) => {
+            try {
+              const payload = JSON.parse(message.body)
+              pushToRenderer(IPC_CHANNELS.MARKET_INDICES_UPDATE, payload)
+            } catch (e) {
+              console.error('[StompService] 시장 지수 파싱 실패:', e)
+            }
+          },
+        )
       },
 
       onDisconnect: () => {
