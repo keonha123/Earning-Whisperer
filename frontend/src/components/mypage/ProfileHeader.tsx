@@ -1,18 +1,22 @@
 "use client";
 
+import { getDisplayEmail, type AuthProvider } from "@/lib/userDisplay";
+
 interface ProfileHeaderProps {
   nickname: string;
   email: string;
   role: "FREE" | "PRO";
   createdAt: string;
+  provider?: AuthProvider | null;
 }
 
-export default function ProfileHeader({ nickname, email, role, createdAt }: ProfileHeaderProps) {
+export default function ProfileHeader({ nickname, email, role, createdAt, provider }: ProfileHeaderProps) {
   const joined = new Date(createdAt).toLocaleDateString("ko-KR", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+  const displayEmail = getDisplayEmail(email, provider);
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -34,7 +38,7 @@ export default function ProfileHeader({ nickname, email, role, createdAt }: Prof
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500">{email}</p>
+          <p className="text-sm text-gray-500">{displayEmail}</p>
         </div>
       </div>
       <p className="font-mono text-xs text-gray-600">가입일 {joined}</p>

@@ -3,14 +3,17 @@
 import { m } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { getDisplayEmail, type AuthProvider } from "@/lib/userDisplay";
 
 interface SettingsTabProps {
   email: string;
+  provider?: AuthProvider | null;
 }
 
-export default function SettingsTab({ email }: SettingsTabProps) {
+export default function SettingsTab({ email, provider }: SettingsTabProps) {
   const clearTokens = useAuthStore((s) => s.clearTokens);
   const router = useRouter();
+  const displayEmail = getDisplayEmail(email, provider);
 
   const handleLogout = () => {
     clearTokens();
@@ -30,7 +33,7 @@ export default function SettingsTab({ email }: SettingsTabProps) {
         <div className="space-y-3">
           <div>
             <p className="mb-1 text-xs text-gray-600">이메일</p>
-            <p className="font-mono text-sm text-gray-300">{email}</p>
+            <p className="font-mono text-sm text-gray-300">{displayEmail}</p>
           </div>
         </div>
       </div>

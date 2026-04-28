@@ -51,6 +51,17 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("signup이 reserved TLD(.local) 도메인을 직접 거부한다 (defense-in-depth)")
+    void signup_reserved_TLD_도메인_거부() {
+        assertThatThrownBy(() -> authService.signup(
+                "attacker@earningwhisperer.local", "password123", "공격자"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("사용할 수 없는 이메일 도메인");
+        verify(userRepository, never()).existsByEmail(anyString());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void signup_중복_이메일_예외_발생() {
         // Arrange
         when(userRepository.existsByEmail("dup@example.com")).thenReturn(true);
