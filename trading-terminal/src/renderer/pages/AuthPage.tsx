@@ -112,6 +112,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
   const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'kakao' | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -144,10 +145,24 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
     }
   }
 
-  function handleOAuth(provider: 'google' | 'kakao') {
-    // TODO(impl): OAuth 콜백 핸들러 + CSRF 토큰 + 리다이렉트 URI 등록 (별도 PR)
-    console.log(`[AuthPage] OAuth ${provider} clicked (not implemented)`)
-    alert('OAuth 로그인 준비 중입니다')
+  async function handleOAuth(provider: 'google' | 'kakao') {
+    setError(null)
+    setOauthLoading(provider)
+    try {
+      // Main 프로세스가 RFC 8252 Loopback 흐름으로 PKCE+state+localhost:9000 서버를 띄우고
+      // 사용자의 기본 브라우저로 provider 인증 페이지를 연다. 콜백 수신 → 백엔드 교환 → 결과 반환.
+      const result = await ipc.invoke<{ user: any; settings: any }>(
+        IPC_CHANNELS.AUTH_OAUTH_START,
+        { provider },
+      )
+      onSuccess(result.user, result.settings)
+    } catch (err: any) {
+      // user enumeration 방지: 백엔드 메시지를 그대로 노출하지 않고 generic 메시지로 통일
+      setError('소셜 로그인에 실패했습니다. 다시 시도해 주세요.')
+      console.debug('[auth] oauth failed:', err)
+    } finally {
+      setOauthLoading(null)
+    }
   }
 
   return (
@@ -272,7 +287,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || oauthLoading !== null}
             className="w-full h-[38px] rounded-lg bg-accent-500 hover:bg-accent-600 text-accent-foreground font-semibold text-base inline-flex items-center justify-center gap-2 mt-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             style={{
               boxShadow:
@@ -303,10 +318,20 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
             <span className="flex-1 h-px bg-border-subtle" />
           </div>
 
-          {/* OAuth 버튼 */}
+          {/* OAuth 버튼 — 진행 중에는 다른 provider 와 이메일 로그인 모두 비활성 */}
           <div className="flex flex-col gap-2 mt-3">
-            <OAuthButton provider="google" onClick={() => handleOAuth('google')} />
-            <OAuthButton provider="kakao" onClick={() => handleOAuth('kakao')} />
+            <OAuthButton
+              provider="google"
+              onClick={() => handleOAuth('google')}
+              disabled={loading || oauthLoading !== null}
+              loading={oauthLoading === 'google'}
+            />
+            <OAuthButton
+              provider="kakao"
+              onClick={() => handleOAuth('kakao')}
+              disabled={loading || oauthLoading !== null}
+              loading={oauthLoading === 'kakao'}
+            />
           </div>
         </form>
       </div>
