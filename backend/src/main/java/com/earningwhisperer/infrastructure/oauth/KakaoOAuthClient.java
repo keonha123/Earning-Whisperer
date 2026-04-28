@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
@@ -36,10 +37,17 @@ public class KakaoOAuthClient implements OAuthClient {
             @Value("${oauth.kakao.client-id:}") String clientId,
             @Value("${oauth.kakao.client-secret:}") String clientSecret,
             @Value("${oauth.kakao.allowed-redirect-uris:http://localhost:3000/auth/callback}") List<String> allowedRedirectUris) {
+        this(clientId, clientSecret, allowedRedirectUris, RestClient.create());
+    }
+
+    KakaoOAuthClient(String clientId,
+                     String clientSecret,
+                     List<String> allowedRedirectUris,
+                     RestClient restClient) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.allowedRedirectUris = allowedRedirectUris;
-        this.restClient = RestClient.create();
+        this.restClient = restClient;
     }
 
     @Override
@@ -64,12 +72,17 @@ public class KakaoOAuthClient implements OAuthClient {
             form.add("client_secret", clientSecret);
         }
 
-        Map<String, Object> tokenResponse = restClient.post()
-                .uri(TOKEN_URL)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> tokenResponse;
+        try {
+            tokenResponse = restClient.post()
+                    .uri(TOKEN_URL)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            throw new OAuthExchangeException("카카오 토큰 교환 실패", e);
+        }
 
         if (tokenResponse == null || !tokenResponse.containsKey("access_token")) {
             throw new OAuthExchangeException("Kakao token exchange 실패");
@@ -78,12 +91,17 @@ public class KakaoOAuthClient implements OAuthClient {
         String accessToken = (String) tokenResponse.get("access_token");
 
         // 2. access_token → 사용자 프로필
-        Map<String, Object> userInfo = restClient.get()
-                .uri(USERINFO_URL)
-                .header("Authorization", "Bearer " + accessToken)
-                .header("Content-type", "application/x-www-form-urlencoded;charset=utf-8")
-                .retrieve()
-                .body(Map.class);
+        Map<String, Object> userInfo;
+        try {
+            userInfo = restClient.get()
+                    .uri(USERINFO_URL)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Content-type", "application/x-www-form-urlencoded;charset=utf-8")
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            throw new OAuthExchangeException("카카오 사용자 정보 조회 실패", e);
+        }
 
         if (userInfo == null || !userInfo.containsKey("id")) {
             throw new OAuthExchangeException("Kakao userinfo 조회 실패");
@@ -98,21 +116,30 @@ public class KakaoOAuthClient implements OAuthClient {
         }
 
         String email = (String) kakaoAccount.get("email");
-        if (email == null || email.isBlank()) {
-            throw new OAuthExchangeException("Kakao 계정에 이메일이 없습니다");
+        boolean hasRealEmail = email != null && !email.isBlank();
+
+        if (hasRealEmail) {
+            Boolean isEmailVerified = (Boolean) kakaoAccount.get("is_email_verified");
+            if (!Boolean.TRUE.equals(isEmailVerified)) {
+                throw new OAuthExchangeException("Kakao 이메일이 인증되지 않았습니다");
+            }
+        } else {
+            email = "kakao_" + providerId + "@earningwhisperer.local";
         }
 
-        // 이메일 인증 여부 확인
-        Boolean isEmailVerified = (Boolean) kakaoAccount.get("is_email_verified");
-        if (!Boolean.TRUE.equals(isEmailVerified)) {
-            throw new OAuthExchangeException("Kakao 이메일이 인증되지 않았습니다");
-        }
-
-        // 닉네임: profile.nickname → 이메일 앞부분 폴백
-        String nickname = email.split("@")[0];
         Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+        String nickname = null;
         if (profile != null && profile.get("nickname") != null) {
-            nickname = (String) profile.get("nickname");
+            String raw = (String) profile.get("nickname");
+            if (raw != null && !raw.isBlank()) {
+                nickname = raw;
+            }
+        }
+        if (nickname == null) {
+            String suffix = providerId.length() >= 4
+                    ? providerId.substring(providerId.length() - 4)
+                    : providerId;
+            nickname = "카카오사용자_" + suffix;
         }
 
         return new OAuthUserProfile(providerId, email, nickname, OAuthProvider.KAKAO);

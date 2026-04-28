@@ -31,6 +31,7 @@ public class AuthService {
      */
     @Transactional
     public Long signup(String email, String rawPassword, String nickname) {
+        EmailDomainPolicy.assertAllowed(email);
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
         }

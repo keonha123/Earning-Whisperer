@@ -67,6 +67,43 @@ class OAuthServiceTest {
     }
 
     @Test
+    @DisplayName("카카오 sentinel 이메일 신규 사용자 → 자동 생성")
+    void 카카오_sentinel_이메일_신규_사용자_생성() {
+        OAuthUserProfile kakaoProfile = new OAuthUserProfile(
+                "9876543210",
+                "kakao_9876543210@earningwhisperer.local",
+                "카카오사용자_3210",
+                OAuthProvider.KAKAO);
+
+        given(userRepository.findByProviderAndProviderId(OAuthProvider.KAKAO, "9876543210"))
+                .willReturn(Optional.empty());
+        given(userRepository.findByEmail("kakao_9876543210@earningwhisperer.local"))
+                .willReturn(Optional.empty());
+        given(passwordEncoder.encode(anyString())).willReturn("encoded-sentinel");
+
+        User savedUser = User.builder()
+                .email("kakao_9876543210@earningwhisperer.local")
+                .password("encoded-sentinel")
+                .nickname("카카오사용자_3210")
+                .build();
+        given(userRepository.save(any(User.class))).willReturn(savedUser);
+        given(refreshTokenService.issue(savedUser.getId()))
+                .willReturn(new TokenPair("at", "rt"));
+
+        TokenPair result = oAuthService.socialLogin(kakaoProfile);
+
+        assertThat(result.accessToken()).isEqualTo("at");
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        User created = userCaptor.getValue();
+        assertThat(created.getProvider()).isEqualTo(OAuthProvider.KAKAO);
+        assertThat(created.getProviderId()).isEqualTo("9876543210");
+        assertThat(created.getEmail()).isEqualTo("kakao_9876543210@earningwhisperer.local");
+        assertThat(created.getNickname()).isEqualTo("카카오사용자_3210");
+    }
+
+    @Test
     @DisplayName("신규 사용자 → 자동 생성 + 기본 PortfolioSettings")
     void 신규_소셜_사용자_생성() {
         given(userRepository.findByProviderAndProviderId(any(), anyString()))
