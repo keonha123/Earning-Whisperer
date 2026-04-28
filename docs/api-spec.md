@@ -15,6 +15,7 @@
 6. **Trading Terminal** ➔ `[HTTP POST Callback]` ➔ **Backend** (Java) : 체결 결과 보고 및 장부 동기화
 7. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
 8. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
+9. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
 
 ---
 
@@ -107,6 +108,27 @@
 | `ticker` | String | Y | 종목 심볼 |
 | `ema_score` | Double | Y | 최종 결정에 사용된 EMA 점수 |
 
+### 4.4. Global Market Indices Broadcast (글로벌 시장 지수 1분 스트리밍)
+- **Topic:** `/topic/market/indices`
+- **인증:** 불필요 (공개 시장 데이터)
+- **설명:** 5종 글로벌 시장 지수(SPX/NDX/VIX/DXY/10Y)의 1분 단위 스냅샷을 모든 클라이언트(Trading Terminal, Frontend Web)에 브로드캐스트합니다.
+- **발행 시점:** Data Pipeline의 `market-indices` Redis 채널(Contract 6.3) 수신 즉시 백엔드가 fan-out합니다.
+- **백엔드 가공 책임:**
+  - `trend` 필드 자동 산출 (`change_percent > +0.05` → `up`, `< -0.05` → `down`, 그 외 `neutral`. 임계치는 운영 중 조정 가능)
+  - `format` 필드 5심볼 상수 매핑 (Contract 6.3 표 참조)
+  - `schema_version`, `source`, `published_at` 등 발행자 메타는 클라이언트에 전달하지 않음
+
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `symbol` | String | Y | `SPX` \| `NDX` \| `VIX` \| `DXY` \| `10Y` |
+| `price` | Double | Y | 현재 지수값 |
+| `change_percent` | Double | Y | 전일 대비 등락률 |
+| `trend` | String | Y | `up` \| `down` \| `neutral` (백엔드 산출) |
+| `format` | String | Y | `index` \| `percent` (백엔드 매핑) |
+| `timestamp` | Long | Y | 데이터 기준 시각 (Unix Epoch Second, UTC) |
+
+> **구독 예시:** `stompClient.subscribe('/topic/market/indices', handler)`
+
 ---
 
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
@@ -167,6 +189,67 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | `change_pct` | Double | Y | 전일 대비 등락률 (예: `+2.35`, `-1.10`) |
 | `timestamp` | Long | Y | 주가 기준 시각 (Unix Epoch Second, UTC) |
 
+### 6.3. 글로벌 시장 지수 스트리밍 (Market Indices)
+- **통신 방식:** Redis Pub/Sub
+- **Redis Channel:** `market-indices`
+- **설명:** 5종 글로벌 시장 지수(SPX/NDX/VIX/DXY/10Y)의 1분 단위 스냅샷을 발행합니다. 백엔드는 해당 채널을 구독하여 `trend`/`format` 필드를 가공한 뒤 STOMP `/topic/market/indices`(Contract 4.4)로 fan-out합니다.
+
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `schema_version` | String | Y | 스키마 버전. 현재 `"1.0"` |
+| `source` | String | Y | 데이터 소스 식별자 (예: `"yfinance"`) |
+| `symbol` | String | Y | `SPX` \| `NDX` \| `VIX` \| `DXY` \| `10Y` |
+| `price` | Double | Y | 현재 지수값 (소수점 2자리 정밀도) |
+| `change_percent` | Double | Y | 전일 대비 등락률 (소수점 2자리) |
+| `timestamp` | Long | Y | **데이터 기준 시각** (외부 소스 last bar timestamp, Unix Epoch Second UTC) |
+| `published_at` | Long | N | 발행 시각 (Unix Epoch Second UTC). `timestamp`와 다를 수 있음 (1분 폴링 간격) |
+
+**발행 단위:**
+- 심볼별 단건 발행 (5종 → 분당 5회 publish, 배열 묶음 X). 부분 실패 격리·`market-data` 패턴과 일관.
+- `trend`/`format` 필드 없음 — 발행자 책임이 아님. 백엔드가 가공해서 클라이언트에 전달 (Contract 4.4).
+
+**5심볼 매핑 (백엔드 상수, 발행자 참고):**
+
+| Symbol | yfinance Ticker | format (백엔드 매핑) |
+| :--- | :--- | :---: |
+| SPX | `^GSPC` | `index` |
+| NDX | `^NDX` | `index` |
+| VIX | `^VIX` | `index` |
+| DXY | `DX-Y.NYB` (결측 시 `DX=F` fallback) | `index` |
+| 10Y | `^TNX` | `percent` |
+
+**폴링 정책:**
+- 미국 장중(09:30–16:00 ET) **1분 간격**
+- 장외/주말 **5분 간격으로 강등**
+- 거래소 휴장일은 폴링 정지 (`pandas_market_calendars` 권장)
+
+**발행 실패 처리:**
+- 외부 API 호출 실패 시 **해당 심볼 publish 스킵**. 직전값 재발행 금지(stale 데이터를 fresh로 오인 방지).
+- 백엔드는 last-known-value 캐시를 유지하여 신규 발행이 없으면 직전값을 보존.
+- **연속 실패 SLA:** 동일 심볼 연속 5분(5회) 실패 시 알림(로깅 + 운영 채널). 구체 알림 채널은 인프라 팀 합의.
+
+**헬스체크:**
+- Redis 별도 채널 `market-indices:health`에 1분 단위 heartbeat publish 또는 Redis key `market-indices:last-publish` TTL 갱신.
+- 백엔드가 발행자 생존을 모니터링하여 stale 상태를 운영팀에 알림.
+
+**메시지 ordering:**
+- Redis Pub/Sub 특성상 순서 미보장. 구독자(백엔드)가 `timestamp` 기준 정렬 책임.
+
+**소수점 정밀도:**
+- `price` 소수 2자리, `change_percent` 소수 2자리 권장.
+
+**발행 예시 (SPX):**
+
+    {
+      "schema_version": "1.0",
+      "source": "yfinance",
+      "symbol": "SPX",
+      "price": 5432.10,
+      "change_percent": 0.42,
+      "timestamp": 1730000000,
+      "published_at": 1730000003
+    }
+
 ---
 
 ## 7. [Contract 7] Frontend/Terminal ➔ Backend (REST API 목록)
@@ -216,6 +299,24 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | :--- | :--- | :---: | :--- |
 | GET | `/api/v1/earnings-calendar?days=60` | 필요 | 내 관심종목의 향후 N일 어닝콜 일정 조회. `days` 기본값 60. 응답: `[{ticker, companyName, scheduledAt, confirmed}]` |
 | POST | `/api/v1/earnings-calendar/sync` | 불필요 | 어닝 일정 수동 갱신 (개발/테스트용). FINNHUB_API_KEY 미설정 시 409 반환 |
+
+### 7.7. 글로벌 시장 지수 (Market Indices)
+
+| Method | Endpoint | 인증 | 설명 |
+| :--- | :--- | :---: | :--- |
+| GET | `/api/v1/market/indices` | 불필요 | 백엔드 캐싱된 5종 지수 스냅샷 조회. 응답 필드는 Contract 4.4 와 동일. 백엔드 기동 직후 Data Pipeline 첫 발행 전에는 빈 배열 `[]` 반환 |
+
+응답 예시 (장중 정상):
+
+    [
+      { "symbol": "SPX", "price": 5432.10, "change_percent": 0.42, "trend": "up", "format": "index", "timestamp": 1730000000 },
+      { "symbol": "NDX", "price": 18750.55, "change_percent": 0.38, "trend": "up", "format": "index", "timestamp": 1730000000 },
+      { "symbol": "VIX", "price": 14.20, "change_percent": -1.10, "trend": "down", "format": "index", "timestamp": 1730000000 },
+      { "symbol": "DXY", "price": 104.32, "change_percent": 0.01, "trend": "neutral", "format": "index", "timestamp": 1730000000 },
+      { "symbol": "10Y", "price": 4.25, "change_percent": -0.30, "trend": "down", "format": "percent", "timestamp": 1730000000 }
+    ]
+
+> **초기 로드 전략:** Trading Terminal/Frontend Web 마운트 시 본 엔드포인트로 1회 GET 후 `/topic/market/indices` STOMP 구독. REST 응답이 빈 배열이면 placeholder 유지하고 STOMP 수신 시 즉시 렌더로 전환.
 
 ---
 
