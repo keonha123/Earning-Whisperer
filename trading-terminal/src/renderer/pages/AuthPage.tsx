@@ -6,7 +6,6 @@ import { useUserStore } from '../store/useUserStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
-import SecurityBadge from '../components/auth/SecurityBadge'
 
 type Step = 'login' | 'vault'
 
@@ -100,68 +99,6 @@ export default function AuthPage() {
         )}
       </div>
 
-      {/* 뷰포트 하단: 보안 배지 */}
-      <div className="absolute left-0 right-0 bottom-3.5 z-[2] flex justify-center gap-2 flex-wrap px-6">
-        <SecurityBadge
-          icon={
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="2.5" y="6" width="9" height="6.5" rx="1" />
-              <path d="M4.5 6V4a2.5 2.5 0 015 0v2" />
-            </svg>
-          }
-          label={
-            <>
-              <b className="text-text-secondary font-medium">로컬 keytar</b> 암호화 저장
-            </>
-          }
-        />
-        <SecurityBadge
-          icon={
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M7 1.5l4.5 1.8v3.4c0 2.6-1.85 4.6-4.5 5.3-2.65-.7-4.5-2.7-4.5-5.3V3.3L7 1.5z" />
-            </svg>
-          }
-          label={
-            <>
-              <b className="text-text-secondary font-medium">TLS 1.3</b> 보안 통신
-            </>
-          }
-        />
-        <SecurityBadge
-          icon={
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <circle cx="7" cy="7" r="5.5" />
-              <path d="M1.5 7h11M7 1.5c1.8 2 1.8 9 0 11M7 1.5c-1.8 2-1.8 9 0 11" />
-            </svg>
-          }
-          label={
-            <>
-              <b className="text-text-secondary font-medium">한국투자증권</b> 공식 API
-            </>
-          }
-        />
-      </div>
     </div>
   )
 }
@@ -326,25 +263,6 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
                 자동 로그인
               </span>
             </label>
-
-            {/*
-              주의: 현재 rememberMe 는 아무것도 영속화하지 않으므로 "저장 (예정)"
-              으로 약화. 실제 keytar 연동 시 "(예정)" 제거.
-            */}
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-surface-2 border border-border-strong rounded-[10px] text-text-tertiary text-xs whitespace-nowrap">
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 14 14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <rect x="2.5" y="6" width="9" height="6.5" rx="1" />
-                <path d="M4.5 6V4a2.5 2.5 0 015 0v2" />
-              </svg>
-              OS Credential Manager에 저장 (예정)
-            </span>
           </div>
 
           {/* 에러 영역 — 디자인은 비워두지만 공간 확보 */}
@@ -455,9 +373,6 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
           <h2 className="text-text-primary text-base font-semibold tracking-tight">
             KIS API 키 등록
           </h2>
-          <p className="text-text-tertiary text-sm mt-1">
-            키는 이 PC의 OS 자격 증명 관리자에만 암호화 저장됩니다. 서버로 전송되지 않습니다.
-          </p>
         </div>
 
         <div className="p-3 bg-sell/10 border border-sell/30 rounded-md text-sell text-sm">
