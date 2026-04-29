@@ -44,6 +44,16 @@ export interface UserSettings {
   cooldown_minutes: number
 }
 
+/**
+ * 관심종목 응답 — 백엔드 record `WatchlistItemResponse(ticker, companyName, sector)`.
+ * Spring 기본 직렬화는 camelCase 이므로 Electron 측 타입도 camelCase 그대로 사용.
+ */
+export interface WatchlistItem {
+  ticker: string
+  companyName: string
+  sector: string
+}
+
 export const BackendClient = {
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
     const { data } = await http.post('/api/v1/auth/login', { email, password })
@@ -112,6 +122,16 @@ export const BackendClient = {
    */
   async getMarketIndices(): Promise<MarketIndexPayload[]> {
     const { data } = await http.get<MarketIndexPayload[]>('/api/v1/market/indices')
+    return Array.isArray(data) ? data : []
+  },
+
+  /**
+   * 관심종목 ticker 목록 조회.
+   * GET /api/v1/watchlist — JWT 인증 (interceptor 가 mainState.backendToken 자동 첨부).
+   * 실패 시 throw — 호출 측(watchlistHandlers)이 catch 해 캐시 유지 + 빈 배열 fallback.
+   */
+  async getWatchlist(): Promise<WatchlistItem[]> {
+    const { data } = await http.get<WatchlistItem[]>('/api/v1/watchlist')
     return Array.isArray(data) ? data : []
   },
 }

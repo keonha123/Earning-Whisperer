@@ -17,6 +17,8 @@ interface MainState {
   tradingMode: TradingMode
   /** 진행 중인 주문 여부 — 모드 전환 레이스 컨디션 방지 */
   isOrderInProgress: boolean
+  /** 모의투자(true) / 실전투자(false) 환경 — 토큰/baseURL/rate limit 분기 */
+  isPaperTrading: boolean
 }
 
 const state: MainState = {
@@ -25,6 +27,7 @@ const state: MainState = {
   kisTokenExpiresAt: null,
   tradingMode: 'MANUAL',
   isOrderInProgress: false,
+  isPaperTrading: true,
 }
 
 export const mainState = {
@@ -51,7 +54,13 @@ export const mainState = {
   get isOrderInProgress() { return state.isOrderInProgress },
   setOrderInProgress(v: boolean) { state.isOrderInProgress = v },
 
-  /** 앱 종료 및 로그아웃 시 민감 데이터 소거 */
+  get isPaperTrading() { return state.isPaperTrading },
+  setPaperTrading(value: boolean) { state.isPaperTrading = value },
+
+  /**
+   * 앱 종료 및 로그아웃 시 민감 데이터 소거.
+   * isPaperTrading은 사용자 환경 선택값이므로 유지한다.
+   */
   clear() {
     state.backendToken = null
     state.kisAccessToken = null

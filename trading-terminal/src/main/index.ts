@@ -1,5 +1,6 @@
 import { app, BrowserWindow, session, Tray, Menu, nativeImage, screen } from 'electron'
 import { config as loadDotenv } from 'dotenv'
+import keytar from 'keytar'
 import { join } from 'path'
 
 // dev 환경변수 로딩 — Electron main 은 Vite 의 `.env.local` 자동 주입을 받지 않으므로
@@ -18,7 +19,30 @@ import { registerKisHandlers } from './ipc/kisHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerWsHandlers } from './ipc/wsHandlers'
 import { registerMarketHandlers } from './ipc/marketHandlers'
+import { registerWatchlistHandlers, stop as stopWatchlist } from './ipc/watchlistHandlers'
+import { registerPricesHandlers } from './ipc/pricesHandlers'
+import { stop as stopPricePoller } from './services/PricePoller'
 import { OAuthService } from './services/OAuthService'
+import { kisLimiter } from './services/KisRateLimiter'
+import { migrateLegacyKeysIfNeeded } from './services/KisService'
+
+const KEYTAR_SERVICE = 'EarningWhisperer'
+const PAPER_TRADING_KEY = 'kis-isPaperTrading'
+
+/**
+ * keytar에서 paper/real 플래그 복원. 값 없으면 디폴트 true(모의) 유지.
+ * 복원 후 KisRateLimiter rate를 모드에 맞게 동기화 (모의 1.5, 실전 18 req/s).
+ */
+async function restorePaperTradingFlag(): Promise<void> {
+  try {
+    const saved = await keytar.getPassword(KEYTAR_SERVICE, PAPER_TRADING_KEY)
+    if (saved === '0') mainState.setPaperTrading(false)
+    else if (saved === '1') mainState.setPaperTrading(true)
+  } catch (e) {
+    console.warn('[main] paper-trading 플래그 복원 실패 (디폴트 true 유지):', e)
+  }
+  kisLimiter.setRate(mainState.isPaperTrading ? 1.5 : 18)
+}
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -99,9 +123,19 @@ function registerAllHandlers() {
   registerSettingsHandlers()
   registerWsHandlers()
   registerMarketHandlers()
+  registerWatchlistHandlers()
+  registerPricesHandlers()
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // legacy 단일 키 → paper 키 이전을 restorePaperTradingFlag/issueToken 이전에 완료
+  // (race 시 잘못된 모드 키에 토큰이 박힐 수 있음). 실패는 console.warn 후 진행.
+  try {
+    await migrateLegacyKeysIfNeeded()
+  } catch (e) {
+    console.warn('[main] legacy 키 마이그레이션 실패 (무시):', e)
+  }
+  await restorePaperTradingFlag()
   registerAllHandlers()
   createWindow()
   createTray()
@@ -114,6 +148,8 @@ app.on('window-all-closed', () => {
 app.on('will-quit', () => {
   // OAuth 임시 서버가 살아있다면 강제 종료 (포트 누수 방지)
   OAuthService.shutdown()
+  stopWatchlist()
+  stopPricePoller()
   mainState.clear()
 })
 

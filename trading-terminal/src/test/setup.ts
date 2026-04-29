@@ -46,6 +46,22 @@ export const flushMicrotasks = async (): Promise<void> => {
 }
 
 /**
+ * KisRateLimiter mock — KisService가 './KisRateLimiter'로 import하는 모듈을 가로챈다.
+ * acquire는 즉시 resolve돼 테스트가 실제 토큰 버킷 대기를 거치지 않도록 한다.
+ *
+ * 호출 횟수/우선순위 검증은 각 테스트에서 `vi.mocked(kisLimiter.acquire)`로 수행.
+ */
+vi.mock('../main/services/KisRateLimiter', () => ({
+  kisLimiter: {
+    acquire: vi.fn(async (_priority: 'HIGH' | 'MEDIUM' | 'LOW') => undefined),
+    setRate: vi.fn(),
+    dispose: vi.fn(),
+    pendingCount: 0,
+  },
+  KisRateLimiter: vi.fn(),
+}))
+
+/**
  * Electron 모듈 mock — main 프로세스 코드가 BrowserWindow.getAllWindows() 등을 호출해도
  * 단위 테스트 환경에서 안전하게 빈 배열/no-op로 동작하도록 한다.
  */

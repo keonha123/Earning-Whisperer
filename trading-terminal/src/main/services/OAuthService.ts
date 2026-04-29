@@ -25,6 +25,8 @@ import { URL } from 'url'
 import { mainState, TradingMode } from '../store/mainState'
 import { BackendClient } from './BackendClient'
 import { KisService } from './KisService'
+import { start as startWatchlist } from '../ipc/watchlistHandlers'
+import { start as startPricePoller } from './PricePoller'
 
 export type OAuthProvider = 'google' | 'kakao'
 
@@ -309,6 +311,11 @@ class OAuthServiceImpl {
       } catch (e) {
         console.warn('[OAuth] KIS 토큰 복원 실패:', e instanceof Error ? e.message : e)
       }
+
+      // 관심종목 5분 폴링 시작 (이미 동작 중이면 no-op).
+      startWatchlist()
+      // 시세 폴링 시작 — ticker 들은 watchlist/holdings 통보로 채워진다.
+      startPricePoller()
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       res.end(renderResultHtml('로그인이 완료되었습니다'))

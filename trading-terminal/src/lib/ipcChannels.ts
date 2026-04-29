@@ -19,6 +19,22 @@ export const IPC_CHANNELS = {
 
   SETTINGS_UPDATE: 'terminal:settings:update',
 
+  /**
+   * 모의/실전 환경 토글 — Renderer 마운트 시 현재 값 조회.
+   * 응답: boolean (true=모의, false=실전).
+   */
+  SETTINGS_GET_PAPER_TRADING: 'terminal:settings:get-paper-trading',
+  /**
+   * 모의/실전 환경 토글 — Renderer가 새 값으로 변경 요청.
+   * payload: { value: boolean }, 응답: { ok: true }.
+   */
+  SETTINGS_SET_PAPER_TRADING: 'terminal:settings:set-paper-trading',
+  /**
+   * 환경 변경 broadcast — main이 setPaperTrading 처리 후 모든 렌더러에 push.
+   * payload: { value: boolean }.
+   */
+  SETTINGS_PAPER_TRADING_CHANGED: 'terminal:settings:paper-trading-changed',
+
   WS_CONNECT: 'terminal:ws:connect',
   WS_DISCONNECT: 'terminal:ws:disconnect',
 
@@ -30,6 +46,30 @@ export const IPC_CHANNELS = {
    * Backend Contract 7.7: GET /api/v1/market/indices, 인증 불필요, 빈 캐시 시 200 [].
    */
   MARKET_INDICES_GET: 'terminal:market:indices-get',
+
+  /**
+   * 관심종목 ticker 목록 — main 캐시 반환 (없으면 빈 배열).
+   * Backend GET /api/v1/watchlist (JWT 인증) 응답을 main 이 5분 주기로 캐싱.
+   */
+  WATCHLIST_GET: 'terminal:watchlist:get',
+  /**
+   * 관심종목 강제 재조회 — main 이 백엔드 즉시 호출 → 캐시 갱신 → broadcast.
+   * 호출자에게도 갱신된 배열 반환.
+   */
+  WATCHLIST_REFRESH: 'terminal:watchlist:refresh',
+
+  /**
+   * 시세 폴링 캐시 조회 — Renderer 마운트 시 초기 로드용.
+   * 응답: Record<string, { currentPrice: number; lastUpdated: number }>.
+   */
+  PRICES_GET: 'terminal:prices:get',
+
+  /**
+   * 보유종목 ticker 갱신 통보 — Renderer 가 KIS_GET_BALANCE 응답 처리 후
+   * Main 의 PricePoller 에 ticker 변경을 알림.
+   * payload: { tickers: string[] }.
+   */
+  HOLDINGS_TICKERS_UPDATE: 'terminal:holdings:tickers-update',
 
   // Main → Renderer (send)
   SIGNAL_RECEIVED: 'terminal:signal:received',
@@ -45,4 +85,16 @@ export const IPC_CHANNELS = {
    * payload: { symbol, price, change_percent, trend, format, timestamp } (snake_case)
    */
   MARKET_INDICES_UPDATE: 'terminal:market:indices-update',
+
+  /**
+   * 관심종목 캐시 갱신 broadcast — main 의 5분 폴링 또는 강제 refresh 시 발신.
+   * payload: WatchlistItem[] (camelCase: ticker/companyName/sector)
+   */
+  WATCHLIST_UPDATE: 'terminal:watchlist:update',
+
+  /**
+   * 시세 batch push — PricePoller 사이클당 1회, 갱신된 ticker 들만 묶어서 전송.
+   * payload: { ticker: string; currentPrice: number; lastUpdated: number }[].
+   */
+  PRICES_UPDATE: 'terminal:prices:update',
 } as const

@@ -46,11 +46,11 @@ describe('KisService.issueToken — 정상 흐름', () => {
     expect(mainState.kisAccessToken).toBe('mocked.access.token')
     expect(mainState.isKisTokenValid()).toBe(true)
 
-    // keytar에 저장됐는지 확인
-    const stored = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
+    // keytar에 저장됐는지 확인 — 디폴트 모의 환경 → paper 키
+    const stored = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')
     expect(stored).toBe('mocked.access.token')
 
-    const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+    const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper')
     expect(expiresAtStr).not.toBeNull()
     expect(Number(expiresAtStr)).toBeGreaterThan(Date.now())
   })
@@ -67,8 +67,8 @@ describe('KisService.issueToken — EGW00133 fallback', () => {
 
     // keytar에 잔여 1시간짜리 토큰 미리 저장
     const futureExpire = Date.now() + 3600 * 1000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'restored-token')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(futureExpire))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'restored-token')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(futureExpire))
 
     kisHttpMock.post.mockRejectedValueOnce(buildAxiosError(tokenIssueRateLimitErrorResponse))
 
@@ -86,8 +86,8 @@ describe('KisService.issueToken — EGW00133 fallback', () => {
 
     // 잔여 5분짜리 토큰 (300초)
     const expireSoon = Date.now() + 300 * 1000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'expiring-token')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expireSoon))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'expiring-token')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expireSoon))
 
     kisHttpMock.post.mockRejectedValueOnce(buildAxiosError(tokenIssueRateLimitErrorResponse))
 
@@ -138,8 +138,8 @@ describe('KisService.loadSavedToken (loadTokenFromVault)', () => {
   it('잔여 60초 미만 → false 반환, mainState 미갱신', async () => {
     // 30초만 남은 토큰
     const expireSoon = Date.now() + 30 * 1000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'about-to-expire')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expireSoon))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'about-to-expire')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expireSoon))
 
     const ok = await KisService.loadSavedToken()
 
@@ -149,8 +149,8 @@ describe('KisService.loadSavedToken (loadTokenFromVault)', () => {
 
   it('정상 잔여 → true + mainState 갱신', async () => {
     const futureExpire = Date.now() + 3600 * 1000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'good-token')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(futureExpire))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'good-token')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(futureExpire))
 
     vi.useFakeTimers()
 
@@ -196,8 +196,8 @@ describe('KisService.loadSavedToken — 잔여시간 경계 (60초 보더)', () 
     const fixedNow = vi.getMockedSystemTime()?.valueOf() ?? Date.now()
     // expiresAt = now + 60_000 → remainingSec = floor((expiresAt - now)/1000) = 60 (>= 60)
     const expiresAt = fixedNow + 60_000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'edge-60s')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'edge-60s')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expiresAt))
 
     const ok = await KisService.loadSavedToken()
 
@@ -210,8 +210,8 @@ describe('KisService.loadSavedToken — 잔여시간 경계 (60초 보더)', () 
     const fixedNow = vi.getMockedSystemTime()?.valueOf() ?? Date.now()
     // remainingSec = floor(59000/1000) = 59 < 60 → 만료 판정
     const expiresAt = fixedNow + 59_000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'edge-59s')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'edge-59s')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expiresAt))
 
     const ok = await KisService.loadSavedToken()
 
@@ -230,8 +230,8 @@ describe('KisService.issueToken — EGW00133 fallback 잔여시간 경계 (600�
     vi.useFakeTimers() // 시간 고정으로 floor 결과 안정화
     const fixedNow = vi.getMockedSystemTime()?.valueOf() ?? Date.now()
     const expiresAt = fixedNow + 600_000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'edge-600s')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'edge-600s')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expiresAt))
 
     kisHttpMock.post.mockRejectedValueOnce(buildAxiosError(tokenIssueRateLimitErrorResponse))
 
@@ -246,8 +246,8 @@ describe('KisService.issueToken — EGW00133 fallback 잔여시간 경계 (600�
     const fixedNow = vi.getMockedSystemTime()?.valueOf() ?? Date.now()
     // remainingSec = floor(599000/1000) = 599 < 600
     const expiresAt = fixedNow + 599_000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', 'edge-599s')
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'edge-599s')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(expiresAt))
 
     kisHttpMock.post.mockRejectedValueOnce(buildAxiosError(tokenIssueRateLimitErrorResponse))
 

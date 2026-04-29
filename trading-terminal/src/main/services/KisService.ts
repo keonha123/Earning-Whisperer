@@ -3,12 +3,45 @@ import keytar from 'keytar'
 import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { kisLimiter } from './KisRateLimiter'
 
-// 모의투자 URL (실전: https://openapi.koreainvestment.com:9443)
-const KIS_BASE_URL = 'https://openapivts.koreainvestment.com:29443'
+const KIS_BASE_URL_PAPER = 'https://openapivts.koreainvestment.com:29443'
+const KIS_BASE_URL_REAL = 'https://openapi.koreainvestment.com:9443'
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
-const kisHttp = axios.create({ baseURL: KIS_BASE_URL, timeout: 10_000 })
+/** 모의(true) → 모의 URL, 실전(false) → 실전 URL */
+export function getKisBaseUrl(isPaperTrading: boolean): string {
+  return isPaperTrading ? KIS_BASE_URL_PAPER : KIS_BASE_URL_REAL
+}
+
+function tokenKey(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-accessToken-paper' : 'kis-accessToken-real'
+}
+
+function expiryKey(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-tokenExpiresAt-paper' : 'kis-tokenExpiresAt-real'
+}
+
+/**
+ * KIS TR_ID 모드별 매핑.
+ * 모의(paper)는 V로 시작 / 실전(real)은 T로 시작 — 첫 글자만 다르다.
+ * baseURL/keytar는 분기되어 있어도 TR_ID가 모의용이면 실전 호출이 거부되므로 필수.
+ */
+const TR_IDS = {
+  placeBuy: { paper: 'VTTT1002U', real: 'TTTT1002U' },
+  placeSell: { paper: 'VTTT1006U', real: 'TTTT1006U' },
+  balance: { paper: 'VTTS3012R', real: 'TTTS3012R' },
+  psamount: { paper: 'VTTS3007R', real: 'TTTS3007R' },
+} as const
+
+function trId(key: keyof typeof TR_IDS): string {
+  return mainState.isPaperTrading ? TR_IDS[key].paper : TR_IDS[key].real
+}
+
+const kisHttp = axios.create({
+  baseURL: getKisBaseUrl(mainState.isPaperTrading),
+  timeout: 10_000,
+})
 
 function pushToRenderer(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
@@ -23,19 +56,34 @@ const MIN_REMAINING_SEC_FOR_RESTORE = 600
 let issueTokenInFlight: Promise<void> | null = null
 let getBalanceInFlight: Promise<KisBalance> | null = null
 
+/**
+ * 모드 전환 시 in-flight axios 요청을 취소하기 위한 AbortController.
+ * invalidateRuntime() 호출 시 abort + 새 controller로 교체된다.
+ * issueToken은 abort 미적용 (cancel되면 후속 호출이 줄줄이 실패).
+ */
+let activeAbortController: AbortController = new AbortController()
+
+function isAbortError(e: unknown): boolean {
+  const code = (e as { code?: string })?.code
+  const name = (e as { name?: string })?.name
+  return code === 'ERR_CANCELED' || name === 'CanceledError' || name === 'AbortError'
+}
+
 async function saveTokenToVault(token: string, expiresIn: number): Promise<void> {
   try {
     const expiresAt = Date.now() + expiresIn * 1000
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken', token)
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt', String(expiresAt))
+    const paper = mainState.isPaperTrading
+    await keytar.setPassword(KEYTAR_SERVICE, tokenKey(paper), token)
+    await keytar.setPassword(KEYTAR_SERVICE, expiryKey(paper), String(expiresAt))
   } catch (e) {
     console.warn('[KisService] keytar 토큰 저장 실패 (세션 중 동작에는 영향 없음):', e)
   }
 }
 
 async function loadTokenFromVault(): Promise<boolean> {
-  const token = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
-  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+  const paper = mainState.isPaperTrading
+  const token = await keytar.getPassword(KEYTAR_SERVICE, tokenKey(paper))
+  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, expiryKey(paper))
   if (!token || !expiresAtStr) return false
 
   const expiresAt = Number(expiresAtStr)
@@ -49,8 +97,9 @@ async function loadTokenFromVault(): Promise<boolean> {
 }
 
 async function loadTokenFromVaultForFallback(): Promise<boolean> {
-  const token = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
-  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+  const paper = mainState.isPaperTrading
+  const token = await keytar.getPassword(KEYTAR_SERVICE, tokenKey(paper))
+  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, expiryKey(paper))
   if (!token || !expiresAtStr) return false
 
   const expiresAt = Number(expiresAtStr)
@@ -102,8 +151,13 @@ export const KisService = {
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-appKey'),
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-appSecret'),
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo'),
+      // legacy 단일 키 + paper/real 양쪽 토큰 모두 정리
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken'),
       keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken-paper'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken-real'),
+      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real'),
     ])
   },
 
@@ -196,8 +250,10 @@ export const KisService = {
     const acntPrdtCd = accountNo.slice(8) || '01'
 
     // 1. 해외주식 잔고 (보유종목)
+    await kisLimiter.acquire('MEDIUM')
     const { data } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-balance', {
-      headers: buildKisHeaders(appKey, appSecret, 'VTTS3012R'),
+      headers: buildKisHeaders(appKey, appSecret, trId('balance')),
+      signal: activeAbortController.signal,
       params: {
         CANO: cano,
         ACNT_PRDT_CD: acntPrdtCd,
@@ -214,14 +270,13 @@ export const KisService = {
       throw new Error(`KIS 잔고 조회 실패: ${msg}`)
     }
 
-    // KIS 해외주식 조회 API 초당 1회 제한 회피 — VTTS3012R과 VTTS3007R 사이 지연
-    await new Promise((resolve) => setTimeout(resolve, 1100))
-
     // 2. 주문가능외화금액 조회 (VTTS3007R) — 실패 시 cash=0으로 계속 진행 (부분 fallback)
     let orderableCash = 0
     try {
+      await kisLimiter.acquire('MEDIUM')
       const { data: psData } = await kisHttp.get('/uapi/overseas-stock/v1/trading/inquire-psamount', {
-        headers: buildKisHeaders(appKey, appSecret, 'VTTS3007R'),
+        headers: buildKisHeaders(appKey, appSecret, trId('psamount')),
+        signal: activeAbortController.signal,
         params: {
           CANO: cano,
           ACNT_PRDT_CD: acntPrdtCd,
@@ -239,7 +294,12 @@ export const KisService = {
         // orderableCash는 0 유지
       }
     } catch (e: any) {
-      console.error('[KisService] VTTS3007R 오류:', e?.response?.data?.message ?? e?.message)
+      // 모드 전환 abort는 graceful 처리 (orderableCash=0 유지)
+      if (isAbortError(e)) {
+        console.info('[KisService] VTTS3007R abort (모드 전환)')
+      } else {
+        console.error('[KisService] VTTS3007R 오류:', e?.response?.data?.message ?? e?.message)
+      }
     }
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
@@ -266,8 +326,10 @@ export const KisService = {
     if (!appKey || !appSecret) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
 
     try {
+      await kisLimiter.acquire('LOW')
       const { data } = await kisHttp.get('/uapi/overseas-price/v1/quotations/price', {
         headers: buildKisHeaders(appKey, appSecret, 'HHDFS00000300'),
+        signal: activeAbortController.signal,
         params: {
           AUTH: '',
           EXCD: 'NAS',
@@ -282,6 +344,11 @@ export const KisService = {
       const last = Number(data.output?.last ?? 0)
       return Number.isFinite(last) && last > 0 ? last : 0
     } catch (e: any) {
+      // 모드 전환 abort는 0 반환 (PricePoller 0 가드와 일관)
+      if (isAbortError(e)) {
+        console.info('[KisService] HHDFS00000300 abort (모드 전환)')
+        return 0
+      }
       console.error('[KisService] HHDFS00000300 현재가 조회 실패:', e?.response?.data?.message ?? e?.message)
       return 0
     }
@@ -301,9 +368,10 @@ export const KisService = {
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
     if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
 
-    // 모의투자 TR_ID: 매수 VTTT1002U / 매도 VTTT1006U
-    const trId = action === 'BUY' ? 'VTTT1002U' : 'VTTT1006U'
+    // TR_ID는 모드별 분기 (paper: V접두, real: T접두)
+    const orderTrId = trId(action === 'BUY' ? 'placeBuy' : 'placeSell')
 
+    await kisLimiter.acquire('HIGH')
     const { data } = await kisHttp.post(
       '/uapi/overseas-stock/v1/trading/order',
       {
@@ -316,7 +384,10 @@ export const KisService = {
         OVRS_ORD_UNPR: '0',
         ORD_SVR_DVSN_CD: '0',
       },
-      { headers: buildKisHeaders(appKey, appSecret, trId) },
+      {
+        headers: buildKisHeaders(appKey, appSecret, orderTrId),
+        signal: activeAbortController.signal,
+      },
     )
 
     // KIS는 HTTP 200으로 응답하면서 rt_cd='1' 등으로 비즈니스 실패를 보고한다.
@@ -333,7 +404,52 @@ export const KisService = {
       executedQty: qty,
     }
   },
+
+  /**
+   * 모의/실전 환경 전환 시 호출 — in-flight axios abort + 메모리 토큰 소거 +
+   * 갱신 timer 취소 + axios baseURL 갱신.
+   * axios instance 자체는 보존하고 defaults.baseURL만 바꿔 import 측 참조를 깨뜨리지 않는다.
+   */
+  invalidateRuntime(): void {
+    // 옛 baseURL/토큰으로 떠 있던 in-flight 요청을 즉시 취소
+    activeAbortController.abort()
+    activeAbortController = new AbortController()
+
+    mainState.setKisAccessToken(null)
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+    kisHttp.defaults.baseURL = getKisBaseUrl(mainState.isPaperTrading)
+  },
 }
+
+/**
+ * 기존 단일 키(`kis-accessToken`, `kis-tokenExpiresAt`)에 토큰이 남아 있으면
+ * paper 키로 1회 이전 후 legacy 키 삭제. 실패해도 무시.
+ */
+export async function migrateLegacyKeysIfNeeded(): Promise<void> {
+  try {
+    const legacyToken = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
+    const legacyExpiry = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+    if (!legacyToken || !legacyExpiry) return
+
+    // 이미 paper 키가 있으면 충돌 회피 — legacy만 정리
+    const existingPaperToken = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')
+    if (!existingPaperToken) {
+      await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', legacyToken)
+      await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', legacyExpiry)
+    }
+    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken')
+    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+    console.info('[KisService] legacy keytar 토큰 키 → paper 이전 완료')
+  } catch (e) {
+    console.warn('[KisService] legacy 키 마이그레이션 실패 (무시):', e)
+  }
+}
+
+// 마이그레이션은 main/index.ts의 app.whenReady에서 await 호출 — 모듈 로드 시 자동 실행 X
+// (자동 실행 시 restorePaperTradingFlag/issueToken과 race 발생)
 
 function buildKisHeaders(appKey: string, appSecret: string, trId: string) {
   return {

@@ -5,6 +5,8 @@ import { StompService } from '../services/StompService'
 import { KisService } from '../services/KisService'
 import { OAuthService, OAuthProvider } from '../services/OAuthService'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { start as startWatchlist, stop as stopWatchlist } from './watchlistHandlers'
+import { start as startPricePoller, stop as stopPricePoller } from '../services/PricePoller'
 
 export function registerAuthHandlers() {
   ipcMain.handle(IPC_CHANNELS.AUTH_LOGIN, async (_e, { email, password }) => {
@@ -32,11 +34,18 @@ export function registerAuthHandlers() {
       console.warn('[Auth] KIS 토큰 복원 실패:', e instanceof Error ? e.message : 'unknown error')
     }
 
+    // 관심종목 5분 폴링 시작 (이미 동작 중이면 no-op).
+    startWatchlist()
+    // 시세 폴링 시작 — ticker 들은 watchlist 동기화/Renderer holdings 통보로 채워진다.
+    startPricePoller()
+
     return { user, settings }
   })
 
   ipcMain.handle(IPC_CHANNELS.AUTH_LOGOUT, () => {
     StompService.disconnect()
+    stopWatchlist()
+    stopPricePoller()
     mainState.clear()
   })
 
