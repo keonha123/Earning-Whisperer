@@ -25,4 +25,21 @@ export function registerWsHandlers() {
       error_message: reason,
     })
   })
+
+  /*
+   * 트랜스크립트 동적 구독 (Contract 4.5).
+   * Renderer 가 사용자의 어닝콜 ticker 변경에 따라 SUBSCRIBE/UNSUBSCRIBE 를 명령한다.
+   * fire-and-forget 패턴 — 결과를 invoke 응답으로 돌려줄 필요 없음.
+   *
+   * payload 가 falsy 하거나 ticker 가 비문자열인 경우는 silent ignore (방어).
+   */
+  ipcMain.handle(IPC_CHANNELS.TRANSCRIPT_SUBSCRIBE, (_e, payload: { ticker: string }) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.subscribeTranscript(payload.ticker)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TRANSCRIPT_UNSUBSCRIBE, (_e, payload: { ticker: string }) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.unsubscribeTranscript(payload.ticker)
+  })
 }

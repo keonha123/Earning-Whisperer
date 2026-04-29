@@ -18,6 +18,8 @@ import {
   livePriceSeriesDevMock,
   type PricePoint,
 } from '../fixtures/liveSession.dev-mock'
+import { useLiveTranscript } from '../hooks/useLiveTranscript'
+import type { TranscriptSegment } from '../store/useTranscriptStore'
 // liveAiScoreSeriesDevMock 은 향후 EmaChart 가 보라색 AI 점수 라인으로 재활용 예정.
 // fixture export 자체는 유지하되, 본 페이지에서는 사용처가 없어 import 하지 않는다
 // (tsconfig 의 noUnusedLocals 가 켜지면 빌드 실패 가능).
@@ -35,12 +37,7 @@ export default function TradingRoomPage() {
   const { plan, settings, setSettings } = useUserStore()
   const orderableCash = usePortfolioStore((s) => s.orderableCash)
 
-  // LIVE 판정: 활성 신호 수신 중을 LIVE 로 본다 (PR4 결정).
-  // 향후 EARNINGS_SESSION_STARTED IPC 추가 시 별도 flag 로 대체.
-  const isLive = activeSignal != null
-
   // ── DEV-only fixtures (prod 빌드에서는 빈 배열/null) ─────────────────────────
-  const transcript = import.meta.env.DEV ? sttTranscriptDevMock : EMPTY_TRANSCRIPT
   const priceSeries = import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
 
@@ -49,6 +46,41 @@ export default function TradingRoomPage() {
   //  2) liveMeta (DEV fixture)
   //  3) null
   const ticker = activeSignal?.ticker ?? liveMeta?.ticker ?? null
+
+  // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
+  // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
+  const { segments: liveSegments, endedCallIds } = useLiveTranscript(ticker)
+
+  // segment → TranscriptLine 어댑터 (STTScriptPanel 의 기존 인터페이스 보존).
+  const liveTranscript = useMemo<readonly TranscriptLine[]>(
+    () => liveSegments.map(toTranscriptLine),
+    [liveSegments],
+  )
+
+  // DEV 환경 + store 가 비어있을 때 fixture 폴백 (안전망 — backend 미가동 시).
+  // - prod 빌드: 항상 store 데이터 또는 빈 배열 (fixture 미접근).
+  // - DEV: 실데이터 도착 즉시 fixture 자동 대체.
+  const transcript: readonly TranscriptLine[] =
+    liveTranscript.length > 0
+      ? liveTranscript
+      : import.meta.env.DEV
+        ? sttTranscriptDevMock
+        : EMPTY_TRANSCRIPT
+
+  // 활성 callId — 가장 최근 segment 의 callId. 없으면 null.
+  const activeCallId =
+    liveSegments.length > 0
+      ? liveSegments[liveSegments.length - 1].callId
+      : null
+
+  // LIVE 판정 (Contract 4.5 반영):
+  //  - 활성 트랜스크립트 세션이 있고 (activeCallId 존재),
+  //  - 그 callId 가 endedCallIds 에 포함되지 않을 때 LIVE.
+  //  - fallback: 실데이터 없는 DEV 환경에서는 기존 activeSignal 기반 LIVE 판정 유지.
+  const isLive =
+    activeCallId != null
+      ? !endedCallIds.has(activeCallId)
+      : activeSignal != null
   const companyName = liveMeta?.companyName ?? null
   const currentPrice = liveMeta?.currentPrice ?? null
   const changePercent = liveMeta?.changePercent
@@ -557,4 +589,31 @@ function countByCategory(items: SignalFeedItem[]): SignalCounts {
 function formatSigned(v: number): string {
   if (!Number.isFinite(v)) return '—'
   return (v >= 0 ? '+' : '') + v.toFixed(2)
+}
+
+/**
+ * TranscriptSegment (실시간 store) → TranscriptLine (STTScriptPanel UI 모델).
+ *
+ *  - id: `${callId}-${sequence}` — 동일 어닝콜 내 sequence 단조 증가가 보장하는 unique key.
+ *  - timestamp: startMs 를 "mm:ss" 로 포맷 (어닝콜 시작 기준 경과 시간).
+ *  - speaker: 누락 시 빈 문자열 ("[mm:ss] · ·" 가 되지 않도록 fallback).
+ *  - ai_score: 별도 시그널 채널 (/user/queue/signals) 에서 매핑되므로 어댑터에서는 undefined.
+ */
+function toTranscriptLine(seg: TranscriptSegment): TranscriptLine {
+  return {
+    id: `${seg.callId}-${seg.sequence}`,
+    timestamp: formatMmSs(seg.startMs),
+    speaker: seg.speaker ?? '',
+    text: seg.text,
+    ai_score: undefined,
+  }
+}
+
+/** ms → "mm:ss" 포맷. 음수/NaN/Infinity 는 "00:00" 으로 fallback. */
+function formatMmSs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '00:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }

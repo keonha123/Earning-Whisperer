@@ -1,4 +1,4 @@
-import { Client, type IMessage } from '@stomp/stompjs'
+import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import WebSocket from 'ws'
 import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
@@ -15,6 +15,14 @@ let client: Client | null = null
 let retryCount = 0
 let hasConnectedOnce = false
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
+
+/**
+ * 활성 트랜스크립트 구독 핸들 — ticker 별 1개.
+ * 재연결 시 onConnect 에서 동일 ticker 들을 자동 재구독한다.
+ *  - 키: ticker (예: "NVDA")
+ *  - 값: STOMP subscription handle (활성), 또는 undefined (미연결 상태에서 sub 요청만 기록)
+ */
+const transcriptSubscriptions = new Map<string, StompSubscription | undefined>()
 
 function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
@@ -101,6 +109,19 @@ export const StompService = {
             }
           },
         )
+
+        /*
+         * 재연결 시 활성 트랜스크립트 ticker 자동 재구독 (Contract 4.5).
+         * Renderer 가 보고 있던 ticker 의 segment 가 끊김 없이 이어지도록 한다.
+         * 새로 발급되는 subscription handle 로 Map 값을 갱신한다.
+         */
+        for (const ticker of transcriptSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/transcript/${ticker}`,
+            transcriptMessageHandler,
+          )
+          transcriptSubscriptions.set(ticker, sub)
+        }
       },
 
       onDisconnect: () => {
@@ -128,12 +149,68 @@ export const StompService = {
     client?.deactivate()
     client = null
     retryCount = 0
+    // 트랜스크립트 핸들도 함께 정리 — disconnect 후 dangling sub 방지.
+    transcriptSubscriptions.clear()
     onStatusChange('DISCONNECTED')
   },
 
   isConnected(): boolean {
     return client?.connected ?? false
   },
+
+  /**
+   * 동적 트랜스크립트 토픽 구독 (Contract 4.5).
+   * - connected 상태면 즉시 subscribe 후 핸들 저장.
+   * - 미연결 상태면 ticker 만 Map 에 기록 → 다음 onConnect 에서 자동 재구독.
+   * - 동일 ticker 중복 호출은 idempotent (이미 활성 sub 있으면 no-op).
+   */
+  subscribeTranscript(ticker: string) {
+    if (!ticker) return
+    const existing = transcriptSubscriptions.get(ticker)
+    if (existing) return // 이미 활성 sub.
+
+    if (client?.connected) {
+      const sub = client.subscribe(
+        `/topic/transcript/${ticker}`,
+        transcriptMessageHandler,
+      )
+      transcriptSubscriptions.set(ticker, sub)
+    } else {
+      // 미연결 상태 — ticker 만 등록. onConnect 시점에 client.subscribe 가 호출된다.
+      transcriptSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  /**
+   * 동적 트랜스크립트 토픽 구독 해제.
+   * - 활성 sub 이면 unsubscribe 호출 후 Map 제거.
+   * - 미연결 상태에서 등록만 되어있던 ticker 도 Map 에서 제거.
+   */
+  unsubscribeTranscript(ticker: string) {
+    if (!ticker) return
+    const sub = transcriptSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 트랜스크립트 unsubscribe 실패:', e)
+      }
+    }
+    transcriptSubscriptions.delete(ticker)
+  },
+}
+
+/**
+ * 트랜스크립트 STOMP 메시지 핸들러 — 모든 ticker 가 공유.
+ * 재구독 시 동일 함수 reference 를 재사용하기 위해 module-level 로 분리.
+ */
+function transcriptMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.TRANSCRIPT_SEGMENT_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 트랜스크립트 파싱 실패:', e)
+  }
 }
 
 function scheduleReconnect() {
