@@ -5,6 +5,7 @@ import { kisHttpMock } from '../../../test/setup'
 
 import keytar from 'keytar'
 import { KisService } from '../KisService'
+import { kisLimiter } from '../KisRateLimiter'
 import { mainState } from '../../store/mainState'
 import {
   currentPriceResponse,
@@ -25,6 +26,7 @@ beforeEach(() => {
   mainState.setKisAccessToken('valid-token', 86400)
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()
+  vi.mocked(kisLimiter.acquire).mockClear()
 })
 
 afterEach(() => {
@@ -112,5 +114,16 @@ describe('KisService.getCurrentPrice', () => {
     const price = await KisService.getCurrentPrice('AAPL')
 
     expect(price).toBe(180.5)
+  })
+
+  it('HHDFS00000300 호출 직전 acquire(LOW) 1회 호출', async () => {
+    await seedCredentials()
+    kisHttpMock.get.mockResolvedValueOnce({ data: currentPriceResponse(150) })
+
+    await KisService.getCurrentPrice('TSLA')
+
+    const acquireMock = vi.mocked(kisLimiter.acquire)
+    const lowCalls = acquireMock.mock.calls.filter((c) => c[0] === 'LOW')
+    expect(lowCalls).toHaveLength(1)
   })
 })

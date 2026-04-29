@@ -15,8 +15,11 @@ import MiniLineChart from '../components/dashboard/MiniLineChart'
 
 import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
 import { useMarketIndices } from '../hooks/useMarketIndices'
+import { useWatchlist } from '../hooks/useWatchlist'
+import { usePrices } from '../hooks/usePrices'
 import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
-import { holdingsDevMock, watchlistDevMock } from '../fixtures/holdings.dev-mock'
+// watchlistDevMock 은 이번 PR 에서 제거 (실 IPC 사용). holdings.dev-mock 파일 자체는 보존.
+import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
 import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
@@ -73,6 +76,15 @@ export default function DashboardPage() {
         holdings: any[]
       }>(IPC_CHANNELS.KIS_GET_BALANCE)
       setBalance(balance.orderableCash, balance.totalCash, balance.holdings)
+
+      // main PricePoller 에 보유종목 ticker 변경 통보 — 빈 배열도 보내서
+      // 보유 0개로 줄어든 케이스도 폴링 대상에서 제외되게 함.
+      const tickers = (balance.holdings ?? []).map((h: any) => h.ticker)
+      try {
+        await ipc.invoke(IPC_CHANNELS.HOLDINGS_TICKERS_UPDATE, { tickers })
+      } catch (e) {
+        console.error('[DashboardPage] HOLDINGS_TICKERS_UPDATE 실패:', e)
+      }
     } catch (e: any) {
       console.error('잔고 조회 실패:', e)
       setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
@@ -96,13 +108,24 @@ export default function DashboardPage() {
     }
   }
 
+  // 시세 폴링 캐시 — main PricePoller 가 ticker 별 KIS 가격을 1차 캐싱.
+  // useEffect 로 PRICES_GET 1회 + PRICES_UPDATE 구독 시작.
+  const { prices } = usePrices()
+
+  // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
-    totalCash + storeHoldings.reduce((sum, h) => sum + h.qty * h.currentPrice, 0)
+    totalCash +
+    storeHoldings.reduce((sum, h) => {
+      const live = prices[h.ticker]?.currentPrice
+      const px = live ?? h.currentPrice
+      return sum + h.qty * px
+    }, 0)
 
   // Holdings/Watchlist 표시 행:
   //  - 실제 store 의 holdings 우선 사용. fixture 의 메타데이터 (회사명/로고색) 와 매핑.
   //  - store 가 비어있는 DEV 환경에서는 fixture rows 자체를 표시.
   //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
+  //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
     if (storeHoldings.length === 0 && import.meta.env.DEV) {
       return holdingsDevMock.map((h) => ({
@@ -119,12 +142,15 @@ export default function DashboardPage() {
     }
     return storeHoldings.map((h) => {
       const meta = holdingsDevMock.find((m) => m.ticker === h.ticker)
+      // 폴러 가격 우선, 없으면 KIS_GET_BALANCE 응답에 포함된 currentPrice fallback.
+      const livePrice = prices[h.ticker]?.currentPrice ?? h.currentPrice
       const pnlPct =
-        h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0
+        h.avgPrice > 0 ? ((livePrice - h.avgPrice) / h.avgPrice) * 100 : 0
       return {
         ticker: h.ticker,
         name: meta?.name ?? h.ticker,
-        currentPrice: h.currentPrice,
+        currentPrice: livePrice,
+        // TODO(별도 PR): 전일 종가 + dailyChangePercent 추가
         dailyChangePercent: meta?.dailyChangePercent ?? 0,
         pnlPercent: pnlPct,
         earningsBadge: meta?.earningsBadge ?? null,
@@ -133,22 +159,22 @@ export default function DashboardPage() {
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings])
+  }, [storeHoldings, prices])
 
+  // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
+  // currentPrice 는 PricePoller 가 push 한 가격 사용. 없으면 0 placeholder
+  // (HoldingsTable 의 `$0.00` 표시 자체가 "조회 중" 시그널).
+  // TODO(별도 PR): 전일 종가 + dailyChangePercent 추가
+  const { items: watchlistItems } = useWatchlist()
   const watchRows: HoldingsTableRow[] = useMemo(() => {
-    // Watchlist IPC 미존재 — DEV 만 fixture, prod 는 빈 배열.
-    if (!import.meta.env.DEV) return []
-    return watchlistDevMock.map((w) => ({
+    return watchlistItems.map((w) => ({
       ticker: w.ticker,
-      name: w.name,
-      currentPrice: w.currentPrice,
-      dailyChangePercent: w.dailyChangePercent,
-      earningsBadge: w.earningsBadge,
-      logoBg: w.logoBg,
-      logoFg: w.logoFg,
-      logoLabel: w.logoLabel,
+      name: w.companyName,
+      currentPrice: prices[w.ticker]?.currentPrice ?? 0,
+      dailyChangePercent: 0,
+      earningsBadge: null,
     }))
-  }, [])
+  }, [watchlistItems, prices])
 
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고

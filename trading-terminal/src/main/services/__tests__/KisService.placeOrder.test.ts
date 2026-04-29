@@ -5,6 +5,7 @@ import { kisHttpMock } from '../../../test/setup'
 
 import keytar from 'keytar'
 import { KisService } from '../KisService'
+import { kisLimiter } from '../KisRateLimiter'
 import { mainState } from '../../store/mainState'
 import { orderSuccessResponse, kisOrderRejectResponse } from '../../../test/fixtures/kisResponses'
 
@@ -18,10 +19,13 @@ async function seedCredentials(accountNo = '1234567801'): Promise<void> {
 
 beforeEach(() => {
   mainState.clear()
+  // mainState.clear() 는 isPaperTrading 을 유지하므로 모드 전환 테스트 leak 방지로 명시 reset
+  mainState.setPaperTrading(true)
   // 토큰 미리 발급해둔 상태에서 placeOrder만 검증 (issueToken 흐름은 별도 테스트)
   mainState.setKisAccessToken('valid-token', 86400)
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()
+  vi.mocked(kisLimiter.acquire).mockClear()
 })
 
 afterEach(() => {
@@ -213,5 +217,51 @@ describe('KisService.placeOrder — KIS rt_cd 비즈니스 실패 처리', () =>
     expect(result.orderId).toBe('OD-OK')
     expect(result.executedQty).toBe(1)
     expect(result.executedPrice).toBeNull()
+  })
+
+  it('주문 호출 직전 acquire(HIGH) 1회 호출', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-LIM') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const acquireMock = vi.mocked(kisLimiter.acquire)
+    const highCalls = acquireMock.mock.calls.filter((c) => c[0] === 'HIGH')
+    expect(highCalls).toHaveLength(1)
+  })
+})
+
+describe('KisService.placeOrder — TR_ID 모드별 분기 (C1)', () => {
+  it('실전 모드(paper=false) BUY → tr_id=TTTT1002U 헤더로 호출', async () => {
+    mainState.setPaperTrading(false)
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-REAL-BUY') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const [, , config] = kisHttpMock.post.mock.calls[0]
+    expect(config.headers.tr_id).toBe('TTTT1002U')
+  })
+
+  it('실전 모드(paper=false) SELL → tr_id=TTTT1006U 헤더로 호출', async () => {
+    mainState.setPaperTrading(false)
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-REAL-SELL') })
+
+    await KisService.placeOrder('SELL', 'AAPL', 1)
+
+    const [, , config] = kisHttpMock.post.mock.calls[0]
+    expect(config.headers.tr_id).toBe('TTTT1006U')
+  })
+
+  it('모의 모드(paper=true, 디폴트) BUY → tr_id=VTTT1002U 유지 (회귀 보호)', async () => {
+    // 디폴트 paper=true (beforeEach에서 mainState.clear → setPaperTrading은 디폴트 true)
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-PAPER') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const [, , config] = kisHttpMock.post.mock.calls[0]
+    expect(config.headers.tr_id).toBe('VTTT1002U')
   })
 })

@@ -5,6 +5,7 @@ import { kisHttpMock } from '../../../test/setup'
 
 import keytar from 'keytar'
 import { KisService } from '../KisService'
+import { kisLimiter } from '../KisRateLimiter'
 import { mainState } from '../../store/mainState'
 import {
   balanceWithHoldings,
@@ -24,9 +25,12 @@ async function seedCredentials(): Promise<void> {
 
 beforeEach(() => {
   mainState.clear()
+  // mainState.clear() 는 isPaperTrading 을 유지하므로 leak 방지로 명시 reset
+  mainState.setPaperTrading(true)
   mainState.setKisAccessToken('valid-token', 86400)
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()
+  vi.mocked(kisLimiter.acquire).mockClear()
 })
 
 afterEach(() => {
@@ -153,29 +157,53 @@ describe('KisService.getBalance — KIS rt_cd 비즈니스 실패 처리', () =>
   })
 })
 
-describe('KisService.getBalance — VTTS3012R/VTTS3007R 사이 지연', () => {
-  it('첫 호출 직후 1100ms 진행 전엔 두 번째 호출 미발생', async () => {
+describe('KisService.getBalance — KisRateLimiter 통합', () => {
+  it('VTTS3012R/VTTS3007R 호출 직전 acquire(MEDIUM) 2회 호출', async () => {
     await seedCredentials()
     kisHttpMock.get
       .mockResolvedValueOnce({ data: balanceWithHoldings })
       .mockResolvedValueOnce({ data: psAmountSuccess })
 
-    vi.useFakeTimers()
-    try {
-      const promise = KisService.getBalance()
+    await KisService.getBalance()
 
-      // 마이크로태스크만 비움 — VTTS3012R 응답까지는 진행
-      await vi.advanceTimersByTimeAsync(0)
-      // 첫 호출만 트리거된 상태여야 한다
-      expect(kisHttpMock.get).toHaveBeenCalledTimes(1)
+    // 잔고 조회 두 단계 각각 acquire('MEDIUM')
+    const acquireMock = vi.mocked(kisLimiter.acquire)
+    const mediumCalls = acquireMock.mock.calls.filter((c) => c[0] === 'MEDIUM')
+    expect(mediumCalls).toHaveLength(2)
+    expect(kisHttpMock.get).toHaveBeenCalledTimes(2)
+  })
+})
 
-      // 1100ms 지연 통과 후 두 번째 호출
-      await vi.advanceTimersByTimeAsync(1200)
-      await promise
+describe('KisService.getBalance — TR_ID 모드별 분기 (C1)', () => {
+  it('실전 모드(paper=false) → 잔고=TTTS3012R / 주문가능=TTTS3007R 헤더로 호출', async () => {
+    mainState.setPaperTrading(false)
+    await seedCredentials()
+    kisHttpMock.get
+      .mockResolvedValueOnce({ data: balanceWithHoldings })
+      .mockResolvedValueOnce({ data: psAmountSuccess })
 
-      expect(kisHttpMock.get).toHaveBeenCalledTimes(2)
-    } finally {
-      vi.useRealTimers()
-    }
+    await runBalanceWithFakeTimers(() => KisService.getBalance())
+
+    // 1번째 호출: 잔고
+    const [, balanceConfig] = kisHttpMock.get.mock.calls[0]
+    expect(balanceConfig.headers.tr_id).toBe('TTTS3012R')
+
+    // 2번째 호출: 주문가능외화
+    const [, psConfig] = kisHttpMock.get.mock.calls[1]
+    expect(psConfig.headers.tr_id).toBe('TTTS3007R')
+  })
+
+  it('모의 모드(paper=true, 디폴트) → VTTS3012R / VTTS3007R 유지 (회귀 보호)', async () => {
+    await seedCredentials()
+    kisHttpMock.get
+      .mockResolvedValueOnce({ data: balanceWithHoldings })
+      .mockResolvedValueOnce({ data: psAmountSuccess })
+
+    await runBalanceWithFakeTimers(() => KisService.getBalance())
+
+    const [, balanceConfig] = kisHttpMock.get.mock.calls[0]
+    expect(balanceConfig.headers.tr_id).toBe('VTTS3012R')
+    const [, psConfig] = kisHttpMock.get.mock.calls[1]
+    expect(psConfig.headers.tr_id).toBe('VTTS3007R')
   })
 })

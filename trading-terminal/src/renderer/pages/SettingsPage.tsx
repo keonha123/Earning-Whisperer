@@ -34,6 +34,46 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // 모의/실전 환경 토글 — main 프로세스에서 단일 source of truth
+  const [isPaperTrading, setIsPaperTrading] = useState<boolean>(true)
+  const [paperToggleBusy, setPaperToggleBusy] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ipc
+      .invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
+      .then((v) => {
+        if (!cancelled && typeof v === 'boolean') setIsPaperTrading(v)
+      })
+      .catch(() => {
+        // 조회 실패 시 디폴트 true 유지 (안전한 쪽)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleTogglePaperTrading() {
+    if (paperToggleBusy) return
+    const next = !isPaperTrading
+    const message = next
+      ? '모의 투자 환경으로 전환하시겠습니까? 토큰이 재발급됩니다.'
+      : '실전 투자 환경으로 전환하시겠습니까? 토큰이 재발급됩니다.'
+    if (!confirm(message)) return
+
+    setPaperToggleBusy(true)
+    try {
+      await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: next })
+      setIsPaperTrading(next)
+      // 토큰이 무효화됐으므로 connection store 표시도 갱신
+      setKisTokenStatus('UNKNOWN')
+    } catch (err: any) {
+      alert('환경 전환 실패: ' + (err?.message ?? 'unknown'))
+    } finally {
+      setPaperToggleBusy(false)
+    }
+  }
+
   // "저장됨" 배지 자동 hide 타이머 — 연속 저장 race / 언마운트 후 setState 방지.
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -374,6 +414,40 @@ export default function SettingsPage() {
             />
             {isKisHealthy ? '연결 정상' : '연결 대기'}
           </span>
+        </div>
+
+        {/* 환경 토글 — 모의/실전 */}
+        <div
+          className="flex items-center justify-between gap-3 bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5"
+          aria-live="polite"
+        >
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-text-primary text-sm font-medium">모의 투자 모드</span>
+            <span className="text-text-disabled text-xs leading-snug">
+              {isPaperTrading
+                ? '모의 환경 (openapivts) — 가상 자금으로 주문 시뮬레이션'
+                : '실전 환경 (openapi) — 실계좌로 주문 체결'}
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isPaperTrading}
+            aria-label="모의 투자 모드"
+            onClick={handleTogglePaperTrading}
+            disabled={paperToggleBusy}
+            className={
+              'relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ' +
+              (isPaperTrading ? 'bg-accent-500' : 'bg-surface-3 border border-border-strong')
+            }
+          >
+            <span
+              className={
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform ' +
+                (isPaperTrading ? 'translate-x-6' : 'translate-x-1')
+              }
+            />
+          </button>
         </div>
 
         {/* 보안 안내 */}
