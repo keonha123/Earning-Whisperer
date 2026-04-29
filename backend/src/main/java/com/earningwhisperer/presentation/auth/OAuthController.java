@@ -66,7 +66,7 @@ public class OAuthController {
         }
 
         try {
-            OAuthUserProfile profile = client.exchange(request.getCode(), request.getRedirectUri());
+            OAuthUserProfile profile = client.exchange(request.getCode(), request.getRedirectUri(), request.getCodeVerifier());
             TokenPair pair = oAuthService.socialLogin(profile);
             return buildTokenResponse(pair);
         } catch (OAuthExchangeException e) {

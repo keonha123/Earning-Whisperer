@@ -18,4 +18,7 @@ public class OAuthCallbackRequest {
 
     @NotBlank
     private String provider;
+
+    @JsonProperty("code_verifier")
+    private String codeVerifier;
 }
