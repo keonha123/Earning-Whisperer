@@ -11,5 +11,5 @@ public interface OAuthClient {
 
     OAuthProvider provider();
 
-    OAuthUserProfile exchange(String code, String redirectUri);
+    OAuthUserProfile exchange(String code, String redirectUri, String codeVerifier);
 }

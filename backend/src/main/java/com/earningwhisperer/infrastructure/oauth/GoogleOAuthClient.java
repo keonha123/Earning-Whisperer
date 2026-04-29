@@ -49,7 +49,7 @@ public class GoogleOAuthClient implements OAuthClient {
 
     @Override
     @SuppressWarnings("unchecked")
-    public OAuthUserProfile exchange(String code, String redirectUri) {
+    public OAuthUserProfile exchange(String code, String redirectUri, String codeVerifier) {
         // redirect_uri 서버 측 허용 목록 검증
         if (!allowedRedirectUris.contains(redirectUri)) {
             throw new OAuthExchangeException("허용되지 않은 redirect_uri: " + redirectUri);
@@ -62,6 +62,9 @@ public class GoogleOAuthClient implements OAuthClient {
         form.add("redirect_uri", redirectUri);
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
+        if (codeVerifier != null && !codeVerifier.isBlank()) {
+            form.add("code_verifier", codeVerifier);
+        }
 
         Map<String, Object> tokenResponse = restClient.post()
                 .uri(TOKEN_URL)

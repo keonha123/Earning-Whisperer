@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.user.OAuthExchangeException;
 import com.earningwhisperer.domain.user.OAuthProvider;
 import com.earningwhisperer.domain.user.OAuthUserProfile;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,7 @@ public class KakaoOAuthClient implements OAuthClient {
     private final List<String> allowedRedirectUris;
     private final RestClient restClient;
 
+    @Autowired
     public KakaoOAuthClient(
             @Value("${oauth.kakao.client-id:}") String clientId,
             @Value("${oauth.kakao.client-secret:}") String clientSecret,
@@ -57,7 +59,7 @@ public class KakaoOAuthClient implements OAuthClient {
 
     @Override
     @SuppressWarnings("unchecked")
-    public OAuthUserProfile exchange(String code, String redirectUri) {
+    public OAuthUserProfile exchange(String code, String redirectUri, String codeVerifier) {
         if (!allowedRedirectUris.contains(redirectUri)) {
             throw new OAuthExchangeException("허용되지 않은 redirect_uri: " + redirectUri);
         }
@@ -70,6 +72,9 @@ public class KakaoOAuthClient implements OAuthClient {
         form.add("client_id", clientId);
         if (clientSecret != null && !clientSecret.isBlank()) {
             form.add("client_secret", clientSecret);
+        }
+        if (codeVerifier != null && !codeVerifier.isBlank()) {
+            form.add("code_verifier", codeVerifier);
         }
 
         Map<String, Object> tokenResponse;
