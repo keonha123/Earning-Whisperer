@@ -16,6 +16,8 @@
 7. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
 8. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
 9. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
+10. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 실시간 어닝콜 트랜스크립트 segment 전달 (AI Engine 분석용 슬라이딩 윈도우와 별개 출력)
+11. **Backend** (Java) ➔ `[WebSocket /topic/transcript]` ➔ **Trading Terminal / Frontend Web** : 어닝콜 트랜스크립트 라이브 표시
 
 ---
 
@@ -128,6 +130,28 @@
 | `timestamp` | Long | Y | 데이터 기준 시각 (Unix Epoch Second, UTC) |
 
 > **구독 예시:** `stompClient.subscribe('/topic/market/indices', handler)`
+
+### 4.5. Live Earnings Call Transcript Broadcast (실시간 어닝콜 스크립트 표시용)
+- **Topic:** `/topic/transcript/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.2 Public Broadcast와 동일 정책.
+- **설명:** 실제 어닝콜 진행 중인 종목의 STT 트랜스크립트를 **stabilized segment 단위**(슬라이딩 윈도우 안정화 후 확정된 부분)로 클라이언트에 브로드캐스트합니다. Trading Terminal의 trading-room STT 패널·Frontend Web 라이브룸의 스크립트 영역이 구독합니다.
+- **발행 시점:** Data Pipeline의 Contract 6.4 HTTP POST 수신 즉시 백엔드가 fan-out (저장 책임 외 가공 없음).
+- **분석 시그널 채널과의 관계:** 본 채널은 **원문 스크립트 전용**입니다. AI 분석 시그널(`/topic/live/{ticker}`)과 독립이며, 클라이언트는 두 채널을 동시 구독하여 STT 패널과 분석 카드 영역을 각각 갱신합니다.
+- **append-only 시맨틱:** 같은 `call_id` 내 `sequence`는 단조 증가, 동일 segment의 재발행 없음. 클라이언트는 `sequence` 누락 감지 시 REST fallback(추후 정의) 또는 다음 segment 도착으로 자연 복구.
+
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `ticker` | String | Y | 종목 심볼 |
+| `call_id` | String | Y | 어닝콜 세션 식별자 (예: `NVDA-2026Q1`) |
+| `sequence` | Integer | Y | segment 순차 번호 (어닝콜 세션 내 단조 증가) |
+| `start_ms` | Long | Y | segment 시작 시각 (오디오 캡처 기준, milliseconds) |
+| `end_ms` | Long | Y | segment 종료 시각 (오디오 캡처 기준, milliseconds) |
+| `text` | String | Y | stabilized segment 텍스트 (오버랩 제거 완료) |
+| `speaker` | String | N | 화자 라벨 (`CEO`, `CFO`, `Q&A` 등). STT 메타로 식별 가능 시 |
+| `timestamp` | Long | Y | 발행 시각 (Unix Epoch Second, UTC) |
+| `is_session_end` | Boolean | N | 어닝콜 세션 종료 신호 (기본값 `false`). `true` 수신 시 클라이언트는 "콜 종료" UI 표시 |
+
+> **구독 예시:** `stompClient.subscribe('/topic/transcript/NVDA', handler)`
 
 ---
 
@@ -249,6 +273,57 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
       "timestamp": 1730000000,
       "published_at": 1730000003
     }
+
+### 6.4. 실시간 어닝콜 트랜스크립트 (Live Earnings Call Transcript)
+- **통신 방식:** HTTP POST (비동기, segment 단위 push)
+- **엔드포인트:** `POST {backend}/api/v1/internal/transcript-segment`
+- **인증:** `X-Internal-Secret` 공유 시크릿 (Contract 8.3)
+- **설명:** Data Pipeline이 `faster-whisper`로 변환한 STT 텍스트 중 **stabilized segment**(오버랩 슬라이딩 윈도우 안정화 후 확정된 부분)를 백엔드에 segment 단위로 즉시 push합니다. 백엔드는 수신 즉시 STOMP `/topic/transcript/{ticker}`(Contract 4.5)로 fan-out하며 가공/저장 외 변환은 수행하지 않습니다.
+- **AI Engine용 출력과의 관계:** 본 contract는 **AI Engine으로 가는 슬라이딩 윈도우 chunk(Contract 1)와 별개의 출력**입니다. 같은 transcribe 결과에서 두 형태로 fan-out하며, 추론 비용은 공유되고 추가 비용은 HTTP POST 1회뿐입니다.
+  - Contract 1 (`/api/v1/analyze`) → 분석용. 10~15초 슬라이딩 윈도우 + 5~7초 오버랩 (문맥 보존 목적)
+  - Contract 6.4 (본 항목) → 화면 표시용. 오버랩 제거된 stabilized segment (중복·문장 깨짐 방지 목적)
+
+**Stabilization 요구사항 (출력 단위):**
+- 단순 시간 단위 cutting 금지: batch 경계에 발화가 걸치면 단어/의미가 깨져 화면에 부적합. (`data-pipeline/README.md` Feature 3의 "문맥 단절" 방지 원칙과 동일선상)
+- 오버랩 슬라이딩 윈도우 + **LocalAgreement-2** (또는 그에 준하는 stabilization 알고리즘) 적용. 두 연속 윈도우의 공통 prefix만 "확정"으로 emit.
+- 동일 segment의 중복 emit 금지 (sequence는 어닝콜 세션 내 단조 증가).
+- 의도된 지연 5~10초 허용 (실시간감 vs 정확성 trade-off). 윈도우 크기·전진 폭으로 운영 중 조정 가능.
+
+**세션 종료 신호:**
+- 어닝콜 종료 시 마지막 segment에 `is_session_end: true`를 1회 발행 후 같은 `call_id`로 추가 발행 금지.
+- 백엔드는 해당 신호를 STOMP 페이로드에 그대로 전파.
+
+| 필드명 | 타입 | 필수 | 설명 |
+| :--- | :--- | :---: | :--- |
+| `ticker` | String | Y | 종목 심볼 (예: `NVDA`) |
+| `call_id` | String | Y | 어닝콜 세션 식별자 (예: `NVDA-2026Q1`). 동일 종목 멀티콜·재방송 구분용 |
+| `sequence` | Integer | Y | segment 순차 번호 (0부터 1씩 증가, 어닝콜 세션 내 단조 증가) |
+| `start_ms` | Long | Y | segment 시작 시각 (오디오 캡처 기준, milliseconds) |
+| `end_ms` | Long | Y | segment 종료 시각 (오디오 캡처 기준, milliseconds) |
+| `text` | String | Y | stabilized segment 텍스트 (오버랩 제거 완료, 보통 1~10초 분량 한 호흡) |
+| `speaker` | String | N | 화자 라벨 (`CEO`, `CFO`, `Q&A` 등). STT 메타로 식별 가능 시 |
+| `timestamp` | Long | Y | 발행 시각 (Unix Epoch Second, UTC) |
+| `is_session_end` | Boolean | N | 어닝콜 세션 종료 신호 (기본값 `false`) |
+
+**발행 예시:**
+
+    {
+      "ticker": "NVDA",
+      "call_id": "NVDA-2026Q1",
+      "sequence": 142,
+      "start_ms": 873000,
+      "end_ms": 879500,
+      "text": "We saw record demand in data center this quarter.",
+      "speaker": "CEO",
+      "timestamp": 1730000000,
+      "is_session_end": false
+    }
+
+**백엔드 응답:**
+- `202 Accepted` (정상 수신, fan-out 큐 적재 완료)
+- `400 Bad Request` (필수 필드 누락 또는 sequence 역행)
+- `401 Unauthorized` (`X-Internal-Secret` 미일치)
+- `409 Conflict` (`is_session_end: true` 이후 같은 `call_id` 재발행)
 
 ---
 
