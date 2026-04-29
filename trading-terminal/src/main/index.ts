@@ -1,5 +1,16 @@
 import { app, BrowserWindow, session, Tray, Menu, nativeImage, screen } from 'electron'
+import { config as loadDotenv } from 'dotenv'
 import { join } from 'path'
+
+// dev 환경변수 로딩 — Electron main 은 Vite 의 `.env.local` 자동 주입을 받지 않으므로
+// 앱 모듈이 `process.env.*` 를 참조하기 전에 dotenv 로 명시 로딩한다.
+// 우선순위: 프로젝트 루트의 .env.local > .env. (.env.local 은 git ignored)
+// prod 빌드는 electron-builder 가 packaging 시 환경변수를 inline 하므로 영향 없음.
+if (!app.isPackaged) {
+  loadDotenv({ path: join(__dirname, '../../.env.local') })
+  loadDotenv({ path: join(__dirname, '../../.env') })
+}
+
 import { mainState } from './store/mainState'
 import { registerAuthHandlers } from './ipc/authHandlers'
 import { registerVaultHandlers } from './ipc/vaultHandlers'
