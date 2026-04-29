@@ -50,6 +50,28 @@ export const BackendClient = {
     return { token: data.access_token, user: data }
   },
 
+  /**
+   * OAuth (Google / Kakao) 콜백 교환.
+   * 백엔드: POST /api/v1/auth/oauth/callback — body { code, redirect_uri (snake_case), provider }
+   *   응답 body: { access_token, refresh_token } + Set-Cookie(refresh_token; HttpOnly).
+   * Electron 은 access_token 만 mainState 에 메모리 저장. refresh_token 쿠키는 axios session 이 자동 보관.
+   * codeVerifier 는 PKCE 표준 필드로 함께 전달 (백엔드가 확장 시 활용, 미사용이면 무시).
+   */
+  async oauthCallback(params: {
+    provider: 'google' | 'kakao'
+    code: string
+    redirectUri: string
+    codeVerifier?: string
+  }): Promise<{ token: string; user: unknown }> {
+    const { data } = await http.post('/api/v1/auth/oauth/callback', {
+      provider: params.provider.toUpperCase(),
+      code: params.code,
+      redirect_uri: params.redirectUri,
+      ...(params.codeVerifier ? { code_verifier: params.codeVerifier } : {}),
+    })
+    return { token: data.access_token, user: data }
+  },
+
   async getMe(): Promise<{ id: number; email: string; nickname: string; role: string }> {
     const { data } = await http.get('/api/v1/users/me')
     return data

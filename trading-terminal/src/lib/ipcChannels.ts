@@ -6,6 +6,7 @@ export const IPC_CHANNELS = {
   // Renderer → Main (invoke/handle)
   AUTH_LOGIN: 'terminal:auth:login',
   AUTH_LOGOUT: 'terminal:auth:logout',
+  AUTH_OAUTH_START: 'terminal:auth:oauth:start',
 
   VAULT_SAVE: 'terminal:vault:save-credentials',
   VAULT_HAS: 'terminal:vault:has-credentials',

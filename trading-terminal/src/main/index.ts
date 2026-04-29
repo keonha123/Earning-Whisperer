@@ -7,6 +7,7 @@ import { registerKisHandlers } from './ipc/kisHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerWsHandlers } from './ipc/wsHandlers'
 import { registerMarketHandlers } from './ipc/marketHandlers'
+import { OAuthService } from './services/OAuthService'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -100,6 +101,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
+  // OAuth 임시 서버가 살아있다면 강제 종료 (포트 누수 방지)
+  OAuthService.shutdown()
   mainState.clear()
 })
 
