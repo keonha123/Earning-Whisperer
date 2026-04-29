@@ -52,6 +52,13 @@ fmp:
   base-url: https://financialmodelingprep.com
   api-key: ${FMP_API_KEY:}       # 미설정 시 S&P 500 분기 동기화 스케줄러 비활성화
 
+app:
+  internal:
+    # Data Pipeline → Backend 내부 엔드포인트(/api/v1/internal/**) 공유 시크릿.
+    # 운영/배포 환경에서는 반드시 환경변수 INTERNAL_SECRET 으로 주입.
+    # 미설정(빈 문자열) 시 InternalSecretFilter 가 모든 internal 요청을 401 로 차단한다.
+    secret: ${INTERNAL_SECRET:}
+
 management:
   endpoints:
     web:

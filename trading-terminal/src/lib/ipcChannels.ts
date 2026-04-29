@@ -97,4 +97,23 @@ export const IPC_CHANNELS = {
    * payload: { ticker: string; currentPrice: number; lastUpdated: number }[].
    */
   PRICES_UPDATE: 'terminal:prices:update',
+
+  /**
+   * 실시간 어닝콜 트랜스크립트 동적 구독.
+   * Backend Contract 4.5: STOMP /topic/transcript/{ticker}, 기존 STOMP 세션 JWT 사용.
+   * Renderer → Main: 사용자가 보는 어닝콜 ticker 변경 시 SUBSCRIBE/UNSUBSCRIBE 호출.
+   * payload: { ticker } (Renderer→Main)
+   */
+  TRANSCRIPT_SUBSCRIBE: 'terminal:transcript:subscribe',
+  TRANSCRIPT_UNSUBSCRIBE: 'terminal:transcript:unsubscribe',
+
+  /**
+   * STOMP 트랜스크립트 segment push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, sequence, start_ms, end_ms,
+   *   text, speaker?, timestamp, is_session_end?
+   * }
+   * snake_case → camelCase 변환은 store 의 upsertSegment 에서 수행.
+   */
+  TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
 } as const

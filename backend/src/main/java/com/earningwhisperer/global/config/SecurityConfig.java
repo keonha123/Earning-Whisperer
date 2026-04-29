@@ -1,5 +1,6 @@
 package com.earningwhisperer.global.config;
 
+import com.earningwhisperer.infrastructure.security.InternalSecretFilter;
 import com.earningwhisperer.infrastructure.security.JwtAuthenticationFilter;
 import com.earningwhisperer.infrastructure.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
+    private final InternalSecretFilter internalSecretFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -51,7 +53,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/market/indices", "/api/v1/market/indices/**").permitAll()
                 .requestMatchers("/ws/**", "/ws-native/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                // /api/v1/internal/** 는 InternalSecretFilter 가 X-Internal-Secret 으로 검증한다.
+                // Spring Security 단계에서는 인증 객체 없이 통과시키고, 시크릿 검증은 필터가 책임진다.
+                .requestMatchers("/api/v1/internal/**").permitAll()
                 .anyRequest().authenticated())
+            .addFilterBefore(
+                internalSecretFilter,
+                UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(
                 new JwtAuthenticationFilter(jwtProvider),
                 UsernamePasswordAuthenticationFilter.class);
