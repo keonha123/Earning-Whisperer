@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useMarketIndicesStore } from './useMarketIndicesStore'
 
 export type UserPlan = 'FREE' | 'PRO'
 
@@ -57,12 +58,16 @@ export const useUserStore = create<UserState>((set) => ({
   setEmaThreshold: (value) =>
     set((state) => ({ settings: { ...state.settings, emaThreshold: value } })),
 
-  clear: () =>
+  clear: () => {
     set({
       userId: null,
       email: null,
       nickname: null,
       plan: 'FREE',
       settings: defaultSettings,
-    }),
+    })
+    // 로그아웃 시 cross-store reset — 시장 지수는 stale 상태가 남으면 안 됨.
+    // (다른 store 도 향후 동일 패턴으로 합류 가능.)
+    useMarketIndicesStore.getState().reset()
+  },
 }))

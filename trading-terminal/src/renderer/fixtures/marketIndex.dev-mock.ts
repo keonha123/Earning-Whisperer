@@ -8,30 +8,21 @@
  *   - prod 빌드에서는 컴포넌트 자체가 placeholder/숨김 처리하므로
  *     이 fixture 가 화면에 도달하지 않아야 한다.
  *
- * 추후 백엔드 PR:
- *   - 실시간 지수 fetch IPC 채널 (`KIS_GET_MARKET_INDICES` 등) 추가 예정.
- *     이때 본 fixture 는 제거.
+ * PR-B 시점 변경:
+ *   - 타입은 useMarketIndicesStore 의 `MarketIndexItem` 으로 통합 (source of truth).
+ *   - 본 fixture 는 backend 미연동 (isLoaded === false) DEV 환경 fallback 으로만 사용.
+ *   - 실제 데이터(REST + STOMP) 도착 시 store 가 채워지며 자동으로 교체된다.
  * ========================================================================== */
 
-export type MarketTrend = 'up' | 'down' | 'neutral'
+import type { MarketIndexItem } from '../store/useMarketIndicesStore'
 
-export interface MarketIndexItem {
-  /** 표시 심볼 (예: "SPX", "NDX"). a11y label 에도 사용. */
-  symbol: string
-  /** 미포맷 가격값 (소수점 포함). */
-  price: number
-  /** 등락률(%) — 양수=상승, 음수=하락. */
-  changePercent: number
-  /** pip 색 결정용. changePercent 와 일치시키되 neutral 은 미세 변동 표시. */
-  trend: MarketTrend
-  /** 가격 표시 포맷터 (지수마다 자릿수 다름). */
-  format?: 'index' | 'percent'
-}
+export type MarketTrend = 'up' | 'down' | 'neutral'
+export type { MarketIndexItem }
 
 export const marketIndexDevMock: readonly MarketIndexItem[] = [
-  { symbol: 'SPX', price: 5432.1, changePercent: 0.42, trend: 'up', format: 'index' },
-  { symbol: 'NDX', price: 18211.5, changePercent: 0.81, trend: 'up', format: 'index' },
-  { symbol: 'VIX', price: 14.2, changePercent: -2.1, trend: 'down', format: 'index' },
-  { symbol: 'DXY', price: 104.5, changePercent: 0.1, trend: 'neutral', format: 'index' },
-  { symbol: '10Y', price: 4.32, changePercent: 0.02, trend: 'up', format: 'percent' },
+  { symbol: 'SPX', price: 5432.1, changePercent: 0.42, trend: 'up', format: 'index', timestamp: 0 },
+  { symbol: 'NDX', price: 18211.5, changePercent: 0.81, trend: 'up', format: 'index', timestamp: 0 },
+  { symbol: 'VIX', price: 14.2, changePercent: -2.1, trend: 'down', format: 'index', timestamp: 0 },
+  { symbol: 'DXY', price: 104.5, changePercent: 0.1, trend: 'neutral', format: 'index', timestamp: 0 },
+  { symbol: '10Y', price: 4.32, changePercent: 0.02, trend: 'up', format: 'percent', timestamp: 0 },
 ] as const

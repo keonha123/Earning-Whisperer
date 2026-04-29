@@ -25,6 +25,12 @@ export const IPC_CHANNELS = {
   TRADES_GET: 'terminal:trades:get',
   TRADE_CANCEL: 'terminal:trade:cancel',
 
+  /**
+   * 글로벌 시장 지수 5종 (SPX/NDX/VIX/DXY/10Y) 초기 스냅샷 조회.
+   * Backend Contract 7.7: GET /api/v1/market/indices, 인증 불필요, 빈 캐시 시 200 [].
+   */
+  MARKET_INDICES_GET: 'terminal:market:indices-get',
+
   // Main → Renderer (send)
   SIGNAL_RECEIVED: 'terminal:signal:received',
   TRADE_EXECUTED: 'terminal:trade:executed',
@@ -32,4 +38,11 @@ export const IPC_CHANNELS = {
   WS_STATUS_CHANGED: 'terminal:ws:status-changed',
   MODE_FORCED_MANUAL: 'terminal:mode:forced-manual',
   KIS_TOKEN_REFRESHED: 'terminal:kis:token-refreshed',
+
+  /**
+   * 글로벌 시장 지수 1분 단위 push.
+   * Backend Contract 4.4: STOMP /topic/market/indices, 인증 불필요, 5종 단건 메시지.
+   * payload: { symbol, price, change_percent, trend, format, timestamp } (snake_case)
+   */
+  MARKET_INDICES_UPDATE: 'terminal:market:indices-update',
 } as const

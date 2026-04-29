@@ -14,6 +14,7 @@ import HoldingsTable, { type HoldingsTableRow } from '../components/dashboard/Ho
 import MiniLineChart from '../components/dashboard/MiniLineChart'
 
 import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
+import { useMarketIndices } from '../hooks/useMarketIndices'
 import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 import { holdingsDevMock, watchlistDevMock } from '../fixtures/holdings.dev-mock'
 import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
@@ -149,8 +150,14 @@ export default function DashboardPage() {
     }))
   }, [])
 
-  // MarketStrip 데이터: DEV 만 fixture, prod 빈 배열 → placeholder.
-  const marketItems = import.meta.env.DEV ? marketIndexDevMock : []
+  // MarketStrip 데이터:
+  //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고
+  //    indices/isLoaded/lastUpdatedAt 을 함께 반환 (store selector 중복 호출 회피).
+  //  - prod: backend 미연동 시 빈 배열 → MarketStrip placeholder.
+  //  - DEV: backend 미연동 (isLoaded === false) 시에만 mock fallback,
+  //         실제 데이터 수신 시 자동 전환.
+  const { indices, isLoaded } = useMarketIndices()
+  const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
   // EarningsTimeline 데이터: DEV 만 fixture, prod 빈 그룹 + null live.
   const earningsData = import.meta.env.DEV
     ? earningsTimelineDevMock

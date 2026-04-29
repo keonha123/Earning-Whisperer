@@ -1,4 +1,4 @@
-import type { MarketIndexItem } from '../../fixtures/marketIndex.dev-mock'
+import type { MarketIndexItem } from '../../store/useMarketIndicesStore'
 
 interface MarketStripProps {
   items: readonly MarketIndexItem[]
