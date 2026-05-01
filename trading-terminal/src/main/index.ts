@@ -21,6 +21,7 @@ import { registerWsHandlers } from './ipc/wsHandlers'
 import { registerMarketHandlers } from './ipc/marketHandlers'
 import { registerWatchlistHandlers, stop as stopWatchlist } from './ipc/watchlistHandlers'
 import { registerPricesHandlers } from './ipc/pricesHandlers'
+import { registerStockDetailHandlers } from './ipc/stockDetailHandlers'
 import { stop as stopPricePoller } from './services/PricePoller'
 import { OAuthService } from './services/OAuthService'
 import { kisLimiter } from './services/KisRateLimiter'
@@ -125,6 +126,7 @@ function registerAllHandlers() {
   registerMarketHandlers()
   registerWatchlistHandlers()
   registerPricesHandlers()
+  registerStockDetailHandlers()
 }
 
 app.whenReady().then(async () => {

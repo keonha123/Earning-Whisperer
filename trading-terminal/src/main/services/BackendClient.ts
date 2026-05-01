@@ -54,6 +54,48 @@ export interface WatchlistItem {
   sector: string
 }
 
+/**
+ * 종목 상세 응답 — Backend Phase 3 의 `StockDetailResponse`.
+ * Spring 기본 직렬화는 camelCase. ai 필드는 본 phase 시점 항상 null (별도 비동기 채널).
+ *
+ * 주의 — BigDecimal 직렬화 정밀도:
+ *   marketCapUsd / revenueEstimate 는 백엔드에서 BigDecimal 으로 다뤄지지만 JSON 직렬화 시
+ *   숫자 리터럴로 내려옴. 현재 데이터 범위 (4조달러 ≈ 4e12, Number.MAX_SAFE_INTEGER ≈ 9e15)
+ *   에서는 안전. 시가총액이 9 quadrillion 을 넘는 종목이 등장하면 정밀도 손실 가능 →
+ *   string 로 받도록 백엔드 + 클라이언트 동시 변경 필요. 본 PR 에서는 number 유지.
+ *   dividendYield 는 소수 (예: 0.0049 = 0.49%) — 표시 시 *100 처리 책임은 renderer.
+ */
+export interface StockDetailResponsePayload {
+  ticker: string
+  companyName: string
+  sector: string | null
+  active: boolean
+  basic: {
+    marketCapUsd: number | null
+    high52w: number | null
+    low52w: number | null
+    dividendYield: number | null
+  } | null
+  chart30d: { date: string; close: number; volume: number | null }[]
+  currentPrice: number | null
+  earningsHistory: {
+    fiscalPeriodLabel: string
+    announcedAt: number
+    epsEstimate: number | null
+    epsActual: number | null
+    surprisePercent: number | null
+    priceReactionPercent: number | null
+  }[]
+  nextEarning: {
+    scheduledAt: number
+    epsEstimate: number | null
+    revenueEstimate: number | null
+    confirmed: boolean
+  } | null
+  partial: boolean
+  ai: null
+}
+
 export const BackendClient = {
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
     const { data } = await http.post('/api/v1/auth/login', { email, password })
@@ -133,5 +175,35 @@ export const BackendClient = {
   async getWatchlist(): Promise<WatchlistItem[]> {
     const { data } = await http.get<WatchlistItem[]>('/api/v1/watchlist')
     return Array.isArray(data) ? data : []
+  },
+
+  /**
+   * 관심종목 추가 — POST /api/v1/watchlist body { ticker }.
+   * 응답: WatchlistItem (백엔드가 ticker → companyName/sector 채워서 돌려줌).
+   * 4xx/5xx 시 axios 가 throw → handler 가 그대로 IPC reject 로 propagate.
+   */
+  async addWatchlist(ticker: string): Promise<WatchlistItem> {
+    const { data } = await http.post<WatchlistItem>('/api/v1/watchlist', { ticker })
+    return data
+  },
+
+  /**
+   * 관심종목 제거 — DELETE /api/v1/watchlist/{ticker}.
+   * 응답 본문 없음 (void). 4xx/5xx 시 throw.
+   */
+  async removeWatchlist(ticker: string): Promise<void> {
+    await http.delete(`/api/v1/watchlist/${encodeURIComponent(ticker)}`)
+  },
+
+  /**
+   * 종목 상세 — GET /api/v1/stocks/{ticker}/detail (JWT 필수).
+   * 응답: StockDetailResponsePayload (Phase 3 백엔드 record 직렬화 결과).
+   * 4xx/5xx 시 axios 가 throw → handler 가 IPC reject 로 propagate.
+   */
+  async getStockDetail(ticker: string): Promise<StockDetailResponsePayload> {
+    const { data } = await http.get<StockDetailResponsePayload>(
+      `/api/v1/stocks/${encodeURIComponent(ticker)}/detail`,
+    )
+    return data
   },
 }
