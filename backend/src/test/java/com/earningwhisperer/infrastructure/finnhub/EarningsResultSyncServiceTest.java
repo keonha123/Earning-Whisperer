@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.earnings.EarningsResult;
 import com.earningwhisperer.domain.earnings.EarningsResultRepository;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubEarningsRow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,7 +71,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isEqualTo(2);
         ArgumentCaptor<EarningsResult> captor = ArgumentCaptor.forClass(EarningsResult.class);
@@ -113,7 +114,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(1L, announcedAt))
                 .willReturn(Optional.of(existing));
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isZero();
         verify(earningsResultRepository, never()).save(any(EarningsResult.class));
@@ -138,7 +139,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isEqualTo(1);
         ArgumentCaptor<EarningsResult> captor = ArgumentCaptor.forClass(EarningsResult.class);
@@ -166,7 +167,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        service.syncTicker(1L, "AAPL");
+        service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         ArgumentCaptor<EarningsResult> captor = ArgumentCaptor.forClass(EarningsResult.class);
         verify(earningsResultRepository).save(captor.capture());
@@ -192,7 +193,7 @@ class EarningsResultSyncServiceTest {
         given(finnhubClient.fetchEarningsHistory(eq("AAPL"), eq(FinnhubRateLimiter.Priority.LOW)))
                 .willReturn(List.of());
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isZero();
         verify(stockRepository, never()).findById(any());
@@ -212,7 +213,7 @@ class EarningsResultSyncServiceTest {
         given(stockRepository.findById(1L)).willReturn(Optional.empty());
         given(stockRepository.findByTicker("AAPL")).willReturn(Optional.empty());
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isZero();
         verify(earningsResultRepository, never()).save(any(EarningsResult.class));
@@ -232,7 +233,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        service.syncTicker(1L, "AAPL");
+        service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         ArgumentCaptor<EarningsResult> captor = ArgumentCaptor.forClass(EarningsResult.class);
         verify(earningsResultRepository).save(captor.capture());
@@ -278,7 +279,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        int inserted = service.syncTicker(1L, "AAPL");
+        int inserted = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isEqualTo(1);
         verify(earningsResultRepository, times(1)).save(any(EarningsResult.class));
@@ -299,7 +300,7 @@ class EarningsResultSyncServiceTest {
         given(earningsResultRepository.findByStock_IdAndAnnouncedAt(eq(1L), any(Instant.class)))
                 .willReturn(Optional.empty());
 
-        int inserted = service.syncTicker(99L, "AAPL");
+        int inserted = service.syncTicker(99L, "AAPL", SyncPriority.LOW);
 
         assertThat(inserted).isEqualTo(1);
         verify(earningsResultRepository, times(1)).save(any(EarningsResult.class));

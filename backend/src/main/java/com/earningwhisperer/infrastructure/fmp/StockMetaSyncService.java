@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockMeta;
 import com.earningwhisperer.domain.stock.StockMetaRepository;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,13 +58,14 @@ public class StockMetaSyncService {
      *     <li>JPA / runtime 예외 → 자체 트랜잭션 rollback 후 propagate (스케줄러가 catch)</li>
      * </ul>
      *
-     * @param stockId 영속화 대상 Stock 의 PK
-     * @param ticker  로깅 / fallback 용 ticker (외부 호출 키)
+     * @param stockId  영속화 대상 Stock 의 PK
+     * @param ticker   로깅 / fallback 용 ticker (외부 호출 키)
+     * @param priority FMP rate limiter 우선순위 (사용자 trigger=HIGH, 사전 동기화=LOW)
      * @return 영속화 성공 여부
      */
     @Transactional
-    public boolean syncTicker(Long stockId, String ticker) {
-        Optional<FmpProfile> profileOpt = fmpClient.fetchProfile(ticker, FmpRateLimiter.Priority.LOW);
+    public boolean syncTicker(Long stockId, String ticker, SyncPriority priority) {
+        Optional<FmpProfile> profileOpt = fmpClient.fetchProfile(ticker, priority.toFmp());
 
         if (profileOpt.isEmpty()) {
             log.warn("[StockMetaSync] profile 조회 실패 ticker={}", ticker);

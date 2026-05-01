@@ -2,6 +2,7 @@ package com.earningwhisperer.infrastructure.finnhub;
 
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -18,8 +19,8 @@ import java.util.List;
  * (= 4 calls) 으로 제한되어 N=수십~수백 ticker 도 분당 60 안전선(0.5 req/s) 으로 처리 가능.
  *
  * <p>본 스케줄러는 {@code @Transactional} 을 가지지 않는다.
- * ticker 단위 트랜잭션은 {@link EarningsResultSyncService#syncTicker(Long, String)} 가 관리하며,
- * 한 ticker 의 실패가 다른 ticker 의 commit 을 rollback 시키지 않도록 격리된다.
+ * ticker 단위 트랜잭션은 {@link EarningsResultSyncService#syncTicker(Long, String, SyncPriority)} 가
+ * 관리하며, 한 ticker 의 실패가 다른 ticker 의 commit 을 rollback 시키지 않도록 격리된다.
  *
  * <p>FINNHUB_API_KEY 미설정 시 Bean 미등록(@ConditionalOnExpression).
  */
@@ -57,7 +58,8 @@ public class EarningsResultSyncScheduler {
             }
             String ticker = stock.getTicker();
             try {
-                int newRows = earningsResultSyncService.syncTicker(stock.getId(), ticker);
+                int newRows = earningsResultSyncService.syncTicker(
+                        stock.getId(), ticker, SyncPriority.LOW);
                 upserted += newRows;
                 success++;
             } catch (RuntimeException e) {

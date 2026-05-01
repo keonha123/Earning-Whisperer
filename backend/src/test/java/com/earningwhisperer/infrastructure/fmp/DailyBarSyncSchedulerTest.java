@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,8 +66,8 @@ class DailyBarSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30)).willReturn(30);
-        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30)).willReturn(28);
+        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.LOW)).willReturn(30);
+        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30, SyncPriority.LOW)).willReturn(28);
 
         scheduler.syncDailyBars();
 
@@ -82,8 +83,8 @@ class DailyBarSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30)).willReturn(0);
-        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30)).willReturn(15);
+        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.LOW)).willReturn(0);
+        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30, SyncPriority.LOW)).willReturn(15);
 
         scheduler.syncDailyBars();
 
@@ -100,13 +101,13 @@ class DailyBarSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30))
+        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.LOW))
                 .willThrow(new RuntimeException("JPA constraint"));
-        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30)).willReturn(20);
+        given(dailyBarSyncService.syncTicker(2L, "MSFT", 30, SyncPriority.LOW)).willReturn(20);
 
         scheduler.syncDailyBars();
 
-        verify(dailyBarSyncService).syncTicker(2L, "MSFT", 30);
+        verify(dailyBarSyncService).syncTicker(2L, "MSFT", 30, SyncPriority.LOW);
 
         boolean hasWarnWithThrowable = appender.list.stream()
                 .anyMatch(e -> e.getLevel() == Level.WARN
@@ -122,10 +123,10 @@ class DailyBarSyncSchedulerTest {
         List<Stock> stocks = List.of(
                 stockOf(1L, "A"), stockOf(2L, "B"), stockOf(3L, "C"), stockOf(4L, "D"));
         given(watchlistRepository.findDistinctStocks()).willReturn(stocks);
-        given(dailyBarSyncService.syncTicker(eq(1L), anyString(), anyInt())).willReturn(0);
-        given(dailyBarSyncService.syncTicker(eq(2L), anyString(), anyInt())).willReturn(30);
-        given(dailyBarSyncService.syncTicker(eq(3L), anyString(), anyInt())).willReturn(30);
-        given(dailyBarSyncService.syncTicker(eq(4L), anyString(), anyInt())).willReturn(30);
+        given(dailyBarSyncService.syncTicker(eq(1L), anyString(), anyInt(), eq(SyncPriority.LOW))).willReturn(0);
+        given(dailyBarSyncService.syncTicker(eq(2L), anyString(), anyInt(), eq(SyncPriority.LOW))).willReturn(30);
+        given(dailyBarSyncService.syncTicker(eq(3L), anyString(), anyInt(), eq(SyncPriority.LOW))).willReturn(30);
+        given(dailyBarSyncService.syncTicker(eq(4L), anyString(), anyInt(), eq(SyncPriority.LOW))).willReturn(30);
 
         scheduler.syncDailyBars();
 
@@ -139,7 +140,7 @@ class DailyBarSyncSchedulerTest {
 
         scheduler.syncDailyBars();
 
-        verify(dailyBarSyncService, never()).syncTicker(any(), any(), anyInt());
+        verify(dailyBarSyncService, never()).syncTicker(any(), any(), anyInt(), any());
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
         assertThat(latestEvent().getFormattedMessage()).contains("관심종목 비어있음");
     }

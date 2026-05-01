@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.stock.DailyBar;
 import com.earningwhisperer.domain.stock.DailyBarRepository;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpHistoricalBar;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,7 +63,7 @@ class DailyBarSyncServiceTest {
         given(dailyBarRepository.findByStock_IdAndBarDate(eq(1L), any(LocalDate.class)))
                 .willReturn(Optional.empty());
 
-        int processed = service.syncTicker(1L, "AAPL", 30);
+        int processed = service.syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isEqualTo(2);
         ArgumentCaptor<DailyBar> captor = ArgumentCaptor.forClass(DailyBar.class);
@@ -92,7 +93,7 @@ class DailyBarSyncServiceTest {
         given(dailyBarRepository.findByStock_IdAndBarDate(1L, LocalDate.parse("2026-04-30")))
                 .willReturn(Optional.of(existing));
 
-        int processed = service.syncTicker(1L, "AAPL", 30);
+        int processed = service.syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isEqualTo(1);
         verify(dailyBarRepository, never()).save(any(DailyBar.class));
@@ -106,7 +107,7 @@ class DailyBarSyncServiceTest {
         given(fmpClient.fetchHistorical(eq("AAPL"), eq(30), eq(FmpRateLimiter.Priority.LOW)))
                 .willReturn(List.of());
 
-        int processed = service.syncTicker(1L, "AAPL", 30);
+        int processed = service.syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isZero();
         verify(stockRepository, never()).findById(any());
@@ -121,7 +122,7 @@ class DailyBarSyncServiceTest {
         given(stockRepository.findById(1L)).willReturn(Optional.empty());
         given(stockRepository.findByTicker("AAPL")).willReturn(Optional.empty());
 
-        int processed = service.syncTicker(1L, "AAPL", 30);
+        int processed = service.syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isZero();
         verify(dailyBarRepository, never()).save(any(DailyBar.class));
@@ -139,7 +140,7 @@ class DailyBarSyncServiceTest {
         given(dailyBarRepository.findByStock_IdAndBarDate(eq(1L), any(LocalDate.class)))
                 .willReturn(Optional.empty());
 
-        int processed = service.syncTicker(1L, "AAPL", 30);
+        int processed = service.syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isEqualTo(1);
         verify(dailyBarRepository, times(1)).save(any(DailyBar.class));
@@ -156,7 +157,7 @@ class DailyBarSyncServiceTest {
         given(dailyBarRepository.findByStock_IdAndBarDate(eq(1L), any(LocalDate.class)))
                 .willReturn(Optional.empty());
 
-        int processed = service.syncTicker(99L, "AAPL", 30);
+        int processed = service.syncTicker(99L, "AAPL", 30, SyncPriority.LOW);
 
         assertThat(processed).isEqualTo(1);
         verify(dailyBarRepository, times(1)).save(any(DailyBar.class));

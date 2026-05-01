@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.stock.DailyBar;
 import com.earningwhisperer.domain.stock.DailyBarRepository;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpHistoricalBar;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,12 +39,13 @@ public class DailyBarSyncService {
      * @param stockId        영속화 대상 Stock 의 PK
      * @param ticker         외부 호출 키
      * @param historicalDays 가져올 일봉 일수
+     * @param priority       FMP rate limiter 우선순위 (사용자 trigger=HIGH, 사전 동기화=LOW)
      * @return 정상 적재된 bar 수 (≥1 이면 success). 빈 응답 / Stock 미존재 시 0.
      */
     @Transactional
-    public int syncTicker(Long stockId, String ticker, int historicalDays) {
+    public int syncTicker(Long stockId, String ticker, int historicalDays, SyncPriority priority) {
         List<FmpHistoricalBar> bars = fmpClient.fetchHistorical(
-                ticker, historicalDays, FmpRateLimiter.Priority.LOW);
+                ticker, historicalDays, priority.toFmp());
 
         if (bars.isEmpty()) {
             log.warn("[DailyBarSync] historical 조회 실패 ticker={}", ticker);

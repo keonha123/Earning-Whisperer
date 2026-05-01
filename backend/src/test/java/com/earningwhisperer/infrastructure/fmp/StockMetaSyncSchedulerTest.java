@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -72,13 +73,13 @@ class StockMetaSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(stockMetaSyncService.syncTicker(1L, "AAPL")).willReturn(true);
-        given(stockMetaSyncService.syncTicker(2L, "MSFT")).willReturn(true);
+        given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW)).willReturn(true);
+        given(stockMetaSyncService.syncTicker(2L, "MSFT", SyncPriority.LOW)).willReturn(true);
 
         scheduler.syncStockMetas();
 
-        verify(stockMetaSyncService).syncTicker(1L, "AAPL");
-        verify(stockMetaSyncService).syncTicker(2L, "MSFT");
+        verify(stockMetaSyncService).syncTicker(1L, "AAPL", SyncPriority.LOW);
+        verify(stockMetaSyncService).syncTicker(2L, "MSFT", SyncPriority.LOW);
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
         assertThat(latestEvent().getFormattedMessage())
                 .contains("success=2", "failed=0", "total=2");
@@ -90,8 +91,8 @@ class StockMetaSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(stockMetaSyncService.syncTicker(1L, "AAPL")).willReturn(false);
-        given(stockMetaSyncService.syncTicker(2L, "MSFT")).willReturn(true);
+        given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW)).willReturn(false);
+        given(stockMetaSyncService.syncTicker(2L, "MSFT", SyncPriority.LOW)).willReturn(true);
 
         scheduler.syncStockMetas();
 
@@ -108,14 +109,14 @@ class StockMetaSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(stockMetaSyncService.syncTicker(1L, "AAPL"))
+        given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW))
                 .willThrow(new RuntimeException("DB constraint violation"));
-        given(stockMetaSyncService.syncTicker(2L, "MSFT")).willReturn(true);
+        given(stockMetaSyncService.syncTicker(2L, "MSFT", SyncPriority.LOW)).willReturn(true);
 
         scheduler.syncStockMetas();
 
         // AAPL throw 후 MSFT 정상 호출되어야 — 격리 보장
-        verify(stockMetaSyncService).syncTicker(2L, "MSFT");
+        verify(stockMetaSyncService).syncTicker(2L, "MSFT", SyncPriority.LOW);
 
         // WARN 로그에 ticker + throwable 포함
         boolean hasWarnWithThrowable = appender.list.stream()
@@ -132,10 +133,10 @@ class StockMetaSyncSchedulerTest {
         List<Stock> stocks = List.of(
                 stockOf(1L, "A"), stockOf(2L, "B"), stockOf(3L, "C"), stockOf(4L, "D"));
         given(watchlistRepository.findDistinctStocks()).willReturn(stocks);
-        given(stockMetaSyncService.syncTicker(eq(1L), anyString())).willReturn(false);
-        given(stockMetaSyncService.syncTicker(eq(2L), anyString())).willReturn(true);
-        given(stockMetaSyncService.syncTicker(eq(3L), anyString())).willReturn(true);
-        given(stockMetaSyncService.syncTicker(eq(4L), anyString())).willReturn(true);
+        given(stockMetaSyncService.syncTicker(eq(1L), anyString(), eq(SyncPriority.LOW))).willReturn(false);
+        given(stockMetaSyncService.syncTicker(eq(2L), anyString(), eq(SyncPriority.LOW))).willReturn(true);
+        given(stockMetaSyncService.syncTicker(eq(3L), anyString(), eq(SyncPriority.LOW))).willReturn(true);
+        given(stockMetaSyncService.syncTicker(eq(4L), anyString(), eq(SyncPriority.LOW))).willReturn(true);
 
         scheduler.syncStockMetas();
 
@@ -150,9 +151,9 @@ class StockMetaSyncSchedulerTest {
         // 3 ticker 중 1개 실패 = 33% ≥ 30%
         List<Stock> stocks = List.of(stockOf(1L, "A"), stockOf(2L, "B"), stockOf(3L, "C"));
         given(watchlistRepository.findDistinctStocks()).willReturn(stocks);
-        given(stockMetaSyncService.syncTicker(eq(1L), anyString())).willReturn(false);
-        given(stockMetaSyncService.syncTicker(eq(2L), anyString())).willReturn(true);
-        given(stockMetaSyncService.syncTicker(eq(3L), anyString())).willReturn(true);
+        given(stockMetaSyncService.syncTicker(eq(1L), anyString(), eq(SyncPriority.LOW))).willReturn(false);
+        given(stockMetaSyncService.syncTicker(eq(2L), anyString(), eq(SyncPriority.LOW))).willReturn(true);
+        given(stockMetaSyncService.syncTicker(eq(3L), anyString(), eq(SyncPriority.LOW))).willReturn(true);
 
         scheduler.syncStockMetas();
 
@@ -168,7 +169,7 @@ class StockMetaSyncSchedulerTest {
 
         scheduler.syncStockMetas();
 
-        verify(stockMetaSyncService, never()).syncTicker(any(), any());
+        verify(stockMetaSyncService, never()).syncTicker(any(), any(), any());
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
         assertThat(latestEvent().getFormattedMessage()).contains("관심종목 비어있음");
     }
@@ -179,12 +180,12 @@ class StockMetaSyncSchedulerTest {
         Stock valid = stockOf(1L, "AAPL");
         Stock invalid = Stock.builder().ticker("BAD").companyName("X").sector("Y").build(); // id 없음
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(valid, invalid));
-        given(stockMetaSyncService.syncTicker(1L, "AAPL")).willReturn(true);
+        given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW)).willReturn(true);
 
         scheduler.syncStockMetas();
 
-        verify(stockMetaSyncService, times(1)).syncTicker(any(), any());
-        verify(stockMetaSyncService, never()).syncTicker(eq(null), any());
+        verify(stockMetaSyncService, times(1)).syncTicker(any(), any(), any());
+        verify(stockMetaSyncService, never()).syncTicker(eq(null), any(), any());
     }
 
     // ─────────── helpers ───────────

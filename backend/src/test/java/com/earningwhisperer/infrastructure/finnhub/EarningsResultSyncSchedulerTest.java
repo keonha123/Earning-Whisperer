@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,8 +65,8 @@ class EarningsResultSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(earningsResultSyncService.syncTicker(1L, "AAPL")).willReturn(2);
-        given(earningsResultSyncService.syncTicker(2L, "MSFT")).willReturn(0);
+        given(earningsResultSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW)).willReturn(2);
+        given(earningsResultSyncService.syncTicker(2L, "MSFT", SyncPriority.LOW)).willReturn(0);
 
         scheduler.syncEarningsResults();
 
@@ -81,13 +82,13 @@ class EarningsResultSyncSchedulerTest {
         Stock aapl = stockOf(1L, "AAPL");
         Stock msft = stockOf(2L, "MSFT");
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, msft));
-        given(earningsResultSyncService.syncTicker(1L, "AAPL"))
+        given(earningsResultSyncService.syncTicker(1L, "AAPL", SyncPriority.LOW))
                 .willThrow(new RuntimeException("DB constraint violation"));
-        given(earningsResultSyncService.syncTicker(2L, "MSFT")).willReturn(1);
+        given(earningsResultSyncService.syncTicker(2L, "MSFT", SyncPriority.LOW)).willReturn(1);
 
         scheduler.syncEarningsResults();
 
-        verify(earningsResultSyncService).syncTicker(2L, "MSFT");
+        verify(earningsResultSyncService).syncTicker(2L, "MSFT", SyncPriority.LOW);
 
         boolean hasWarnWithThrowable = appender.list.stream()
                 .anyMatch(e -> e.getLevel() == Level.WARN
@@ -102,10 +103,10 @@ class EarningsResultSyncSchedulerTest {
         // 3 ticker 중 1개 throw = 33% ≥ 30%
         List<Stock> stocks = List.of(stockOf(1L, "A"), stockOf(2L, "B"), stockOf(3L, "C"));
         given(watchlistRepository.findDistinctStocks()).willReturn(stocks);
-        given(earningsResultSyncService.syncTicker(eq(1L), anyString()))
+        given(earningsResultSyncService.syncTicker(eq(1L), anyString(), eq(SyncPriority.LOW)))
                 .willThrow(new RuntimeException("boom"));
-        given(earningsResultSyncService.syncTicker(eq(2L), anyString())).willReturn(1);
-        given(earningsResultSyncService.syncTicker(eq(3L), anyString())).willReturn(0);
+        given(earningsResultSyncService.syncTicker(eq(2L), anyString(), eq(SyncPriority.LOW))).willReturn(1);
+        given(earningsResultSyncService.syncTicker(eq(3L), anyString(), eq(SyncPriority.LOW))).willReturn(0);
 
         scheduler.syncEarningsResults();
 
@@ -121,11 +122,11 @@ class EarningsResultSyncSchedulerTest {
         List<Stock> stocks = List.of(
                 stockOf(1L, "A"), stockOf(2L, "B"), stockOf(3L, "C"), stockOf(4L, "D"));
         given(watchlistRepository.findDistinctStocks()).willReturn(stocks);
-        given(earningsResultSyncService.syncTicker(eq(1L), anyString()))
+        given(earningsResultSyncService.syncTicker(eq(1L), anyString(), eq(SyncPriority.LOW)))
                 .willThrow(new RuntimeException("boom"));
-        given(earningsResultSyncService.syncTicker(eq(2L), anyString())).willReturn(2);
-        given(earningsResultSyncService.syncTicker(eq(3L), anyString())).willReturn(2);
-        given(earningsResultSyncService.syncTicker(eq(4L), anyString())).willReturn(0);
+        given(earningsResultSyncService.syncTicker(eq(2L), anyString(), eq(SyncPriority.LOW))).willReturn(2);
+        given(earningsResultSyncService.syncTicker(eq(3L), anyString(), eq(SyncPriority.LOW))).willReturn(2);
+        given(earningsResultSyncService.syncTicker(eq(4L), anyString(), eq(SyncPriority.LOW))).willReturn(0);
 
         scheduler.syncEarningsResults();
 
@@ -141,7 +142,7 @@ class EarningsResultSyncSchedulerTest {
 
         scheduler.syncEarningsResults();
 
-        verify(earningsResultSyncService, never()).syncTicker(any(), any());
+        verify(earningsResultSyncService, never()).syncTicker(any(), any(), any());
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
         assertThat(latestEvent().getFormattedMessage()).contains("관심종목 비어있음");
     }

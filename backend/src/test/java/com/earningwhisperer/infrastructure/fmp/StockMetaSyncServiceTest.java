@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockMeta;
 import com.earningwhisperer.domain.stock.StockMetaRepository;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpProfile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,7 +65,7 @@ class StockMetaSyncServiceTest {
         given(stockRepository.findById(1L)).willReturn(Optional.of(aapl));
         given(stockMetaRepository.findByStock_Id(1L)).willReturn(Optional.empty());
 
-        boolean result = service.syncTicker(1L, "AAPL");
+        boolean result = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(result).isTrue();
         ArgumentCaptor<StockMeta> captor = ArgumentCaptor.forClass(StockMeta.class);
@@ -91,7 +92,7 @@ class StockMetaSyncServiceTest {
         given(stockRepository.findById(1L)).willReturn(Optional.of(aapl));
         given(stockMetaRepository.findByStock_Id(1L)).willReturn(Optional.of(existing));
 
-        boolean result = service.syncTicker(1L, "AAPL");
+        boolean result = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(result).isTrue();
         verify(stockMetaRepository, never()).save(any(StockMeta.class));
@@ -107,7 +108,7 @@ class StockMetaSyncServiceTest {
         given(fmpClient.fetchProfile(eq("AAPL"), eq(FmpRateLimiter.Priority.LOW)))
                 .willReturn(Optional.empty());
 
-        boolean result = service.syncTicker(1L, "AAPL");
+        boolean result = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(result).isFalse();
         verify(stockRepository, never()).findById(any());
@@ -122,7 +123,7 @@ class StockMetaSyncServiceTest {
         given(stockRepository.findById(1L)).willReturn(Optional.empty());
         given(stockRepository.findByTicker("AAPL")).willReturn(Optional.empty());
 
-        boolean result = service.syncTicker(1L, "AAPL");
+        boolean result = service.syncTicker(1L, "AAPL", SyncPriority.LOW);
 
         assertThat(result).isFalse();
         verify(stockMetaRepository, never()).save(any(StockMeta.class));
@@ -137,7 +138,7 @@ class StockMetaSyncServiceTest {
         given(stockRepository.findByTicker("AAPL")).willReturn(Optional.of(aapl));
         given(stockMetaRepository.findByStock_Id(1L)).willReturn(Optional.empty());
 
-        boolean result = service.syncTicker(99L, "AAPL");
+        boolean result = service.syncTicker(99L, "AAPL", SyncPriority.LOW);
 
         assertThat(result).isTrue();
         verify(stockMetaRepository).save(any(StockMeta.class));
