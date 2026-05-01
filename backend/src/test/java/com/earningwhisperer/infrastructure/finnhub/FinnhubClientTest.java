@@ -1,11 +1,17 @@
 package com.earningwhisperer.infrastructure.finnhub;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubCalendarRow;
 import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubEarningsRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -18,6 +24,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /**
@@ -36,6 +43,9 @@ class FinnhubClientTest {
     private FinnhubRateLimiter rateLimiter;
     private FinnhubClient client;
 
+    private Logger clientLogger;
+    private ListAppender<ILoggingEvent> appender;
+
     @BeforeEach
     void setUp() {
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
@@ -44,10 +54,17 @@ class FinnhubClientTest {
         FinnhubProperties properties = new FinnhubProperties(BASE_URL, API_KEY);
         rateLimiter = new FinnhubRateLimiter(null);
         client = new FinnhubClient(restClient, properties, rateLimiter);
+
+        // logback ListAppender — 로그 레벨 분기 검증
+        clientLogger = (Logger) LoggerFactory.getLogger(FinnhubClient.class);
+        appender = new ListAppender<>();
+        appender.start();
+        clientLogger.addAppender(appender);
     }
 
     @AfterEach
     void tearDown() {
+        clientLogger.detachAppender(appender);
         rateLimiter.shutdown();
     }
 
@@ -129,6 +146,44 @@ class FinnhubClientTest {
         assertThat(first.surprise()).isNotNull();
         assertThat(first.quarter()).isEqualTo(3);
         assertThat(first.quarterLabel()).isEqualTo("Q3");
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("fetchCalendar 401 → ERROR 로그 + 빈 리스트")
+    void fetchCalendar_401_인증실패() {
+        server.expect(requestToUriTemplate(
+                        BASE_URL + "/calendar/earnings?from={from}&to={to}",
+                        "2026-05-01", "2026-05-31"))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+        List<FinnhubCalendarRow> rows = client.fetchCalendar(
+                LocalDate.of(2026, 5, 1),
+                LocalDate.of(2026, 5, 31),
+                FinnhubRateLimiter.Priority.LOW);
+
+        assertThat(rows).isEmpty();
+        assertThat(appender.list).anyMatch(e ->
+                e.getLevel() == Level.ERROR && e.getFormattedMessage().contains("인증 실패"));
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("fetchEarningsHistory 429 → WARN 로그 + 빈 리스트")
+    void fetchEarningsHistory_429_rate_limit() {
+        server.expect(requestToUriTemplate(
+                        BASE_URL + "/stock/earnings?symbol={symbol}", "AAPL"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        List<FinnhubEarningsRow> rows = client.fetchEarningsHistory(
+                "AAPL", FinnhubRateLimiter.Priority.HIGH);
+
+        assertThat(rows).isEmpty();
+        assertThat(appender.list).anyMatch(e ->
+                e.getLevel() == Level.WARN && e.getFormattedMessage().contains("rate limit (429)"));
+        // 인증 실패 ERROR 로그는 없어야 함
+        assertThat(appender.list).noneMatch(e ->
+                e.getLevel() == Level.ERROR && e.getFormattedMessage().contains("인증 실패"));
         server.verify();
     }
 }

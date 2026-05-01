@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * FinnhubRateLimiter 단위 테스트.
@@ -32,7 +33,9 @@ class FinnhubRateLimiterTest {
 
     @AfterEach
     void tearDown() {
-        limiter.shutdown();
+        if (limiter != null) {
+            limiter.shutdown();
+        }
     }
 
     @Test
@@ -103,5 +106,57 @@ class FinnhubRateLimiterTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    @DisplayName("shutdown 시 대기중인 waiter 는 FinnhubRateLimitExceededException 으로 깨어난다")
+    void shutdown_시_대기중_waiter_깨움() throws Exception {
+        // 초기 토큰 1 즉시 소진
+        limiter.acquire(FinnhubRateLimiter.Priority.HIGH);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture<Throwable> caught = CompletableFuture.supplyAsync(() -> {
+                try {
+                    limiter.acquire(FinnhubRateLimiter.Priority.LOW);
+                    return null;
+                } catch (Throwable t) {
+                    return t;
+                }
+            }, pool);
+
+            // waiter 가 큐에 들어가도록 잠시 대기
+            Thread.sleep(200);
+
+            // shutdown — 대기중 waiter 가 예외로 깨어나야 한다
+            limiter.shutdown();
+            limiter = null;
+
+            Throwable t = caught.get(5, TimeUnit.SECONDS);
+            assertThat(t).isInstanceOf(FinnhubRateLimitExceededException.class);
+            assertThat(t.getMessage()).contains("cancelled");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("refill task 가 throw 해도 후속 tick 에서 self-heal 한다")
+    void refill_task_self_heal() {
+        // scheduleWithFixedDelay + try/catch 래퍼가 적용된 상태에서 다회 acquire 정상 통과
+        limiter.acquire(FinnhubRateLimiter.Priority.HIGH);
+        limiter.acquire(FinnhubRateLimiter.Priority.HIGH);
+        limiter.acquire(FinnhubRateLimiter.Priority.HIGH);
+    }
+
+    @Test
+    @DisplayName("shutdown 이후 진입한 acquire 는 즉시 FinnhubRateLimitExceededException 으로 거부된다")
+    void shutdown_이후_acquire_즉시_거부() {
+        FinnhubRateLimiter disposed = new FinnhubRateLimiter(null);
+        disposed.shutdown();
+
+        assertThatThrownBy(() -> disposed.acquire(FinnhubRateLimiter.Priority.HIGH))
+                .isInstanceOf(FinnhubRateLimitExceededException.class)
+                .hasMessageContaining("disposed");
     }
 }

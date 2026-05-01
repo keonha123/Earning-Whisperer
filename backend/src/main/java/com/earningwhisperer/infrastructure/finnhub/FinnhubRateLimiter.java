@@ -61,6 +61,9 @@ public class FinnhubRateLimiter {
     private final Deque<CompletableFuture<Void>> hi = new ArrayDeque<>();
     private final Deque<CompletableFuture<Void>> lo = new ArrayDeque<>();
 
+    /** shutdown() 이후 새 acquire 호출은 즉시 거부. waiter 영구 블록 회피. */
+    private volatile boolean disposed = false;
+
     private final ScheduledFuture<?> refillTask;
 
     public FinnhubRateLimiter() {
@@ -82,12 +85,28 @@ public class FinnhubRateLimiter {
             this.scheduler = scheduler;
             this.ownsScheduler = false;
         }
-        this.refillTask = this.scheduler.scheduleAtFixedRate(
-                this::refillAndDrain,
+        // scheduleWithFixedDelay + try/catch 래퍼: refill task 가 unchecked exception 을 던져도
+        // 스케줄러가 영구 멈추지 않도록 self-heal 한다. scheduleAtFixedRate 는 task 가 throw 하면
+        // 향후 모든 실행이 중단된다 (Java doc 명시).
+        this.refillTask = this.scheduler.scheduleWithFixedDelay(
+                this::safeRefillAndDrain,
                 REFILL_INTERVAL_MS,
                 REFILL_INTERVAL_MS,
                 TimeUnit.MILLISECONDS
         );
+    }
+
+    /**
+     * refill task 의 self-heal 래퍼 — Exception 은 격리하고 다음 tick 진행.
+     * Error (OOM/StackOverflow 등) 는 의도적으로 catch 하지 않는다 — JVM 이 빨리 죽어야 할 상황을
+     * 100ms 마다 좀비 로그로 도배할 위험을 회피.
+     */
+    private void safeRefillAndDrain() {
+        try {
+            refillAndDrain();
+        } catch (Exception e) {
+            log.error("[FinnhubRateLimiter] refill task error (continuing)", e);
+        }
     }
 
     /**
@@ -97,6 +116,11 @@ public class FinnhubRateLimiter {
      * {@link FinnhubRateLimitExceededException} 을 throw.
      */
     public void acquire(Priority priority) {
+        // shutdown 이후 진입한 acquire 는 큐에 등록되더라도 refill task 가 cancel 되어 깨어나지
+        // 못한다 → 영구 블록. dispose 플래그로 즉시 거부하여 race 회피.
+        if (disposed) {
+            throw new FinnhubRateLimitExceededException("FinnhubRateLimiter disposed");
+        }
         CompletableFuture<Void> waiter = new CompletableFuture<>();
         synchronized (lock) {
             (priority == Priority.HIGH ? hi : lo).addLast(waiter);
@@ -119,6 +143,8 @@ public class FinnhubRateLimiter {
 
     @PreDestroy
     void shutdown() {
+        // 플래그를 먼저 set 하여 이후 acquire 호출이 즉시 거부되도록 한다.
+        disposed = true;
         if (refillTask != null) {
             refillTask.cancel(false);
         }
@@ -127,9 +153,9 @@ public class FinnhubRateLimiter {
         }
         // 대기 중인 모든 future 들을 cancel — 메모리 누수 + 데드락 방지
         synchronized (lock) {
-            RuntimeException disposed = new FinnhubRateLimitExceededException("FinnhubRateLimiter disposed");
-            drainAndComplete(hi, disposed);
-            drainAndComplete(lo, disposed);
+            RuntimeException err = new FinnhubRateLimitExceededException("FinnhubRateLimiter disposed");
+            drainAndComplete(hi, err);
+            drainAndComplete(lo, err);
         }
     }
 
