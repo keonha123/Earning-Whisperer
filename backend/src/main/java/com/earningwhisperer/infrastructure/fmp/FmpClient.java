@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -64,9 +65,22 @@ public class FmpClient {
                 log.warn("[FmpClient] profile empty response ticker={}", ticker);
                 return Optional.empty();
             }
-            return Optional.ofNullable(body[0]);
+            FmpProfile profile = body[0];
+            // range 파싱 실패 시 silent empty 가 아닌 WARN 1건 — 운영 중 포맷 변화를 빠르게 감지한다.
+            if (profile != null && profile.range() != null && profile.low52w().isEmpty()) {
+                log.warn("[FmpClient] profile.range 파싱 실패 ticker={} raw='{}'",
+                        ticker, profile.range());
+            }
+            return Optional.ofNullable(profile);
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FmpClient] profile 인증 실패 — API 키 확인 필요 ticker={} status={}",
+                    ticker, e.getStatusCode());
+            return Optional.empty();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FmpClient] profile rate limit (429) — 후속 호출 일시 자제 권장 ticker={}", ticker);
+            return Optional.empty();
         } catch (RestClientException e) {
-            log.warn("[FmpClient] profile call failed ticker={} reason={}", ticker, e.getMessage());
+            log.warn("[FmpClient] profile 호출 실패 ticker={} reason={}", ticker, e.getMessage());
             return Optional.empty();
         }
     }
@@ -103,8 +117,15 @@ public class FmpClient {
                 return List.copyOf(historical.subList(0, days));
             }
             return List.copyOf(historical);
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FmpClient] historical 인증 실패 — API 키 확인 필요 ticker={} status={}",
+                    ticker, e.getStatusCode());
+            return Collections.emptyList();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FmpClient] historical rate limit (429) — 후속 호출 일시 자제 권장 ticker={}", ticker);
+            return Collections.emptyList();
         } catch (RestClientException e) {
-            log.warn("[FmpClient] historical call failed ticker={} reason={}", ticker, e.getMessage());
+            log.warn("[FmpClient] historical 호출 실패 ticker={} reason={}", ticker, e.getMessage());
             return Collections.emptyList();
         }
     }

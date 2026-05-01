@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -76,8 +77,16 @@ public class FinnhubClient {
                 return Collections.emptyList();
             }
             return List.copyOf(body.earningsCalendar());
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FinnhubClient] calendar 인증 실패 — API 키 확인 필요 from={} to={} status={}",
+                    from, to, e.getStatusCode());
+            return Collections.emptyList();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FinnhubClient] calendar rate limit (429) — 후속 호출 일시 자제 권장 from={} to={}",
+                    from, to);
+            return Collections.emptyList();
         } catch (RestClientException e) {
-            log.warn("[FinnhubClient] calendar call failed from={} to={} reason={}",
+            log.warn("[FinnhubClient] calendar 호출 실패 from={} to={} reason={}",
                     from, to, e.getMessage());
             return Collections.emptyList();
         }
@@ -112,8 +121,16 @@ public class FinnhubClient {
                 return Collections.emptyList();
             }
             return List.of(body);
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FinnhubClient] earnings 인증 실패 — API 키 확인 필요 ticker={} status={}",
+                    ticker, e.getStatusCode());
+            return Collections.emptyList();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FinnhubClient] earnings rate limit (429) — 후속 호출 일시 자제 권장 ticker={}",
+                    ticker);
+            return Collections.emptyList();
         } catch (RestClientException e) {
-            log.warn("[FinnhubClient] earnings call failed ticker={} reason={}",
+            log.warn("[FinnhubClient] earnings 호출 실패 ticker={} reason={}",
                     ticker, e.getMessage());
             return Collections.emptyList();
         }

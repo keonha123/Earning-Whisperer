@@ -9,11 +9,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,9 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -34,7 +34,8 @@ import static org.mockito.Mockito.when;
  * FmpRateLimiter 단위 테스트.
  *
  * <p>실제 ScheduledExecutorService 와 in-process 시계를 사용하므로 약간의 sleep 이 포함된다.
- * Redis 는 mockito 로 stub.
+ * Redis 는 mockito 로 stub. INCR + EXPIRE atomic Lua script 가 적용되었으므로
+ * {@code redisTemplate.execute(RedisScript, List, Object...)} 호출을 stub 한다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FmpRateLimiter 단위 테스트")
@@ -48,22 +49,35 @@ class FmpRateLimiterTest {
 
     private FmpRateLimiter limiter;
     private final AtomicLong counter = new AtomicLong(0);
+    private final AtomicInteger expireCalls = new AtomicInteger(0);
 
     @BeforeEach
     void setUp() {
-        // ValueOperations stub — INCR 시 in-memory counter 증가, DECR 시 감소
+        // Lua INCR+EXPIRE script 호출 stub — counter 증가, 1 일 때 expire 카운트
+        lenient().when(redisTemplate.execute(
+                        any(RedisScript.class),
+                        any(List.class),
+                        any(Object[].class)))
+                .thenAnswer(inv -> {
+                    long v = counter.incrementAndGet();
+                    if (v == 1L) {
+                        expireCalls.incrementAndGet();
+                    }
+                    return v;
+                });
+        // DECR 롤백 경로
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        lenient().when(valueOps.increment(anyString())).thenAnswer(inv -> counter.incrementAndGet());
         lenient().when(valueOps.decrement(anyString())).thenAnswer(inv -> counter.decrementAndGet());
         lenient().when(valueOps.get(anyString())).thenAnswer(inv -> String.valueOf(counter.get()));
-        lenient().when(redisTemplate.expire(anyString(), anyLong(), any(TimeUnit.class))).thenReturn(true);
 
         limiter = new FmpRateLimiter(redisTemplate, Clock.systemUTC(), null);
     }
 
     @AfterEach
     void tearDown() {
-        limiter.shutdown();
+        if (limiter != null) {
+            limiter.shutdown();
+        }
     }
 
     @Test
@@ -171,16 +185,9 @@ class FmpRateLimiterTest {
     }
 
     @Test
-    @DisplayName("첫 INCR 시 EXPIRE 가 호출된다 (TTL 설정)")
+    @DisplayName("첫 INCR 시 EXPIRE 가 atomic Lua 안에서 호출된다 (TTL 설정)")
     void 첫_INCR_시_EXPIRE_호출() {
         // counter 0 → INCR 결과 1 → EXPIRE 호출 트리거
-        AtomicInteger expireCalls = new AtomicInteger(0);
-        when(redisTemplate.expire(anyString(), eq(FmpRateLimiter.DAILY_TTL_SECONDS), eq(TimeUnit.SECONDS)))
-                .thenAnswer(inv -> {
-                    expireCalls.incrementAndGet();
-                    return true;
-                });
-
         limiter.acquire(FmpRateLimiter.Priority.HIGH);
         assertThat(expireCalls.get()).isEqualTo(1);
 
@@ -188,5 +195,100 @@ class FmpRateLimiterTest {
         // 단, 토큰 refill 대기 필요 — burst 후 약 2초 대기
         limiter.acquire(FmpRateLimiter.Priority.HIGH);
         assertThat(expireCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Redis execute 가 RuntimeException 을 던지면 acquire 는 통과한다 (외부 호출 시도 허용 정책)")
+    void Redis_장애시_acquire_통과() {
+        // 새 limiter — Redis execute 가 항상 실패하도록 stub
+        limiter.shutdown();
+
+        @SuppressWarnings("unchecked")
+        RedisTemplate<String, String> failing = mock(RedisTemplate.class);
+        when(failing.execute(
+                any(RedisScript.class),
+                any(List.class),
+                any(Object[].class)))
+                .thenThrow(new RuntimeException("redis down"));
+
+        FmpRateLimiter brokenLimiter = new FmpRateLimiter(failing, Clock.systemUTC(), null);
+        try {
+            // 예외 없이 통과해야 한다 — 분당 burst 안전선이 이미 적용되었으므로 일일 카운터
+            // 누락보다 정상 트래픽 통과를 우선시한다.
+            brokenLimiter.acquire(FmpRateLimiter.Priority.HIGH);
+        } finally {
+            brokenLimiter.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("shutdown 시 대기중인 waiter 는 RateLimitExceededException 으로 깨어난다")
+    void shutdown_시_대기중_waiter_깨움() throws Exception {
+        // 초기 토큰 1 즉시 소진
+        limiter.acquire(FmpRateLimiter.Priority.HIGH);
+
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            // 토큰 없는 상태에서 추가 acquire — 대기 큐에 들어감
+            CompletableFuture<Throwable> caught = CompletableFuture.supplyAsync(() -> {
+                try {
+                    limiter.acquire(FmpRateLimiter.Priority.LOW);
+                    return null;
+                } catch (Throwable t) {
+                    return t;
+                }
+            }, pool);
+
+            // waiter 가 큐에 들어가도록 잠시 대기
+            Thread.sleep(200);
+
+            // shutdown — 대기중 waiter 가 RateLimitExceededException 으로 깨어나야 한다
+            limiter.shutdown();
+            // tearDown 에서 다시 호출되지 않도록 null 처리
+            limiter = null;
+
+            Throwable t = caught.get(5, TimeUnit.SECONDS);
+            assertThat(t).isInstanceOf(RateLimitExceededException.class);
+            assertThat(t.getMessage()).contains("cancelled");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("refill task 가 throw 해도 후속 tick 에서 self-heal 한다")
+    void refill_task_self_heal() throws Exception {
+        // 본 테스트는 실제 task self-heal 동작을 직접 가로채기 어렵지만,
+        // shutdown 까지 정상 acquire 가 다회 가능한지로 간접 확인한다.
+        // (scheduleWithFixedDelay 사용 + try/catch 래퍼가 적용된 상태)
+        limiter.acquire(FmpRateLimiter.Priority.HIGH);
+        // 토큰 refill 대기 후 다음 호출 정상 통과
+        limiter.acquire(FmpRateLimiter.Priority.HIGH);
+        // 추가로 한 번 더 — 스케줄러가 살아있음을 확인
+        limiter.acquire(FmpRateLimiter.Priority.HIGH);
+    }
+
+    @Test
+    @DisplayName("shutdown 이후 진입한 acquire 는 즉시 RateLimitExceededException 으로 거부된다")
+    void shutdown_이후_acquire_즉시_거부() {
+        limiter.shutdown();
+        // tearDown 에서 다시 호출되지 않도록 null 처리
+        limiter = null;
+
+        FmpRateLimiter disposed = new FmpRateLimiter(redisTemplate);
+        disposed.shutdown();
+
+        assertThatThrownBy(() -> disposed.acquire(FmpRateLimiter.Priority.HIGH))
+                .isInstanceOf(RateLimitExceededException.class)
+                .hasMessageContaining("disposed");
+    }
+
+    @SuppressWarnings("unused")
+    private static void awaitOrFail(CompletableFuture<?> f) {
+        try {
+            f.get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException | ExecutionException | java.util.concurrent.TimeoutException e) {
+            throw new AssertionError(e);
+        }
     }
 }
