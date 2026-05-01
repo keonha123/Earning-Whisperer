@@ -6,10 +6,12 @@ vi.mock('../../services/PricePoller', () => ({
   setWatchlist: vi.fn(),
 }))
 
-// BackendClient.getWatchlist 만 mock — 다른 메서드는 BackendClient 전체 모듈에서 가져옴.
+// BackendClient mock — getWatchlist + addWatchlist + removeWatchlist.
 vi.mock('../../services/BackendClient', () => ({
   BackendClient: {
     getWatchlist: vi.fn(),
+    addWatchlist: vi.fn(),
+    removeWatchlist: vi.fn(),
   },
 }))
 
@@ -43,6 +45,8 @@ const FIXTURE: WatchlistItem[] = [
 beforeEach(() => {
   ;(ipcMain.handle as unknown as ReturnType<typeof vi.fn>).mockClear()
   vi.mocked(BackendClient.getWatchlist).mockReset()
+  vi.mocked(BackendClient.addWatchlist).mockReset()
+  vi.mocked(BackendClient.removeWatchlist).mockReset()
   vi.mocked(setPricePollerWatchlist).mockReset()
   // BrowserWindow.getAllWindows 디폴트는 [] — 각 테스트에서 필요 시 재정의.
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
@@ -179,5 +183,150 @@ describe('watchlistHandlers — start/stop lifecycle', () => {
     vi.mocked(BackendClient.getWatchlist).mockClear()
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000)
     expect(vi.mocked(BackendClient.getWatchlist)).not.toHaveBeenCalled()
+  })
+})
+
+describe('watchlistHandlers — WATCHLIST_ADD', () => {
+  it('payload.ticker 누락 → throw + addWatchlist 미호출', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+
+    await expect(handler({} as never, undefined)).rejects.toThrow('invalid ticker')
+    expect(vi.mocked(BackendClient.addWatchlist)).not.toHaveBeenCalled()
+  })
+
+  it('ticker 정규식 불일치 (lowercase) → throw', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+
+    await expect(handler({} as never, { ticker: 'aapl' })).rejects.toThrow('invalid ticker')
+    expect(vi.mocked(BackendClient.addWatchlist)).not.toHaveBeenCalled()
+  })
+
+  it('정상 — addWatchlist 호출 + 캐시 추가 + WATCHLIST_UPDATE broadcast + setWatchlist 통보', async () => {
+    const newItem: WatchlistItem = { ticker: 'GOOGL', companyName: 'Alphabet', sector: 'Tech' }
+    vi.mocked(BackendClient.addWatchlist).mockResolvedValue(newItem)
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
+    ])
+
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+    const result = await handler({} as never, { ticker: 'GOOGL' })
+
+    expect(result).toEqual(newItem)
+    expect(vi.mocked(BackendClient.addWatchlist)).toHaveBeenCalledWith('GOOGL')
+    expect(__getCacheForTest().items).toEqual([newItem])
+    // WATCHLIST_UPDATE broadcast 1회.
+    const updateCalls = sendSpy.mock.calls.filter(
+      (c) => c[0] === IPC_CHANNELS.WATCHLIST_UPDATE,
+    )
+    expect(updateCalls).toHaveLength(1)
+    expect(updateCalls[0][1]).toEqual([newItem])
+    // PricePoller 통보 — 신규 ticker 포함.
+    expect(vi.mocked(setPricePollerWatchlist)).toHaveBeenCalledWith(['GOOGL'])
+  })
+
+  it('기존 캐시에 추가 — 기존 항목 유지하며 신규 ticker append', async () => {
+    // 시드: refresh 로 [AAPL, MSFT] 시드.
+    vi.mocked(BackendClient.getWatchlist).mockResolvedValueOnce(FIXTURE)
+    registerWatchlistHandlers()
+    const refreshHandler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REFRESH)
+    await refreshHandler({} as never)
+    vi.mocked(setPricePollerWatchlist).mockClear()
+
+    const newItem: WatchlistItem = { ticker: 'NVDA', companyName: 'Nvidia', sector: 'Tech' }
+    vi.mocked(BackendClient.addWatchlist).mockResolvedValue(newItem)
+
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+    await handler({} as never, { ticker: 'NVDA' })
+
+    expect(__getCacheForTest().items).toEqual([...FIXTURE, newItem])
+    expect(vi.mocked(setPricePollerWatchlist)).toHaveBeenCalledWith(['AAPL', 'MSFT', 'NVDA'])
+  })
+
+  it('addWatchlist throw → handler reject + 캐시 미변경', async () => {
+    // 시드 캐시.
+    vi.mocked(BackendClient.getWatchlist).mockResolvedValueOnce(FIXTURE)
+    registerWatchlistHandlers()
+    const refreshHandler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REFRESH)
+    await refreshHandler({} as never)
+    vi.mocked(setPricePollerWatchlist).mockClear()
+
+    vi.mocked(BackendClient.addWatchlist).mockRejectedValueOnce(new Error('409'))
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+
+    await expect(handler({} as never, { ticker: 'NVDA' })).rejects.toThrow('409')
+    // 캐시 미변경 + setWatchlist 미호출.
+    expect(__getCacheForTest().items).toEqual(FIXTURE)
+    expect(vi.mocked(setPricePollerWatchlist)).not.toHaveBeenCalled()
+  })
+})
+
+describe('watchlistHandlers — WATCHLIST_REMOVE', () => {
+  it('payload.ticker 누락 → throw + removeWatchlist 미호출', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REMOVE)
+
+    await expect(handler({} as never, undefined)).rejects.toThrow('invalid ticker')
+    expect(vi.mocked(BackendClient.removeWatchlist)).not.toHaveBeenCalled()
+  })
+
+  it('ticker 정규식 불일치 (특수문자) → throw', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REMOVE)
+
+    await expect(handler({} as never, { ticker: 'AA*PL' })).rejects.toThrow('invalid ticker')
+    expect(vi.mocked(BackendClient.removeWatchlist)).not.toHaveBeenCalled()
+  })
+
+  it('정상 — removeWatchlist 호출 + 캐시 제거 + broadcast + setWatchlist 통보', async () => {
+    // 시드 [AAPL, MSFT].
+    vi.mocked(BackendClient.getWatchlist).mockResolvedValueOnce(FIXTURE)
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
+    ])
+
+    registerWatchlistHandlers()
+    const refreshHandler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REFRESH)
+    await refreshHandler({} as never)
+    vi.mocked(setPricePollerWatchlist).mockClear()
+    sendSpy.mockClear()
+
+    vi.mocked(BackendClient.removeWatchlist).mockResolvedValue(undefined)
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REMOVE)
+    const result = await handler({} as never, { ticker: 'AAPL' })
+
+    expect(result).toBeUndefined()
+    expect(vi.mocked(BackendClient.removeWatchlist)).toHaveBeenCalledWith('AAPL')
+    // 캐시에서 AAPL 제거.
+    expect(__getCacheForTest().items).toEqual([
+      { ticker: 'MSFT', companyName: 'Microsoft', sector: 'Tech' },
+    ])
+    // broadcast.
+    const updateCalls = sendSpy.mock.calls.filter(
+      (c) => c[0] === IPC_CHANNELS.WATCHLIST_UPDATE,
+    )
+    expect(updateCalls).toHaveLength(1)
+    expect(updateCalls[0][1]).toEqual([{ ticker: 'MSFT', companyName: 'Microsoft', sector: 'Tech' }])
+    // PricePoller 통보.
+    expect(vi.mocked(setPricePollerWatchlist)).toHaveBeenCalledWith(['MSFT'])
+  })
+
+  it('removeWatchlist throw → handler reject + 캐시 미변경', async () => {
+    vi.mocked(BackendClient.getWatchlist).mockResolvedValueOnce(FIXTURE)
+    registerWatchlistHandlers()
+    const refreshHandler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REFRESH)
+    await refreshHandler({} as never)
+    vi.mocked(setPricePollerWatchlist).mockClear()
+
+    vi.mocked(BackendClient.removeWatchlist).mockRejectedValueOnce(new Error('404'))
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REMOVE)
+
+    await expect(handler({} as never, { ticker: 'AAPL' })).rejects.toThrow('404')
+    expect(__getCacheForTest().items).toEqual(FIXTURE)
+    expect(vi.mocked(setPricePollerWatchlist)).not.toHaveBeenCalled()
   })
 })

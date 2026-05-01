@@ -57,6 +57,24 @@ export const IPC_CHANNELS = {
    * 호출자에게도 갱신된 배열 반환.
    */
   WATCHLIST_REFRESH: 'terminal:watchlist:refresh',
+  /**
+   * 관심종목 추가 — POST /api/v1/watchlist body { ticker }.
+   * payload: { ticker } / 응답: WatchlistItem (camelCase: ticker/companyName/sector).
+   * 성공 시 캐시 갱신 + WATCHLIST_UPDATE broadcast + PricePoller setWatchlist 통보.
+   */
+  WATCHLIST_ADD: 'terminal:watchlist:add',
+  /**
+   * 관심종목 제거 — DELETE /api/v1/watchlist/{ticker}.
+   * payload: { ticker } / 응답: void. 성공 시 캐시 갱신 + WATCHLIST_UPDATE broadcast.
+   */
+  WATCHLIST_REMOVE: 'terminal:watchlist:remove',
+
+  /**
+   * 종목 상세 — GET /api/v1/stocks/{ticker}/detail (JWT).
+   * payload: { ticker } / 응답: StockDetailResponsePayload.
+   * Main 이 ticker별 30s TTL 캐시 보유 (drawer 단기 재오픈 시 백엔드 호출 절감).
+   */
+  STOCK_GET_DETAIL: 'terminal:stock:get-detail',
 
   /**
    * 시세 폴링 캐시 조회 — Renderer 마운트 시 초기 로드용.
