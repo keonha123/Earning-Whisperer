@@ -1,5 +1,10 @@
 import axios from 'axios'
 import { mainState } from '../store/mainState'
+import type { StockDetailResponsePayload } from '../../lib/types/stockDetail'
+
+// Phase 5: StockDetailResponsePayload 정의를 src/lib/types/stockDetail.ts 로 이동.
+// 본 모듈의 외부 import 호환을 위해 type re-export.
+export type { StockDetailResponsePayload }
 
 const BASE_URL = process.env.BACKEND_URL ?? 'http://localhost:8082'
 
@@ -54,47 +59,7 @@ export interface WatchlistItem {
   sector: string
 }
 
-/**
- * 종목 상세 응답 — Backend Phase 3 의 `StockDetailResponse`.
- * Spring 기본 직렬화는 camelCase. ai 필드는 본 phase 시점 항상 null (별도 비동기 채널).
- *
- * 주의 — BigDecimal 직렬화 정밀도:
- *   marketCapUsd / revenueEstimate 는 백엔드에서 BigDecimal 으로 다뤄지지만 JSON 직렬화 시
- *   숫자 리터럴로 내려옴. 현재 데이터 범위 (4조달러 ≈ 4e12, Number.MAX_SAFE_INTEGER ≈ 9e15)
- *   에서는 안전. 시가총액이 9 quadrillion 을 넘는 종목이 등장하면 정밀도 손실 가능 →
- *   string 로 받도록 백엔드 + 클라이언트 동시 변경 필요. 본 PR 에서는 number 유지.
- *   dividendYield 는 소수 (예: 0.0049 = 0.49%) — 표시 시 *100 처리 책임은 renderer.
- */
-export interface StockDetailResponsePayload {
-  ticker: string
-  companyName: string
-  sector: string | null
-  active: boolean
-  basic: {
-    marketCapUsd: number | null
-    high52w: number | null
-    low52w: number | null
-    dividendYield: number | null
-  } | null
-  chart30d: { date: string; close: number; volume: number | null }[]
-  currentPrice: number | null
-  earningsHistory: {
-    fiscalPeriodLabel: string
-    announcedAt: number
-    epsEstimate: number | null
-    epsActual: number | null
-    surprisePercent: number | null
-    priceReactionPercent: number | null
-  }[]
-  nextEarning: {
-    scheduledAt: number
-    epsEstimate: number | null
-    revenueEstimate: number | null
-    confirmed: boolean
-  } | null
-  partial: boolean
-  ai: null
-}
+// StockDetailResponsePayload 는 src/lib/types/stockDetail.ts 단일 정의 — 위에서 re-export.
 
 export const BackendClient = {
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {

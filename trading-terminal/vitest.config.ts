@@ -16,6 +16,9 @@ export default defineConfig({
       'src/renderer/store/__tests__/**/*.test.ts',
       // PR-B: hook 의 순수 helper(toCamel/isValidPayload) 도 node 환경에서 실행 가능.
       'src/renderer/hooks/__tests__/**/*.test.ts',
+      // Phase 5: CompanyDrawer 표시용 포맷팅 helper 단위 테스트
+      // (컴포넌트 렌더는 jsdom 미설정으로 skip, 순수 함수만 검증).
+      'src/renderer/lib/__tests__/**/*.test.ts',
     ],
     clearMocks: true,
     restoreMocks: true,
