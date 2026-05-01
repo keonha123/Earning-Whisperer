@@ -2,6 +2,7 @@ package com.earningwhisperer.infrastructure.fmp;
 
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -20,7 +21,7 @@ import java.util.List;
  * (HIGH 우선순위) 이 들어오면 RateLimiter 큐에서 먼저 drain 된다.
  *
  * <p>본 스케줄러는 {@code @Transactional} 을 가지지 않는다.
- * ticker 단위 트랜잭션은 {@link StockMetaSyncService#syncTicker(Long, String)} 가 관리하며,
+ * ticker 단위 트랜잭션은 {@link StockMetaSyncService#syncTicker(Long, String, SyncPriority)} 가 관리하며,
  * 한 ticker 의 실패가 다른 ticker 의 commit 을 rollback 시키지 않도록 격리된다.
  *
  * <p>FMP_API_KEY 미설정 시 Bean 미등록(@ConditionalOnExpression).
@@ -69,7 +70,7 @@ public class StockMetaSyncScheduler {
             }
             String ticker = stock.getTicker();
             try {
-                if (stockMetaSyncService.syncTicker(stock.getId(), ticker)) {
+                if (stockMetaSyncService.syncTicker(stock.getId(), ticker, SyncPriority.LOW)) {
                     success++;
                 } else {
                     failed++;

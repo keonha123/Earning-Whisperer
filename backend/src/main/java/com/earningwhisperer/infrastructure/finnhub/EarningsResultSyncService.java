@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.earnings.EarningsResult;
 import com.earningwhisperer.domain.earnings.EarningsResultRepository;
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubEarningsRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,14 +61,15 @@ public class EarningsResultSyncService {
      *     <li>각 row 별 unique constraint 매칭으로 update / insert 분기. 신규 insert 만 카운트.</li>
      * </ul>
      *
-     * @param stockId 영속화 대상 Stock 의 PK
-     * @param ticker  외부 호출 키
+     * @param stockId  영속화 대상 Stock 의 PK
+     * @param ticker   외부 호출 키
+     * @param priority Finnhub rate limiter 우선순위 (사용자 trigger=HIGH, 사전 동기화=LOW)
      * @return 신규 insert 된 row 수 (스케줄러 사이클 요약용)
      */
     @Transactional
-    public int syncTicker(Long stockId, String ticker) {
+    public int syncTicker(Long stockId, String ticker, SyncPriority priority) {
         List<FinnhubEarningsRow> rows = finnhubClient.fetchEarningsHistory(
-                ticker, FinnhubRateLimiter.Priority.LOW);
+                ticker, priority.toFinnhub());
 
         if (rows.isEmpty()) {
             log.warn("[EarningsResultSync] earnings 조회 실패/빈 응답 ticker={}", ticker);

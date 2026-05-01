@@ -2,6 +2,7 @@ package com.earningwhisperer.infrastructure.fmp;
 
 import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
+import com.earningwhisperer.global.common.SyncPriority;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -21,7 +22,7 @@ import java.util.List;
  * 동일 (stock, bar_date) 쌍은 unique constraint 로 보호되며 코드 레벨 upsert 로 멱등성 유지.
  *
  * <p>본 스케줄러는 {@code @Transactional} 을 가지지 않는다.
- * ticker 단위 트랜잭션은 {@link DailyBarSyncService#syncTicker(Long, String, int)} 가 관리.
+ * ticker 단위 트랜잭션은 {@link DailyBarSyncService#syncTicker(Long, String, int, SyncPriority)} 가 관리.
  *
  * <p>FMP_API_KEY 미설정 시 Bean 미등록(@ConditionalOnExpression).
  */
@@ -62,7 +63,8 @@ public class DailyBarSyncScheduler {
             }
             String ticker = stock.getTicker();
             try {
-                int barsForTicker = dailyBarSyncService.syncTicker(stock.getId(), ticker, HISTORICAL_DAYS);
+                int barsForTicker = dailyBarSyncService.syncTicker(
+                        stock.getId(), ticker, HISTORICAL_DAYS, SyncPriority.LOW);
                 if (barsForTicker > 0) {
                     barsUpserted += barsForTicker;
                     success++;
