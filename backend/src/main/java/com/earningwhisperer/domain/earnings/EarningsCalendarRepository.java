@@ -29,4 +29,10 @@ public interface EarningsCalendarRepository extends JpaRepository<EarningsCalend
     List<EarningsCalendar> findByScheduledAtBetween(
             @Param("from") Instant from,
             @Param("to") Instant to);
+
+    /**
+     * Phase 3: 종목 상세 응답의 nextEarning 필드용 — 가장 가까운 미래 어닝 1건 조회.
+     */
+    Optional<EarningsCalendar> findFirstByStock_IdAndScheduledAtAfterOrderByScheduledAtAsc(
+            Long stockId, Instant after);
 }

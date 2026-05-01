@@ -125,6 +125,12 @@ class LazyFetchServiceTest {
 
             assertThat(result.ticker()).isEqualTo("BRK.B");
             assertThat(result.anyFetched()).isFalse();
+            // 어떤 단계도 attempt 안 됨 → allFailed=false (정상 캐시 hit)
+            assertThat(result.stockAttempted()).isFalse();
+            assertThat(result.metaAttempted()).isFalse();
+            assertThat(result.dailyBarsAttempted()).isFalse();
+            assertThat(result.earningsAttempted()).isFalse();
+            assertThat(result.allFailed()).isFalse();
         }
 
         @Test
@@ -182,6 +188,12 @@ class LazyFetchServiceTest {
             assertThat(result.dailyBarsFetched()).isTrue();
             assertThat(result.earningsFetched()).isTrue();
             assertThat(result.anyFetched()).isTrue();
+            // attempt 플래그 — 4단계 모두 진입
+            assertThat(result.stockAttempted()).isTrue();
+            assertThat(result.metaAttempted()).isTrue();
+            assertThat(result.dailyBarsAttempted()).isTrue();
+            assertThat(result.earningsAttempted()).isTrue();
+            assertThat(result.allFailed()).isFalse();
 
             // Stock 신규 등록 시 active=true (기본값) + companyName=Apple Inc., sector=TECH
             ArgumentCaptor<Stock> captor = ArgumentCaptor.forClass(Stock.class);
@@ -256,6 +268,10 @@ class LazyFetchServiceTest {
             verify(stockMetaSyncService, never()).syncTicker(anyLong(), anyString(), any());
             verify(dailyBarSyncService, never()).syncTicker(anyLong(), anyString(), anyInt(), any());
             verify(earningsResultSyncService, never()).syncTicker(anyLong(), anyString(), any());
+
+            // Stock 등록 시도는 했으나 실패 → allFailed=true
+            assertThat(result.stockAttempted()).isTrue();
+            assertThat(result.allFailed()).isTrue();
         }
     }
 
@@ -427,6 +443,89 @@ class LazyFetchServiceTest {
             assertThat(result.metaFetched()).isTrue();
             assertThat(result.dailyBarsFetched()).isTrue();
             assertThat(result.earningsFetched()).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("allFailed — 모든 시도 실패")
+    class AllFailed {
+
+        @Test
+        @DisplayName("Stock 미존재 + Stock save throw → allFailed=true (Phase 3 컨트롤러 503 분기)")
+        void stock_save_throw_allFailed() {
+            given(stockRepository.findByTicker("FAIL")).willReturn(Optional.empty());
+            given(fmpClient.fetchProfile(eq("FAIL"), eq(FmpRateLimiter.Priority.HIGH)))
+                    .willReturn(Optional.empty());
+            given(stockRepository.save(any(Stock.class)))
+                    .willThrow(new RuntimeException("DB down"));
+
+            LazyFetchResult result = service.ensureExists("FAIL");
+
+            assertThat(result.allFailed()).isTrue();
+            assertThat(result.anyFetched()).isFalse();
+            assertThat(result.stockAttempted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Stock 미존재 + Stock 신규 등록 + 메타/일봉/어닝 모두 throw → anyFetched=true(stock), allFailed=false")
+        void stock_created_but_others_throw() {
+            given(stockRepository.findByTicker("AAPL")).willReturn(Optional.empty());
+            given(fmpClient.fetchProfile(eq("AAPL"), eq(FmpRateLimiter.Priority.HIGH)))
+                    .willReturn(Optional.of(new FmpProfile(
+                            "AAPL", "Apple Inc.", "TECH", null, null, null, null)));
+            given(stockRepository.save(any(Stock.class))).willAnswer(inv -> {
+                Stock s = inv.getArgument(0);
+                setId(s, 1L);
+                return s;
+            });
+            given(stockMetaRepository.findByStock_Id(1L)).willReturn(Optional.empty());
+            given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("FMP 5xx"));
+            given(dailyBarRepository.findTop30ByStock_IdOrderByBarDateDesc(1L)).willReturn(List.of());
+            given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("FMP 5xx"));
+            given(earningsResultRepository.findTop4ByStock_IdOrderByAnnouncedAtDesc(1L))
+                    .willReturn(List.of());
+            given(earningsResultSyncService.syncTicker(1L, "AAPL", SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("Finnhub 5xx"));
+
+            LazyFetchResult result = service.ensureExists("AAPL");
+
+            // Stock 신규 등록은 성공 → anyFetched=true → allFailed=false
+            assertThat(result.stockCreated()).isTrue();
+            assertThat(result.anyFetched()).isTrue();
+            assertThat(result.allFailed()).isFalse();
+            assertThat(result.metaAttempted()).isTrue();
+            assertThat(result.dailyBarsAttempted()).isTrue();
+            assertThat(result.earningsAttempted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Stock 존재 + 메타/일봉/어닝 모두 throw → allFailed=true (Stock 시도 안 함)")
+        void stock_existing_others_all_throw() {
+            Stock aapl = stockOf(1L, "AAPL");
+            given(stockRepository.findByTicker("AAPL")).willReturn(Optional.of(aapl));
+
+            given(stockMetaRepository.findByStock_Id(1L)).willReturn(Optional.empty());
+            given(stockMetaSyncService.syncTicker(1L, "AAPL", SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("FMP 5xx"));
+            given(dailyBarRepository.findTop30ByStock_IdOrderByBarDateDesc(1L)).willReturn(List.of());
+            given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("FMP 5xx"));
+            given(earningsResultRepository.findTop4ByStock_IdOrderByAnnouncedAtDesc(1L))
+                    .willReturn(List.of());
+            given(earningsResultSyncService.syncTicker(1L, "AAPL", SyncPriority.HIGH))
+                    .willThrow(new RuntimeException("Finnhub 5xx"));
+
+            LazyFetchResult result = service.ensureExists("AAPL");
+
+            assertThat(result.stockCreated()).isFalse();
+            assertThat(result.stockAttempted()).isFalse();
+            assertThat(result.metaAttempted()).isTrue();
+            assertThat(result.dailyBarsAttempted()).isTrue();
+            assertThat(result.earningsAttempted()).isTrue();
+            assertThat(result.anyFetched()).isFalse();
+            assertThat(result.allFailed()).isTrue();
         }
     }
 

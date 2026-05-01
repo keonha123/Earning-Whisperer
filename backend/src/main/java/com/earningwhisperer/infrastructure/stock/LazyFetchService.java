@@ -88,11 +88,13 @@ public class LazyFetchService {
         Optional<Stock> existingStockOpt = stockRepository.findByTicker(ticker);
         boolean stockCreated = false;
         boolean profileMissing = false;
+        boolean stockAttempted = false;
         Stock stock;
 
         if (existingStockOpt.isPresent()) {
             stock = existingStockOpt.get();
         } else {
+            stockAttempted = true;
             FetchedStock fetched = createStock(ticker);
             stock = fetched.stock();
             stockCreated = (stock != null);
@@ -101,7 +103,9 @@ public class LazyFetchService {
             if (stock == null) {
                 // Stock 등록 자체가 throw 한 케이스 — 후속 단계 진행 불가
                 log.warn("[LazyFetch] Stock 등록 실패 ticker={} — 후속 단계 skip", ticker);
-                return new LazyFetchResult(ticker, false, false, false, false, profileMissing);
+                return new LazyFetchResult(
+                        ticker, false, false, false, false, profileMissing,
+                        stockAttempted, false, false, false);
             }
         }
 
@@ -109,7 +113,9 @@ public class LazyFetchService {
 
         // ─── 2단계: StockMeta ─────────────────────────────────────────
         boolean metaFetched = false;
+        boolean metaAttempted = false;
         if (stockMetaRepository.findByStock_Id(stockId).isEmpty()) {
+            metaAttempted = true;
             try {
                 metaFetched = stockMetaSyncService.syncTicker(stockId, ticker, SyncPriority.HIGH);
             } catch (RuntimeException e) {
@@ -119,10 +125,12 @@ public class LazyFetchService {
 
         // ─── 3단계: DailyBar ─────────────────────────────────────────
         boolean dailyBarsFetched = false;
+        boolean dailyBarsAttempted = false;
         if (!dailyBarRepository.findTop30ByStock_IdOrderByBarDateDesc(stockId).isEmpty()) {
             // 이미 한 row 라도 있으면 lazy fetch skip — stale 갱신은 사전 동기화 스케줄러 책임.
             dailyBarsFetched = false;
         } else {
+            dailyBarsAttempted = true;
             try {
                 int processed = dailyBarSyncService.syncTicker(
                         stockId, ticker, LAZY_HISTORICAL_DAYS, SyncPriority.HIGH);
@@ -134,7 +142,9 @@ public class LazyFetchService {
 
         // ─── 4단계: EarningsResult ───────────────────────────────────
         boolean earningsFetched = false;
+        boolean earningsAttempted = false;
         if (earningsResultRepository.findTop4ByStock_IdOrderByAnnouncedAtDesc(stockId).isEmpty()) {
+            earningsAttempted = true;
             try {
                 int inserted = earningsResultSyncService.syncTicker(stockId, ticker, SyncPriority.HIGH);
                 earningsFetched = inserted > 0;
@@ -144,7 +154,8 @@ public class LazyFetchService {
         }
 
         return new LazyFetchResult(
-                ticker, stockCreated, metaFetched, dailyBarsFetched, earningsFetched, profileMissing);
+                ticker, stockCreated, metaFetched, dailyBarsFetched, earningsFetched, profileMissing,
+                stockAttempted, metaAttempted, dailyBarsAttempted, earningsAttempted);
     }
 
     /**
