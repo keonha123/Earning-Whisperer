@@ -68,7 +68,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.providerId()).isEqualTo("1234567890");
         assertThat(profile.email()).isEqualTo("kakao-user@example.com");
@@ -91,7 +91,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.providerId()).isEqualTo("9876543210");
         assertThat(profile.email()).isEqualTo("kakao_9876543210@earningwhisperer.local");
@@ -114,7 +114,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_5555@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("실제닉네임");
@@ -136,7 +136,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI))
+        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI, null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("인증되지 않았습니다");
     }
@@ -156,7 +156,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_222@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("닉네임만");
@@ -176,7 +176,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_42@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("카카오사용자_42");
@@ -185,7 +185,7 @@ class KakaoOAuthClientTest {
     @Test
     @DisplayName("허용되지 않은 redirect_uri → OAuthExchangeException")
     void exchange_허용되지_않은_redirect_uri() {
-        assertThatThrownBy(() -> client.exchange("code", "https://evil.example.com/cb"))
+        assertThatThrownBy(() -> client.exchange("code", "https://evil.example.com/cb", null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("허용되지 않은");
     }
@@ -205,7 +205,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_7777@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("빈이메일");
@@ -226,7 +226,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_8888@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("공백이메일");
@@ -241,7 +241,7 @@ class KakaoOAuthClientTest {
                         "{ \"id\": 1111 }",
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI))
+        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI, null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("Kakao 계정 정보");
     }
@@ -261,7 +261,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI))
+        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI, null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("인증되지 않았습니다");
     }
@@ -278,7 +278,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_3333@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("카카오사용자_3333");
@@ -298,7 +298,7 @@ class KakaoOAuthClientTest {
                                 + "}",
                         MediaType.APPLICATION_JSON));
 
-        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI);
+        OAuthUserProfile profile = client.exchange("auth-code", REDIRECT_URI, null);
 
         assertThat(profile.email()).isEqualTo("kakao_4242@earningwhisperer.local");
         assertThat(profile.nickname()).isEqualTo("카카오사용자_4242");
@@ -311,7 +311,7 @@ class KakaoOAuthClientTest {
                 .andExpect(method(org.springframework.http.HttpMethod.POST))
                 .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI))
+        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI, null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("카카오 토큰 교환 실패");
     }
@@ -324,7 +324,7 @@ class KakaoOAuthClientTest {
                 .andExpect(method(org.springframework.http.HttpMethod.GET))
                 .andRespond(withBadRequest());
 
-        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI))
+        assertThatThrownBy(() -> client.exchange("auth-code", REDIRECT_URI, null))
                 .isInstanceOf(OAuthExchangeException.class)
                 .hasMessageContaining("카카오 사용자 정보 조회 실패");
     }
