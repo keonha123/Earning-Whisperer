@@ -50,7 +50,13 @@ public class FinnhubEarningsScheduler {
         for (FinnhubCalendarRow row : rows) {
             if (row.date() == null || row.symbol() == null) continue;
             Instant scheduledAt = row.date().atStartOfDay(ZoneOffset.UTC).toInstant();
-            earningsCalendarService.upsert(row.symbol(), scheduledAt, true);
+            // estimate 는 Finnhub 응답에 필드 자체가 없을 수 있어 nullable. null 그대로 전달.
+            earningsCalendarService.upsert(
+                    row.symbol(),
+                    scheduledAt,
+                    true,
+                    row.epsEstimate(),
+                    row.revenueEstimate());
             upserted++;
         }
         log.info("[FinnhubEarningsScheduler] 어닝 일정 갱신 완료: {}건 (응답 {}건)",
