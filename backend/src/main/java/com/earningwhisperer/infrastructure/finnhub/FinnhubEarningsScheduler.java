@@ -1,76 +1,59 @@
 package com.earningwhisperer.infrastructure.finnhub;
 
 import com.earningwhisperer.domain.earnings.EarningsCalendarService;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.RequiredArgsConstructor;
+import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubCalendarRow;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+/**
+ * Finnhub `/calendar/earnings` 호출 → {@code EarningsCalendar} upsert 스케줄러.
+ *
+ * <p>외부 API 호출 책임은 {@link FinnhubClient} 로, 분당 burst 제어는
+ * {@link FinnhubRateLimiter} 로 분리되어 있고 본 클래스는 영속화 로직만 담당한다.
+ */
 @Slf4j
 @Component
 @ConditionalOnExpression("!'${finnhub.api-key:}'.isBlank()")
 public class FinnhubEarningsScheduler {
 
-    private final RestClient restClient;
-    private final FinnhubProperties properties;
+    private final FinnhubClient finnhubClient;
     private final EarningsCalendarService earningsCalendarService;
 
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
-
-    public FinnhubEarningsScheduler(
-            @Qualifier("finnhubRestClient") RestClient restClient,
-            FinnhubProperties properties,
-            EarningsCalendarService earningsCalendarService) {
-        this.restClient = restClient;
-        this.properties = properties;
+    public FinnhubEarningsScheduler(FinnhubClient finnhubClient,
+                                    EarningsCalendarService earningsCalendarService) {
+        this.finnhubClient = finnhubClient;
         this.earningsCalendarService = earningsCalendarService;
     }
 
     /** 매일 오전 6시 UTC, 향후 30일 어닝 일정 갱신 */
     @Scheduled(cron = "0 0 6 * * *", zone = "UTC")
     public void syncEarningsCalendar() {
-        String from = LocalDate.now(ZoneOffset.UTC).format(DATE_FMT);
-        String to   = LocalDate.now(ZoneOffset.UTC).plusDays(30).format(DATE_FMT);
+        LocalDate from = LocalDate.now(ZoneOffset.UTC);
+        LocalDate to = from.plusDays(30);
 
-        try {
-            EarningsCalendarResponse response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/calendar/earnings")
-                            .queryParam("from", from)
-                            .queryParam("to", to)
-                            .queryParam("token", properties.apiKey())
-                            .build())
-                    .retrieve()
-                    .body(EarningsCalendarResponse.class);
+        List<FinnhubCalendarRow> rows = finnhubClient.fetchCalendar(
+                from, to, FinnhubRateLimiter.Priority.LOW);
 
-            if (response == null || response.earningsCalendar() == null) return;
-
-            for (EarningsEntry entry : response.earningsCalendar()) {
-                if (entry.date() == null || entry.symbol() == null) continue;
-                Instant scheduledAt = LocalDate.parse(entry.date(), DATE_FMT)
-                        .atStartOfDay(ZoneOffset.UTC).toInstant();
-                earningsCalendarService.upsert(entry.symbol(), scheduledAt, true);
-            }
-            log.info("[FinnhubEarningsScheduler] 어닝 일정 갱신 완료: {}건",
-                    response.earningsCalendar().size());
-        } catch (RestClientException e) {
-            log.error("[FinnhubEarningsScheduler] Finnhub 호출 실패: {}", e.getMessage());
+        if (rows.isEmpty()) {
+            log.info("[FinnhubEarningsScheduler] 어닝 일정 응답 없음 from={} to={}", from, to);
+            return;
         }
+
+        int upserted = 0;
+        for (FinnhubCalendarRow row : rows) {
+            if (row.date() == null || row.symbol() == null) continue;
+            Instant scheduledAt = row.date().atStartOfDay(ZoneOffset.UTC).toInstant();
+            earningsCalendarService.upsert(row.symbol(), scheduledAt, true);
+            upserted++;
+        }
+        log.info("[FinnhubEarningsScheduler] 어닝 일정 갱신 완료: {}건 (응답 {}건)",
+                upserted, rows.size());
     }
-
-    record EarningsCalendarResponse(
-            @JsonProperty("earningsCalendar") List<EarningsEntry> earningsCalendar) {}
-
-    record EarningsEntry(String symbol, String date) {}
 }
