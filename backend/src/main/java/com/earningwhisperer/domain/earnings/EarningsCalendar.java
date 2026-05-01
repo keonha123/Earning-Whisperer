@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Getter
@@ -30,15 +31,32 @@ public class EarningsCalendar extends BaseEntity {
 
     private boolean confirmed;
 
+    @Column(name = "eps_estimate", precision = 10, scale = 4)
+    private BigDecimal epsEstimate;
+
+    @Column(name = "revenue_estimate", precision = 18, scale = 2)
+    private BigDecimal revenueEstimate;
+
     @Builder
-    public EarningsCalendar(Stock stock, Instant scheduledAt, boolean confirmed) {
+    public EarningsCalendar(Stock stock,
+                            Instant scheduledAt,
+                            boolean confirmed,
+                            BigDecimal epsEstimate,
+                            BigDecimal revenueEstimate) {
         this.stock = stock;
         this.scheduledAt = scheduledAt;
         this.confirmed = confirmed;
+        this.epsEstimate = epsEstimate;
+        this.revenueEstimate = revenueEstimate;
     }
 
     public void update(Instant scheduledAt, boolean confirmed) {
         this.scheduledAt = scheduledAt;
         this.confirmed = confirmed;
+    }
+
+    public void updateEstimates(BigDecimal epsEstimate, BigDecimal revenueEstimate) {
+        this.epsEstimate = epsEstimate;
+        this.revenueEstimate = revenueEstimate;
     }
 }
