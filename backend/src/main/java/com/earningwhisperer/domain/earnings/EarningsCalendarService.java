@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -34,20 +35,30 @@ public class EarningsCalendarService {
 
     /**
      * Finnhub 스케줄러에서 호출. 수신한 어닝콜 데이터를 upsert 처리.
+     *
+     * <p>Phase 2-B 에서 컨센서스(epsEstimate / revenueEstimate) 영속화를 위해 시그니처 확장.
+     * 호출자가 1곳(FinnhubEarningsScheduler)뿐이라 별도 메서드 추가 대신 시그니처 변경.
+     * estimate 는 nullable — Finnhub 응답에 필드 없으면 null 그대로 영속화한다.
      */
     @Transactional
-    public void upsert(String ticker, Instant scheduledAt, boolean confirmed) {
+    public void upsert(String ticker,
+                       Instant scheduledAt,
+                       boolean confirmed,
+                       BigDecimal epsEstimate,
+                       BigDecimal revenueEstimate) {
         Stock stock = stockRepository.findByTicker(ticker).orElse(null);
         if (stock == null) return; // S&P 500 외 종목은 무시
 
         earningsCalendarRepository.findByStockTickerAndScheduledAt(ticker, scheduledAt)
                 .ifPresentOrElse(
-                        existing -> existing.update(scheduledAt, confirmed),
+                        existing -> existing.updateAll(scheduledAt, confirmed, epsEstimate, revenueEstimate),
                         () -> earningsCalendarRepository.save(
                                 EarningsCalendar.builder()
                                         .stock(stock)
                                         .scheduledAt(scheduledAt)
                                         .confirmed(confirmed)
+                                        .epsEstimate(epsEstimate)
+                                        .revenueEstimate(revenueEstimate)
                                         .build())
                 );
     }
