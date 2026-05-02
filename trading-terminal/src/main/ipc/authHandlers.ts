@@ -6,6 +6,7 @@ import { KisService } from '../services/KisService'
 import { OAuthService, OAuthProvider } from '../services/OAuthService'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { start as startWatchlist, stop as stopWatchlist } from './watchlistHandlers'
+import { clearCache as clearStockDetailCache } from './stockDetailHandlers'
 import { start as startPricePoller, stop as stopPricePoller } from '../services/PricePoller'
 
 export function registerAuthHandlers() {
@@ -46,6 +47,8 @@ export function registerAuthHandlers() {
     StompService.disconnect()
     stopWatchlist()
     stopPricePoller()
+    // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
+    clearStockDetailCache()
     mainState.clear()
   })
 

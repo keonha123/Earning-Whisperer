@@ -58,9 +58,17 @@ export function registerStockDetailHandlers(): void {
   )
 }
 
-/** 테스트 전용 — 캐시 초기화. production 코드에서는 사용 금지. */
-export function __resetCacheForTest(): void {
+/**
+ * 캐시 초기화. AUTH_LOGOUT 시점에 호출 — 사용자 전환 시 이전 사용자의 응답이
+ * 다음 사용자에게 노출되는 것을 막는다.
+ */
+export function clearCache(): void {
   cache.clear()
+}
+
+/** 테스트 전용 — clearCache 와 동일 동작 (의미 명시). */
+export function __resetCacheForTest(): void {
+  clearCache()
 }
 
 /** 테스트 전용 — 캐시 사이즈 조회. production 코드에서는 사용 금지. */
