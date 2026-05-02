@@ -209,15 +209,15 @@ class StockMetaSyncServiceTest {
 
     private static FmpProfile profileOf(String symbol,
                                         String price,
-                                        String lastDiv,
+                                        String lastDividend,
                                         String range,
-                                        String mktCap) {
+                                        String marketCap) {
         return new FmpProfile(
                 symbol,
                 "test",
                 "TECH",
-                mktCap == null ? null : new BigDecimal(mktCap),
-                lastDiv == null ? null : new BigDecimal(lastDiv),
+                marketCap == null ? null : new BigDecimal(marketCap),
+                lastDividend == null ? null : new BigDecimal(lastDividend),
                 price == null ? null : new BigDecimal(price),
                 range
         );
