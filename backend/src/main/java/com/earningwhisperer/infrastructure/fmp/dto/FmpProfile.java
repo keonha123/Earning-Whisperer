@@ -9,18 +9,22 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * FMP `/v3/profile/{ticker}` 응답의 단일 항목.
+ * FMP `/stable/profile?symbol={ticker}` 응답의 단일 항목.
  *
  * <p>FMP 는 항상 배열 형태(`[{...}]`)로 1건을 반환하므로 호출자는 첫 요소만 취해 이 record 로 매핑한다.
- * 알 수 없는 필드는 무시한다(스펙상 다수 필드 존재하나 본 도메인에서는 일부만 사용).
+ * 알 수 없는 필드는 무시한다.
+ *
+ * <p>2025-08-31 부터 legacy `/v3/profile/{ticker}` 가 신규 사용자에게 403 으로 거부됨에 따라
+ * `/stable/profile` 로 마이그레이션. 응답 schema 일부 필드명이 변경되어 매핑도 새 이름으로:
+ * {@code mktCap → marketCap}, {@code lastDiv → lastDividend}.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record FmpProfile(
         @JsonProperty("symbol") String symbol,
         @JsonProperty("companyName") String companyName,
         @JsonProperty("sector") String sector,
-        @JsonProperty("mktCap") BigDecimal mktCap,
-        @JsonProperty("lastDiv") BigDecimal lastDiv,
+        @JsonProperty("marketCap") BigDecimal marketCap,
+        @JsonProperty("lastDividend") BigDecimal lastDividend,
         @JsonProperty("price") BigDecimal price,
         /** 예: "75.60-138.07" — 52주 최저-최고. 누락/포맷불일치시 low52w/high52w empty. */
         @JsonProperty("range") String range

@@ -73,10 +73,10 @@ public class StockMetaSyncService {
         }
 
         FmpProfile profile = profileOpt.get();
-        BigDecimal marketCap = profile.mktCap();
+        BigDecimal marketCap = profile.marketCap();
         BigDecimal high52w = profile.high52w().orElse(null);
         BigDecimal low52w = profile.low52w().orElse(null);
-        BigDecimal dividendYield = computeDividendYield(profile.lastDiv(), profile.price(), ticker);
+        BigDecimal dividendYield = computeDividendYield(profile.lastDividend(), profile.price(), ticker);
 
         // 트랜잭션 분리 후에는 외부 트랜잭션이 없으므로 stockId 로 reattach.
         // 보유한 stockId 가 invalidated 된 경우(삭제 race) ticker 로 fallback.

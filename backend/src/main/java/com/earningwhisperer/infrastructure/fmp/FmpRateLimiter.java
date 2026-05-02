@@ -2,6 +2,7 @@ package com.earningwhisperer.infrastructure.fmp;
 
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -100,6 +101,7 @@ public class FmpRateLimiter {
 
     private final ScheduledFuture<?> refillTask;
 
+    @Autowired
     public FmpRateLimiter(RedisTemplate<String, String> redisTemplate) {
         this(redisTemplate, Clock.systemUTC(), null);
     }

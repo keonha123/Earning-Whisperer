@@ -91,7 +91,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile 정상 응답 → FmpProfile 1건 반환, range 파싱 성공")
     void fetchProfile_정상() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andExpect(method(org.springframework.http.HttpMethod.GET))
                 .andRespond(withSuccess(
@@ -115,7 +115,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile 401 → ERROR 로그 + Optional.empty (인증 실패 분기)")
     void fetchProfile_401_인증실패() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
@@ -131,7 +131,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile 403 → ERROR 로그 + Optional.empty (인증 실패 분기)")
     void fetchProfile_403_인증실패() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andRespond(withStatus(HttpStatus.FORBIDDEN));
 
@@ -147,7 +147,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile 429 → WARN 로그 + Optional.empty (rate limit 분기)")
     void fetchProfile_429_rate_limit() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
 
@@ -166,7 +166,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile 5xx → WARN 로그 + Optional.empty (일반 분기)")
     void fetchProfile_5xx() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andRespond(withServerError());
 
@@ -182,7 +182,7 @@ class FmpClientTest {
     @DisplayName("fetchProfile range 파싱 실패 시 WARN 로그 1건")
     void fetchProfile_range_파싱_실패_WARN() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/profile/{ticker}?apikey={apiKey}",
+                        BASE_URL + "/stable/profile?symbol={ticker}&apikey={apiKey}",
                         "AAPL", API_KEY))
                 .andRespond(withSuccess(
                         "[{\"symbol\":\"AAPL\",\"companyName\":\"Apple Inc.\","
@@ -204,13 +204,11 @@ class FmpClientTest {
     @DisplayName("fetchHistorical 정상 응답 → 파싱된 bar 리스트 반환")
     void fetchHistorical_정상() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/historical-price-full/{ticker}?timeseries={days}&apikey={apiKey}",
-                        "AAPL", 5, API_KEY))
+                        BASE_URL + "/stable/historical-price-eod/full?symbol={ticker}&apikey={apiKey}",
+                        "AAPL", API_KEY))
                 .andRespond(withSuccess(
-                        "{\"symbol\":\"AAPL\",\"historical\":["
-                                + "{\"date\":\"2026-04-30\",\"close\":175.0,\"volume\":50000000},"
-                                + "{\"date\":\"2026-04-29\",\"close\":174.5,\"volume\":48000000}"
-                                + "]}",
+                        "[{\"symbol\":\"AAPL\",\"date\":\"2026-04-30\",\"close\":175.0,\"volume\":50000000},"
+                                + "{\"symbol\":\"AAPL\",\"date\":\"2026-04-29\",\"close\":174.5,\"volume\":48000000}]",
                         MediaType.APPLICATION_JSON));
 
         List<FmpHistoricalBar> bars = client.fetchHistorical("AAPL", 5, FmpRateLimiter.Priority.LOW);
@@ -225,15 +223,13 @@ class FmpClientTest {
     void fetchHistorical_days_자르기() {
         // days=2 요청, 응답 4건 → 앞 2건만 반환
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/historical-price-full/{ticker}?timeseries={days}&apikey={apiKey}",
-                        "AAPL", 2, API_KEY))
+                        BASE_URL + "/stable/historical-price-eod/full?symbol={ticker}&apikey={apiKey}",
+                        "AAPL", API_KEY))
                 .andRespond(withSuccess(
-                        "{\"symbol\":\"AAPL\",\"historical\":["
-                                + "{\"date\":\"2026-04-30\",\"close\":175.0,\"volume\":1},"
-                                + "{\"date\":\"2026-04-29\",\"close\":174.5,\"volume\":2},"
-                                + "{\"date\":\"2026-04-28\",\"close\":174.0,\"volume\":3},"
-                                + "{\"date\":\"2026-04-27\",\"close\":173.5,\"volume\":4}"
-                                + "]}",
+                        "[{\"symbol\":\"AAPL\",\"date\":\"2026-04-30\",\"close\":175.0,\"volume\":1},"
+                                + "{\"symbol\":\"AAPL\",\"date\":\"2026-04-29\",\"close\":174.5,\"volume\":2},"
+                                + "{\"symbol\":\"AAPL\",\"date\":\"2026-04-28\",\"close\":174.0,\"volume\":3},"
+                                + "{\"symbol\":\"AAPL\",\"date\":\"2026-04-27\",\"close\":173.5,\"volume\":4}]",
                         MediaType.APPLICATION_JSON));
 
         List<FmpHistoricalBar> bars = client.fetchHistorical("AAPL", 2, FmpRateLimiter.Priority.LOW);
@@ -248,8 +244,8 @@ class FmpClientTest {
     @DisplayName("fetchHistorical 5xx → 빈 List + WARN")
     void fetchHistorical_5xx() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/historical-price-full/{ticker}?timeseries={days}&apikey={apiKey}",
-                        "AAPL", 5, API_KEY))
+                        BASE_URL + "/stable/historical-price-eod/full?symbol={ticker}&apikey={apiKey}",
+                        "AAPL", API_KEY))
                 .andRespond(withServerError());
 
         List<FmpHistoricalBar> bars = client.fetchHistorical("AAPL", 5, FmpRateLimiter.Priority.LOW);
@@ -264,8 +260,8 @@ class FmpClientTest {
     @DisplayName("fetchHistorical 401 → ERROR 로그 + 빈 List")
     void fetchHistorical_401() {
         server.expect(requestToUriTemplate(
-                        BASE_URL + "/v3/historical-price-full/{ticker}?timeseries={days}&apikey={apiKey}",
-                        "AAPL", 5, API_KEY))
+                        BASE_URL + "/stable/historical-price-eod/full?symbol={ticker}&apikey={apiKey}",
+                        "AAPL", API_KEY))
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
         List<FmpHistoricalBar> bars = client.fetchHistorical("AAPL", 5, FmpRateLimiter.Priority.LOW);

@@ -1,7 +1,6 @@
 package com.earningwhisperer.infrastructure.fmp;
 
 import com.earningwhisperer.infrastructure.fmp.dto.FmpHistoricalBar;
-import com.earningwhisperer.infrastructure.fmp.dto.FmpHistoricalResponse;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpProfile;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,7 +41,10 @@ public class FmpClient {
     }
 
     /**
-     * `/v3/profile/{ticker}` 호출. 응답은 배열이지만 1건만 사용.
+     * `/stable/profile?symbol={ticker}` 호출. 응답은 배열이지만 1건만 사용.
+     *
+     * <p>2025-08-31 이후 legacy `/v3/profile/{ticker}` 가 신규 사용자에게 403 으로 거부되어
+     * `/stable/profile` 로 마이그레이션. 응답 schema 의 일부 필드명도 변경됨 (FmpProfile 참고).
      */
     public Optional<FmpProfile> fetchProfile(String ticker, FmpRateLimiter.Priority priority) {
         try {
@@ -55,9 +57,10 @@ public class FmpClient {
 
         try {
             FmpProfile[] body = restClient.get()
-                    .uri(b -> b.path("/v3/profile/{ticker}")
+                    .uri(b -> b.path("/stable/profile")
+                            .queryParam("symbol", ticker)
                             .queryParam("apikey", properties.apiKey())
-                            .build(ticker))
+                            .build())
                     .retrieve()
                     .body(FmpProfile[].class);
 
@@ -86,9 +89,12 @@ public class FmpClient {
     }
 
     /**
-     * `/v3/historical-price-full/{ticker}?timeseries={days}` 호출. date 내림차순 일봉 리스트 반환.
+     * `/stable/historical-price-eod/full?symbol={ticker}` 호출. date 내림차순 일봉 리스트 반환.
      *
-     * <p>FMP timeseries 파라미터가 무시되거나 더 많은 항목이 반환될 수 있으므로 클라이언트 측에서 days 만큼만 잘라 반환한다.
+     * <p>응답이 wrapper 없는 array 라 FmpHistoricalBar[] 로 직접 매핑한다.
+     * timeseries 파라미터는 새 endpoint 에서 미지원 — 전체 히스토리가 내려오므로 클라이언트 측에서 days 만큼 자른다.
+     *
+     * <p>2025-08-31 이후 legacy `/v3/historical-price-full/{ticker}` 가 거부되어 마이그레이션.
      */
     public List<FmpHistoricalBar> fetchHistorical(String ticker, int days, FmpRateLimiter.Priority priority) {
         try {
@@ -100,23 +106,22 @@ public class FmpClient {
         }
 
         try {
-            FmpHistoricalResponse body = restClient.get()
-                    .uri(b -> b.path("/v3/historical-price-full/{ticker}")
-                            .queryParam("timeseries", days)
+            FmpHistoricalBar[] body = restClient.get()
+                    .uri(b -> b.path("/stable/historical-price-eod/full")
+                            .queryParam("symbol", ticker)
                             .queryParam("apikey", properties.apiKey())
-                            .build(ticker))
+                            .build())
                     .retrieve()
-                    .body(FmpHistoricalResponse.class);
+                    .body(FmpHistoricalBar[].class);
 
-            if (body == null || body.historical() == null || body.historical().isEmpty()) {
+            if (body == null || body.length == 0) {
                 log.warn("[FmpClient] historical empty response ticker={}", ticker);
                 return Collections.emptyList();
             }
-            List<FmpHistoricalBar> historical = body.historical();
-            if (historical.size() > days) {
-                return List.copyOf(historical.subList(0, days));
+            if (body.length > days) {
+                return List.of(java.util.Arrays.copyOfRange(body, 0, days));
             }
-            return List.copyOf(historical);
+            return List.of(body);
         } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
             log.error("[FmpClient] historical 인증 실패 — API 키 확인 필요 ticker={} status={}",
                     ticker, e.getStatusCode());
