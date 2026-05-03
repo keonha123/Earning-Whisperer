@@ -1,7 +1,9 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow } from 'electron'
 import { BackendClient, type WatchlistItem } from '../services/BackendClient'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { IpcError, isIpcError } from '../../lib/types/ipcError'
 import { setWatchlist as setPricePollerWatchlist } from '../services/PricePoller'
+import { registerHandler } from './registerHandler'
 
 /**
  * 관심종목 IPC handler.
@@ -42,37 +44,36 @@ async function fetchAndCache(): Promise<WatchlistItem[]> {
 }
 
 export function registerWatchlistHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.WATCHLIST_GET, (): WatchlistItem[] => {
-    return cachedWatchlist
-  })
+  registerHandler<undefined, WatchlistItem[]>(IPC_CHANNELS.WATCHLIST_GET, () => cachedWatchlist)
 
-  ipcMain.handle(IPC_CHANNELS.WATCHLIST_REFRESH, async (): Promise<WatchlistItem[]> => {
+  registerHandler<undefined, WatchlistItem[]>(IPC_CHANNELS.WATCHLIST_REFRESH, async () => {
     try {
       return await fetchAndCache()
     } catch (e) {
+      // 토큰 만료는 사용자 명시적 액션의 응답으로 명확히 노출 — 재로그인 유도.
+      // 5xx/네트워크 등 일시 장애만 stale cache 로 graceful fallback.
+      if (isIpcError(e) && e.code === 'AUTH_EXPIRED') throw e
       console.warn(
         '[WatchlistHandlers] watchlist sync 실패:',
         e instanceof Error ? e.message : 'unknown error',
       )
-      // 캐시 유지 — 호출자에게는 마지막 성공 데이터 반환 (없으면 []).
       return cachedWatchlist
     }
   })
 
   /**
    * 관심종목 추가 — POST /api/v1/watchlist body { ticker }.
-   * - ticker 정규식 검증 실패 시 throw 'invalid ticker' (Electron reject).
+   * - ticker 정규식 검증 실패 시 IpcError(VALIDATION) throw.
    * - 백엔드 정상 응답 → 캐시 갱신 + WATCHLIST_UPDATE broadcast +
    *   PricePoller.setWatchlist 통보 (신규 ticker 폴링 시작).
-   * - 백엔드 throw 는 catch 하지 않고 그대로 propagate
-   *   (UI 가 토스트 등으로 사용자에게 노출).
+   * - 백엔드 axios error 는 interceptor 가 IpcError 로 변환해 자동 propagate.
    */
-  ipcMain.handle(
+  registerHandler<{ ticker: string } | undefined, WatchlistItem>(
     IPC_CHANNELS.WATCHLIST_ADD,
-    async (_e, payload: { ticker: string } | undefined): Promise<WatchlistItem> => {
+    async (_e, payload) => {
       const ticker = payload?.ticker
       if (typeof ticker !== 'string' || !TICKER_PATTERN.test(ticker)) {
-        throw new Error('invalid ticker')
+        throw new IpcError('VALIDATION', 'invalid ticker')
       }
 
       const item = await BackendClient.addWatchlist(ticker)
@@ -95,16 +96,16 @@ export function registerWatchlistHandlers(): void {
 
   /**
    * 관심종목 제거 — DELETE /api/v1/watchlist/{ticker}.
-   * - ticker 정규식 검증 실패 시 throw.
+   * - ticker 정규식 검증 실패 시 IpcError(VALIDATION) throw.
    * - 백엔드 정상 응답 → 캐시에서 ticker 제거 + broadcast + PricePoller 통보.
    * - 캐시에 없던 ticker 라도 idempotent 하게 진행.
    */
-  ipcMain.handle(
+  registerHandler<{ ticker: string } | undefined, void>(
     IPC_CHANNELS.WATCHLIST_REMOVE,
-    async (_e, payload: { ticker: string } | undefined): Promise<void> => {
+    async (_e, payload) => {
       const ticker = payload?.ticker
       if (typeof ticker !== 'string' || !TICKER_PATTERN.test(ticker)) {
-        throw new Error('invalid ticker')
+        throw new IpcError('VALIDATION', 'invalid ticker')
       }
 
       await BackendClient.removeWatchlist(ticker)

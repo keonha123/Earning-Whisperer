@@ -1,30 +1,36 @@
-import { ipcMain } from 'electron'
 import { StompService } from '../services/StompService'
 import { BackendClient } from '../services/BackendClient'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { registerHandler } from './registerHandler'
 
 export function registerWsHandlers() {
-  ipcMain.handle(IPC_CHANNELS.WS_CONNECT, () => {
+  registerHandler(IPC_CHANNELS.WS_CONNECT, () => {
     StompService.connect()
   })
 
-  ipcMain.handle(IPC_CHANNELS.WS_DISCONNECT, () => {
+  registerHandler(IPC_CHANNELS.WS_DISCONNECT, () => {
     StompService.disconnect()
   })
 
-  ipcMain.handle(IPC_CHANNELS.TRADES_GET, async (_e, { page, size }) => {
-    return BackendClient.getTrades(page, size)
-  })
+  registerHandler<{ page: number; size: number }, unknown>(
+    IPC_CHANNELS.TRADES_GET,
+    async (_e, { page, size }) => {
+      return BackendClient.getTrades(page, size)
+    },
+  )
 
-  ipcMain.handle(IPC_CHANNELS.TRADE_CANCEL, async (_e, { tradeId, reason }: { tradeId: string; reason: string }) => {
-    await BackendClient.sendCallback(tradeId, {
-      status: 'FAILED',
-      broker_order_id: null,
-      executed_price: null,
-      executed_qty: 0,
-      error_message: reason,
-    })
-  })
+  registerHandler<{ tradeId: string; reason: string }, void>(
+    IPC_CHANNELS.TRADE_CANCEL,
+    async (_e, { tradeId, reason }) => {
+      await BackendClient.sendCallback(tradeId, {
+        status: 'FAILED',
+        broker_order_id: null,
+        executed_price: null,
+        executed_qty: 0,
+        error_message: reason,
+      })
+    },
+  )
 
   /*
    * 트랜스크립트 동적 구독 (Contract 4.5).
@@ -33,12 +39,12 @@ export function registerWsHandlers() {
    *
    * payload 가 falsy 하거나 ticker 가 비문자열인 경우는 silent ignore (방어).
    */
-  ipcMain.handle(IPC_CHANNELS.TRANSCRIPT_SUBSCRIBE, (_e, payload: { ticker: string }) => {
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_SUBSCRIBE, (_e, payload) => {
     if (!payload || typeof payload.ticker !== 'string') return
     StompService.subscribeTranscript(payload.ticker)
   })
 
-  ipcMain.handle(IPC_CHANNELS.TRANSCRIPT_UNSUBSCRIBE, (_e, payload: { ticker: string }) => {
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_UNSUBSCRIBE, (_e, payload) => {
     if (!payload || typeof payload.ticker !== 'string') return
     StompService.unsubscribeTranscript(payload.ticker)
   })

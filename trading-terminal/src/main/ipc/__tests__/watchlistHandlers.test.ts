@@ -24,6 +24,8 @@ import {
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
 import { BackendClient, type WatchlistItem } from '../../services/BackendClient'
 import { setWatchlist as setPricePollerWatchlist } from '../../services/PricePoller'
+import { expectIpcError } from '../../../test/ipcErrorTestUtils'
+import { IpcError } from '../../../lib/types/ipcError'
 
 type IpcInvokeHandler = (
   event: unknown,
@@ -110,6 +112,24 @@ describe('watchlistHandlers — WATCHLIST_REFRESH 정상', () => {
     )
     expect(updateCalls).toHaveLength(1)
     expect(updateCalls[0][1]).toEqual(FIXTURE)
+  })
+})
+
+describe('watchlistHandlers — WATCHLIST_REFRESH AUTH_EXPIRED', () => {
+  it('AUTH_EXPIRED 는 swallow 하지 않고 rethrow — 사용자가 토큰 만료 인지하도록', async () => {
+    // 시드 캐시.
+    vi.mocked(BackendClient.getWatchlist).mockResolvedValueOnce(FIXTURE)
+    registerWatchlistHandlers()
+    const refreshHandler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REFRESH)
+    await refreshHandler({} as never)
+    vi.mocked(setPricePollerWatchlist).mockClear()
+
+    // 다음 호출이 AUTH_EXPIRED 던지면 그대로 호출자에게.
+    vi.mocked(BackendClient.getWatchlist).mockRejectedValueOnce(
+      new IpcError('AUTH_EXPIRED', '인증 만료'),
+    )
+
+    await expectIpcError(refreshHandler({} as never) as Promise<unknown>, 'AUTH_EXPIRED')
   })
 })
 
@@ -203,6 +223,17 @@ describe('watchlistHandlers — WATCHLIST_ADD', () => {
     expect(vi.mocked(BackendClient.addWatchlist)).not.toHaveBeenCalled()
   })
 
+  it('add — 정규식 위반 시 IpcError code=VALIDATION', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_ADD)
+
+    await expectIpcError(
+      handler({} as never, { ticker: 'aapl' }) as Promise<unknown>,
+      'VALIDATION',
+      /invalid ticker/,
+    )
+  })
+
   it('정상 — addWatchlist 호출 + 캐시 추가 + WATCHLIST_UPDATE broadcast + setWatchlist 통보', async () => {
     const newItem: WatchlistItem = { ticker: 'GOOGL', companyName: 'Alphabet', sector: 'Tech' }
     vi.mocked(BackendClient.addWatchlist).mockResolvedValue(newItem)
@@ -279,6 +310,17 @@ describe('watchlistHandlers — WATCHLIST_REMOVE', () => {
 
     await expect(handler({} as never, { ticker: 'AA*PL' })).rejects.toThrow('invalid ticker')
     expect(vi.mocked(BackendClient.removeWatchlist)).not.toHaveBeenCalled()
+  })
+
+  it('remove — 정규식 위반 시 IpcError code=VALIDATION', async () => {
+    registerWatchlistHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.WATCHLIST_REMOVE)
+
+    await expectIpcError(
+      handler({} as never, { ticker: 'AA*PL' }) as Promise<unknown>,
+      'VALIDATION',
+      /invalid ticker/,
+    )
   })
 
   it('정상 — removeWatchlist 호출 + 캐시 제거 + broadcast + setWatchlist 통보', async () => {

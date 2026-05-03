@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { mainState } from '../store/mainState'
 import type { StockDetailResponsePayload } from '../../lib/types/stockDetail'
+import { axiosErrorToIpcError } from '../../lib/types/ipcError'
 
 // Phase 5: StockDetailResponsePayload 정의를 src/lib/types/stockDetail.ts 로 이동.
 // 본 모듈의 외부 import 호환을 위해 type re-export.
@@ -15,6 +16,13 @@ http.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
+
+// 모든 axios error 를 IpcError 로 변환해 호출 측 (IPC handler) 가 일관된 형식으로 받도록 한다.
+// BackendClient 외 axios 인스턴스 (KisService 등) 는 적용 대상 외.
+http.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => Promise.reject(axiosErrorToIpcError(error)),
+)
 
 /**
  * Backend Contract 7.7 의 시장 지수 응답 (snake_case).

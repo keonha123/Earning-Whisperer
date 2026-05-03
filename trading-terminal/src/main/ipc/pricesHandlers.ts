@@ -1,6 +1,6 @@
-import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { getCachedPrices, setHoldings } from '../services/PricePoller'
+import { registerHandler } from './registerHandler'
 
 /**
  * 시세 폴링 IPC handler.
@@ -12,13 +12,13 @@ import { getCachedPrices, setHoldings } from '../services/PricePoller'
  *   PricePoller 가 직접 push 하므로 여기에 등록하지 않는다.
  */
 export function registerPricesHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.PRICES_GET, () => {
+  registerHandler(IPC_CHANNELS.PRICES_GET, () => {
     return getCachedPrices()
   })
 
-  ipcMain.handle(
+  registerHandler<{ tickers: string[] }, { ok: true }>(
     IPC_CHANNELS.HOLDINGS_TICKERS_UPDATE,
-    (_e, payload: { tickers: string[] }) => {
+    (_e, payload) => {
       const tickers = Array.isArray(payload?.tickers) ? payload.tickers : []
       setHoldings(tickers)
       return { ok: true }
