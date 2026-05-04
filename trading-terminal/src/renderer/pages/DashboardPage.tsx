@@ -55,10 +55,12 @@ export default function DashboardPage() {
     lastSyncedAt,
     isSyncing,
     error,
+    balanceFetchError,
     setBalance,
     startSync,
     setSyncing,
     setError,
+    setBalanceFetchError,
   } = usePortfolioStore()
   const { plan, settings, setSettings, clear: clearUser } = useUserStore()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
@@ -103,6 +105,9 @@ export default function DashboardPage() {
       // 기존 인라인 에러 배지(setError) 는 유지 + toast 추가.
       // AUTH_EXPIRED 의 경우 "다시 로그인" 액션으로 라우팅 정리.
       setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
+      // F-2: store 에 IpcError 정규화 기록 → PortfolioCard / HoldingsTable 의
+      // stale overlay 가 자동으로 mount. 성공 응답 도착 시 setBalance 가 자동 clear.
+      setBalanceFetchError(e)
       showIpcErrorToast(e, {
         onNavigate:
           isIpcError(e) && e.code === 'AUTH_EXPIRED'
@@ -299,6 +304,10 @@ export default function DashboardPage() {
             totalCash={totalCash}
             holdings={storeHoldings}
             totalAsset={totalAsset}
+            balanceFetchError={balanceFetchError}
+            onRetryBalance={syncBalance}
+            isSyncing={isSyncing}
+            lastSyncedAt={lastSyncedAt}
           />
         </section>
 
@@ -319,6 +328,10 @@ export default function DashboardPage() {
                 })}`
               : undefined
           }
+          balanceFetchError={balanceFetchError}
+          onRetryBalance={syncBalance}
+          isSyncing={isSyncing}
+          lastSyncedAt={lastSyncedAt}
         />
         <EarningsTimeline
           data={earningsData}

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import Tabs from '../common/Tabs'
 import CompanyLogo from '../common/CompanyLogo'
+import StaleDataOverlay from '../common/StaleDataOverlay'
 import type { HoldingMockRow, WatchlistMockRow } from '../../fixtures/holdings.dev-mock'
+import type { IpcError } from '../../../lib/types/ipcError'
 
 export interface HoldingsTableRow {
   ticker: string
@@ -24,6 +26,19 @@ interface HoldingsTableProps {
   /** 우측 상단 메타 라벨 (예: "평가 $4,345.67"). */
   rightMeta?: string
   className?: string
+  /**
+   * F-2: 마지막 잔고 조회 실패 시 IpcError. null 이면 overlay 숨김.
+   * 보유 탭의 stale 데이터 오인 차단용. 관심종목은 watchlist API 별도이므로
+   * 본 prop 영향 받지 않지만, overlay 가 카드 전체를 덮으므로 사용자 시점에서는
+   * 두 탭 모두 차단됨 (의도된 동작 — 카드 단위 신뢰성 표시).
+   */
+  balanceFetchError?: IpcError | null
+  /** F-2: overlay 의 "다시 조회" 버튼 클릭 핸들러. */
+  onRetryBalance?: () => void
+  /** F-2: 재시도 진행 중. */
+  isSyncing?: boolean
+  /** F-2: 마지막 성공 동기화 시각 (epoch sec). */
+  lastSyncedAt?: number | null
 }
 
 type TabId = 'holdings' | 'watchlist'
@@ -44,6 +59,10 @@ export default function HoldingsTable({
   onRowClick,
   rightMeta,
   className = '',
+  balanceFetchError = null,
+  onRetryBalance,
+  isSyncing = false,
+  lastSyncedAt = null,
 }: HoldingsTableProps) {
   const [tab, setTab] = useState<TabId>('holdings')
 
@@ -58,8 +77,9 @@ export default function HoldingsTable({
   )
 
   return (
+    // F-2: overlay 가 absolute 로 깔리려면 컨테이너 relative.
     <section
-      className={`rounded-lg bg-surface-1 border border-border-subtle flex flex-col min-h-0 overflow-hidden ${className}`}
+      className={`relative rounded-lg bg-surface-1 border border-border-subtle flex flex-col min-h-0 overflow-hidden ${className}`}
     >
       <div className="h-[38px] pl-2 pr-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
         <Tabs
@@ -108,6 +128,14 @@ export default function HoldingsTable({
           </tbody>
         </table>
       </div>
+
+      {/* F-2: stale 데이터 overlay — error 가 null 일 때 컴포넌트 자체가 null 반환. */}
+      <StaleDataOverlay
+        error={balanceFetchError}
+        onRetry={onRetryBalance}
+        isRetrying={isSyncing}
+        lastSyncedAt={lastSyncedAt}
+      />
     </section>
   )
 }
