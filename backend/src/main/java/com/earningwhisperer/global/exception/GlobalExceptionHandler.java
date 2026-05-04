@@ -1,5 +1,6 @@
 package com.earningwhisperer.global.exception;
 
+import com.earningwhisperer.domain.trade.TradeStateConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -30,5 +31,11 @@ public class GlobalExceptionHandler {
                 .orElse("입력값이 올바르지 않습니다.");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", message));
+    }
+
+    @ExceptionHandler(TradeStateConflictException.class)
+    public ResponseEntity<Map<String, String>> handleTradeStateConflict(TradeStateConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", e.getMessage()));
     }
 }
