@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str = Field(default="")
+    openai_api_key: str = Field(default="")
 
     # Legacy model settings kept for compatibility with older env files.
     gemini_model: str | None = Field(default=None)
@@ -95,9 +96,9 @@ class Settings(BaseSettings):
     rag_keyword_candidate_limit: int = Field(default=24, ge=3, le=256)
     rag_bm25_k1: float = Field(default=1.2, ge=0.1, le=3.0)
     rag_bm25_b: float = Field(default=0.75, ge=0.0, le=1.0)
-    rag_score_dense_weight: float = Field(default=0.55, ge=0.0, le=1.0)
+    rag_score_dense_weight: float = Field(default=0.60, ge=0.0, le=1.0)
     rag_score_lexical_weight: float = Field(default=0.30, ge=0.0, le=1.0)
-    rag_score_business_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+    rag_score_business_weight: float = Field(default=0.10, ge=0.0, le=1.0)
     rag_context_chars_per_doc: int = Field(default=320, ge=80, le=2000)
     rag_decision_max_output_tokens: int = Field(default=256, ge=64, le=1024)
     rag_decision_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
@@ -112,9 +113,13 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = Field(default="external_evidence")
     qdrant_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
     qdrant_prefer_grpc: bool = Field(default=False)
-    embedding_provider: Literal["hash", "gemini"] = Field(default="hash")
-    embedding_model: str = Field(default="gemini-embedding-001")
-    embedding_dimension: int = Field(default=256, ge=64, le=3072)
+    external_evidence_retention_days: int = Field(default=30, ge=1, le=365)
+    embedding_provider: Literal["hash", "gemini", "openai"] = Field(default="openai")
+    embedding_model: str = Field(default="text-embedding-3-large")
+    embedding_dimension: int = Field(default=3072, ge=64, le=3072)
+    external_chunk_tokenizer_model: str = Field(default="text-embedding-3-large")
+    external_chunk_size_tokens: int = Field(default=500, ge=1, le=4096)
+    external_chunk_overlap_tokens: int = Field(default=50, ge=0, le=1024)
     external_chunk_size_chars: int = Field(default=3200, ge=400, le=12000)
     external_chunk_overlap_chars: int = Field(default=400, ge=0, le=4000)
 
@@ -136,6 +141,11 @@ class Settings(BaseSettings):
     @field_validator("gemini_api_key")
     @classmethod
     def _normalize_api_key(cls, value: str) -> str:
+        return (value or "").strip()
+
+    @field_validator("openai_api_key")
+    @classmethod
+    def _normalize_openai_api_key(cls, value: str) -> str:
         return (value or "").strip()
 
     @field_validator("gemini_consensus_samples")

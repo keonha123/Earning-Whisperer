@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from api.analyze_router import enqueue_analysis_request
+from core.external_retriever import ExternalDocument, external_retriever
 from core.integration_state import IntegrationStateStore
 from models.integration_models import (
     CompanyUniverseBatchRequest,
@@ -14,6 +16,8 @@ from models.integration_models import (
     EarningsScheduleBatchRequest,
     IndicatorSnapshotBatchRequest,
     MarketContextSnapshot,
+    NewsBatchRequest,
+    NewsItem,
     TranscriptChunkIngestRequest,
 )
 
@@ -31,6 +35,33 @@ def _require_state() -> IntegrationStateStore:
     if _integration_state is None:
         raise RuntimeError("integration_router dependencies were not initialized")
     return _integration_state
+
+
+def _to_external_document(item: NewsItem) -> ExternalDocument:
+    text_parts = [item.headline]
+    if item.summary:
+        text_parts.append(item.summary)
+
+    metadata = dict(item.metadata)
+    metadata.update(
+        {
+            "provider": item.provider,
+            "provider_id": item.provider_id,
+            "source": item.source or "",
+        }
+    )
+
+    return ExternalDocument(
+        doc_id=f"{item.provider}-news:{item.ticker}:{item.provider_id}",
+        ticker=item.ticker,
+        text="\n\n".join(text_parts),
+        title=item.headline,
+        published_at=item.published_at,
+        source_type="news",
+        url=item.url or "",
+        importance=0.7,
+        metadata=metadata,
+    )
 
 
 @router.get("/capabilities")
@@ -73,6 +104,17 @@ async def ingest_indicator_snapshots(request: IndicatorSnapshotBatchRequest) -> 
     return {
         "status": "accepted",
         "accepted_count": len(request.items),
+        "tickers": sorted({item.ticker for item in request.items}),
+    }
+
+
+@router.post("/collector/news", status_code=202)
+async def ingest_news(request: NewsBatchRequest) -> dict:
+    documents = [_to_external_document(item) for item in request.items]
+    await asyncio.to_thread(external_retriever.upsert_documents, documents)
+    return {
+        "status": "accepted",
+        "accepted_count": len(documents),
         "tickers": sorted({item.ticker for item in request.items}),
     }
 

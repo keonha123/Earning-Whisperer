@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import logging
 import math
 import re
@@ -10,6 +11,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Protocol, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
@@ -193,6 +195,51 @@ class GeminiEmbeddingProvider:
         return vectors
 
 
+class OpenAIEmbeddingProvider:
+    """OpenAI embedding wrapper used for text-embedding-3 models."""
+
+    name = "openai"
+
+    def __init__(self, *, model: str, dimension: int) -> None:
+        self.model = model
+        self.dimension = max(32, int(dimension))
+        self._client: Any = None
+        self._api_key: str | None = None
+
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        settings = get_settings()
+        if not settings.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY is required for OpenAI embeddings")
+
+        if self._client is None or self._api_key != settings.openai_api_key:
+            try:
+                openai_module = importlib.import_module("openai")
+            except ImportError as exc:
+                raise RuntimeError("openai package is not installed") from exc
+
+            self._client = openai_module.OpenAI(api_key=settings.openai_api_key)
+            self._api_key = settings.openai_api_key
+
+        create_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "input": list(texts),
+            "encoding_format": "float",
+        }
+        if self.model.startswith("text-embedding-3"):
+            create_kwargs["dimensions"] = self.dimension
+
+        response = self._client.embeddings.create(**create_kwargs)
+        embeddings: list[list[float]] = []
+        for item in getattr(response, "data", []) or []:
+            embeddings.append(_truncate_or_pad(_coerce_embedding_vector(item.embedding), self.dimension))
+        if len(embeddings) != len(texts):
+            raise RuntimeError("OpenAI embedding response size mismatch")
+        return embeddings
+
+
 class BaseExternalRetriever:
     """Common backend contract."""
 
@@ -208,6 +255,9 @@ class BaseExternalRetriever:
         raise NotImplementedError
 
     def clear(self) -> None:
+        raise NotImplementedError
+
+    def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
         raise NotImplementedError
 
     def retrieve(
@@ -263,6 +313,26 @@ class InMemoryExternalRetriever(BaseExternalRetriever):
 
     def clear(self) -> None:
         self._documents.clear()
+
+    def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
+        settings = get_settings()
+        current_timestamp = int(now if now is not None else time.time())
+        cutoff_timestamp = _retention_cutoff_timestamp(
+            now=current_timestamp,
+            retention_days=settings.external_evidence_retention_days,
+        )
+        expired_ids = [
+            doc_id
+            for doc_id, document in self._documents.items()
+            if document.published_at and document.published_at < cutoff_timestamp
+        ]
+        for doc_id in expired_ids:
+            self._documents.pop(doc_id, None)
+        return {
+            "status": "completed",
+            "cutoff_timestamp": cutoff_timestamp,
+            "deleted_count": len(expired_ids),
+        }
 
     def retrieve(
         self,
@@ -384,6 +454,44 @@ class QdrantExternalRetriever(BaseExternalRetriever):
             except Exception:  # pragma: no cover - defensive
                 logger.debug("Qdrant collection clear skipped", exc_info=True)
         self._collection_ready = False
+
+    def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
+        settings = get_settings()
+        current_timestamp = int(now if now is not None else time.time())
+        cutoff_timestamp = _retention_cutoff_timestamp(
+            now=current_timestamp,
+            retention_days=settings.external_evidence_retention_days,
+        )
+        client = self._get_client()
+        self._ensure_collection(client)
+        delete_filter = _make_filter(
+            [
+                _make_field_condition(
+                    "published_at",
+                    range_filter=_make_range(gte=1),
+                ),
+                _make_field_condition(
+                    "published_at",
+                    range_filter=_make_range(lt=int(cutoff_timestamp)),
+                )
+            ]
+        )
+        deleted_count = _count_qdrant_points(
+            client=client,
+            collection_name=self._collection_name,
+            query_filter=delete_filter,
+        )
+        if deleted_count > 0:
+            _delete_qdrant_points(
+                client=client,
+                collection_name=self._collection_name,
+                query_filter=delete_filter,
+            )
+        return {
+            "status": "completed",
+            "cutoff_timestamp": cutoff_timestamp,
+            "deleted_count": deleted_count,
+        }
 
     def close(self) -> None:
         client = self._client
@@ -664,6 +772,9 @@ class ExternalRetrieverFacade:
     def clear(self) -> None:
         self._get_backend().clear()
 
+    def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
+        return self._get_backend().delete_expired_documents(now=now)
+
     def retrieve(
         self,
         *,
@@ -748,6 +859,11 @@ class _ChunkedDocument:
 def _build_embedding_provider() -> EmbeddingProvider:
     settings = get_settings()
     provider_name = settings.embedding_provider.strip().lower()
+    if provider_name == "openai":
+        return OpenAIEmbeddingProvider(
+            model=settings.embedding_model,
+            dimension=settings.embedding_dimension,
+        )
     if provider_name == "gemini":
         return GeminiEmbeddingProvider(
             model=settings.embedding_model,
@@ -779,9 +895,63 @@ def _chunk_document(document: ExternalDocument) -> list[_ChunkedDocument]:
     if not text:
         return []
 
-    max_chars = max(400, settings.external_chunk_size_chars)
-    overlap = max(0, min(settings.external_chunk_overlap_chars, max_chars // 2))
-    if len(text) <= max_chars:
+    max_tokens = max(1, settings.external_chunk_size_tokens)
+    overlap = max(0, min(settings.external_chunk_overlap_tokens, max_tokens - 1))
+    token_ids = _encode_chunk_tokens(text)
+
+    if token_ids is not None:
+        if len(token_ids) <= max_tokens:
+            return [
+                _ChunkedDocument(
+                    doc_id=document.doc_id,
+                    ticker=document.ticker,
+                    text=text,
+                    title=document.title,
+                    published_at=document.published_at,
+                    source_type=document.source_type,
+                    url=document.url,
+                    form_type=document.form_type,
+                    importance=document.importance,
+                    metadata=dict(document.metadata),
+                )
+            ]
+
+        chunks: list[_ChunkedDocument] = []
+        step = max(1, max_tokens - overlap)
+        start = 0
+        index = 0
+        total_tokens = len(token_ids)
+        while start < total_tokens:
+            end = min(total_tokens, start + max_tokens)
+            chunk_text = _decode_chunk_tokens(token_ids[start:end]).strip()
+            if chunk_text:
+                chunks.append(
+                    _ChunkedDocument(
+                        doc_id=f"{document.doc_id}#chunk-{index}",
+                        ticker=document.ticker,
+                        text=chunk_text,
+                        title=document.title,
+                        published_at=document.published_at,
+                        source_type=document.source_type,
+                        url=document.url,
+                        form_type=document.form_type,
+                        importance=document.importance,
+                        metadata={
+                            **dict(document.metadata),
+                            "original_doc_id": document.doc_id,
+                            "chunk_index": index,
+                        },
+                    )
+                )
+            if end >= total_tokens:
+                break
+            start += step
+            index += 1
+        return chunks
+
+    token_matches = list(_TOKEN_RE.finditer(text))
+
+    if len(token_matches) <= max_tokens or not token_matches:
         return [
             _ChunkedDocument(
                 doc_id=document.doc_id,
@@ -798,11 +968,15 @@ def _chunk_document(document: ExternalDocument) -> list[_ChunkedDocument]:
         ]
 
     chunks: list[_ChunkedDocument] = []
+    step = max(1, max_tokens - overlap)
     start = 0
     index = 0
-    while start < len(text):
-        end = min(len(text), start + max_chars)
-        chunk_text = text[start:end].strip()
+    total_tokens = len(token_matches)
+    while start < total_tokens:
+        end = min(total_tokens, start + max_tokens)
+        char_start = 0 if start == 0 else token_matches[start].start()
+        char_end = len(text) if end >= total_tokens else token_matches[end].start()
+        chunk_text = text[char_start:char_end].strip()
         if chunk_text:
             chunks.append(
                 _ChunkedDocument(
@@ -822,11 +996,57 @@ def _chunk_document(document: ExternalDocument) -> list[_ChunkedDocument]:
                     },
                 )
             )
-        if end >= len(text):
+        if end >= total_tokens:
             break
-        start = max(0, end - overlap)
+        start += step
         index += 1
     return chunks
+
+
+@lru_cache(maxsize=4)
+def _get_tiktoken_encoder(model_name: str) -> Any | None:
+    try:
+        import tiktoken
+    except ImportError:
+        logger.warning("tiktoken is not installed; falling back to regex token chunking")
+        return None
+
+    try:
+        return tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        try:
+            return tiktoken.get_encoding("cl100k_base")
+        except Exception as exc:
+            logger.warning(
+                "tiktoken fallback encoder could not be initialized; falling back to regex token chunking: %s",
+                exc,
+            )
+            return None
+    except Exception as exc:
+        logger.warning(
+            "tiktoken encoder for model %s could not be initialized; falling back to regex token chunking: %s",
+            model_name,
+            exc,
+        )
+        return None
+
+
+def _encode_chunk_tokens(text: str) -> list[int] | None:
+    settings = get_settings()
+    model_name = settings.external_chunk_tokenizer_model.strip() or "text-embedding-3-large"
+    encoder = _get_tiktoken_encoder(model_name)
+    if encoder is None:
+        return None
+    return list(encoder.encode(text, disallowed_special=()))
+
+
+def _decode_chunk_tokens(token_ids: Sequence[int]) -> str:
+    settings = get_settings()
+    model_name = settings.external_chunk_tokenizer_model.strip() or "text-embedding-3-large"
+    encoder = _get_tiktoken_encoder(model_name)
+    if encoder is None:
+        raise RuntimeError("tiktoken encoder is unavailable")
+    return str(encoder.decode(list(token_ids)))
 
 
 def _document_matches_filters(
@@ -932,7 +1152,12 @@ def _make_match_any(values: Sequence[str]) -> Any:
     return models.MatchAny(any=list(values))
 
 
-def _make_range(*, gte: int | None = None, lte: int | None = None) -> Any:
+def _make_range(
+    *,
+    gte: int | None = None,
+    lte: int | None = None,
+    lt: int | None = None,
+) -> Any:
     models = _load_qdrant_models()
     if models is None:
         payload: dict[str, int] = {}
@@ -940,8 +1165,76 @@ def _make_range(*, gte: int | None = None, lte: int | None = None) -> Any:
             payload["gte"] = int(gte)
         if lte is not None:
             payload["lte"] = int(lte)
+        if lt is not None:
+            payload["lt"] = int(lt)
         return payload
-    return models.Range(gte=gte, lte=lte)
+    return models.Range(gte=gte, lte=lte, lt=lt)
+
+
+def _make_filter_selector(query_filter: Any) -> Any:
+    models = _load_qdrant_models()
+    if models is None:
+        return {"filter": query_filter}
+    return models.FilterSelector(filter=query_filter)
+
+
+def _retention_cutoff_timestamp(*, now: int, retention_days: int) -> int:
+    return max(0, int(now) - max(1, int(retention_days)) * 86400)
+
+
+def _count_qdrant_points(*, client: Any, collection_name: str, query_filter: Any) -> int:
+    count = getattr(client, "count", None)
+    if callable(count):
+        response = count(
+            collection_name=collection_name,
+            count_filter=query_filter,
+            exact=True,
+        )
+        if isinstance(response, dict):
+            return int(response.get("count", 0) or 0)
+        return int(getattr(response, "count", 0) or 0)
+
+    total = 0
+    offset = None
+    while True:
+        try:
+            scroll_result = client.scroll(
+                collection_name=collection_name,
+                scroll_filter=query_filter,
+                limit=256,
+                offset=offset,
+                with_payload=False,
+            )
+        except TypeError:
+            scroll_result = client.scroll(
+                collection_name=collection_name,
+                scroll_filter=query_filter,
+                limit=256,
+                with_payload=False,
+            )
+
+        if isinstance(scroll_result, tuple):
+            points, next_offset = scroll_result
+        else:  # pragma: no cover - compatibility
+            points = getattr(scroll_result, "points", scroll_result)
+            next_offset = getattr(scroll_result, "next_page_offset", None)
+        total += len(points or [])
+        if not next_offset:
+            break
+        offset = next_offset
+    return total
+
+
+def _delete_qdrant_points(*, client: Any, collection_name: str, query_filter: Any) -> None:
+    delete = getattr(client, "delete", None)
+    if not callable(delete):
+        raise RuntimeError("Qdrant client does not support point deletion")
+
+    selector = _make_filter_selector(query_filter)
+    try:
+        delete(collection_name=collection_name, points_selector=selector, wait=True)
+    except TypeError:
+        delete(collection_name, selector)
 
 
 def _load_qdrant_models() -> Any | None:
@@ -1067,14 +1360,11 @@ def _business_signal_score(
     chunk_timestamp: int,
     lookback_days: int,
 ) -> float:
-    recency_signal = _recency_signal(
+    return _recency_signal(
         published_at=document.published_at,
         chunk_timestamp=chunk_timestamp,
         lookback_days=lookback_days,
     )
-    importance_signal = max(0.0, min(float(document.importance or 0.0), 1.0))
-    source_signal = _source_signal(document.source_type)
-    return min(1.0, (0.50 * recency_signal) + (0.30 * importance_signal) + (0.20 * source_signal))
 
 
 def _contains_phrase_overlap(query: str, text: str) -> bool:
@@ -1098,17 +1388,6 @@ def _recency_signal(*, published_at: int, chunk_timestamp: int, lookback_days: i
     max_age_seconds = max(1, lookback_days * 86400)
     freshness = 1.0 - min(age_seconds / max_age_seconds, 1.0)
     return math.sqrt(freshness)
-
-
-def _source_signal(source_type: str) -> float:
-    normalized = str(source_type or "").strip().lower()
-    if normalized == "filing":
-        return 1.0
-    if normalized == "ir":
-        return 0.85
-    if normalized == "press_release":
-        return 0.70
-    return 0.55
 
 
 def _lower_bound_timestamp(*, chunk_timestamp: int, lookback_days: int) -> int:

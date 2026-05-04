@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
+import sys
 
 import pytest
 
@@ -10,9 +11,13 @@ from config import get_settings
 from core.external_retriever import (
     ExternalDocument,
     HashEmbeddingProvider,
+    InMemoryExternalRetriever,
+    OpenAIEmbeddingProvider,
     QdrantExternalRetriever,
     _bm25_lexical_scores,
+    _build_embedding_provider,
     _business_signal_score,
+    _chunk_document,
     external_retriever,
 )
 
@@ -39,6 +44,23 @@ class _FakeQdrantClient:
 
     def delete_collection(self, collection_name: str):
         self.collections.pop(collection_name, None)
+
+    def delete(self, collection_name: str, points_selector, wait: bool = True):
+        del wait
+        collection = self.collections.get(collection_name, {})
+        query_filter = _selector_filter(points_selector)
+        for point_id in [
+            point.id
+            for point in collection.values()
+            if self._matches_filter(point.payload, query_filter)
+        ]:
+            collection.pop(point_id, None)
+
+    def count(self, collection_name: str, count_filter, exact: bool = True):
+        del exact
+        return SimpleNamespace(
+            count=len(self._filter_points(collection_name, count_filter))
+        )
 
     def upsert(self, collection_name: str, points):
         collection = self.collections.setdefault(collection_name, {})
@@ -98,6 +120,9 @@ class _FakeQdrantClient:
                     return False
                 if lte is not None and numeric > lte:
                     return False
+                lt = _range_value(range_filter, "lt")
+                if lt is not None and numeric >= lt:
+                    return False
         return True
 
     @staticmethod
@@ -125,6 +150,12 @@ def _filter_conditions(query_filter: Any) -> list[Any]:
     if isinstance(query_filter, dict):
         return list(query_filter.get("must", []))
     return list(getattr(query_filter, "must", []) or [])
+
+
+def _selector_filter(points_selector: Any) -> Any:
+    if isinstance(points_selector, dict):
+        return points_selector.get("filter", {})
+    return getattr(points_selector, "filter", {})
 
 
 def _condition_key(condition: Any) -> str:
@@ -267,6 +298,94 @@ def test_qdrant_retriever_applies_filters_and_merges_keyword_candidates():
     assert retriever.get_stats()["effective_backend"] == "qdrant"
 
 
+def test_qdrant_retriever_deletes_documents_older_than_retention_window(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_EVIDENCE_RETENTION_DAYS", "30")
+    get_settings.cache_clear()
+    fake_client = _FakeQdrantClient()
+    retriever = QdrantExternalRetriever(
+        client=fake_client,
+        embedder=HashEmbeddingProvider(dimension=128),
+        requested_backend="qdrant",
+    )
+    now = 1_800_000_000
+    day = 86_400
+
+    retriever.upsert_documents(
+        [
+            ExternalDocument(
+                doc_id="expired-news",
+                ticker="NVDA",
+                title="Expired news",
+                text="Old guidance article.",
+                published_at=now - 31 * day,
+                source_type="news",
+            ),
+            ExternalDocument(
+                doc_id="fresh-news",
+                ticker="NVDA",
+                title="Fresh news",
+                text="Recent guidance article.",
+                published_at=now - 29 * day,
+                source_type="news",
+            ),
+            ExternalDocument(
+                doc_id="unknown-date",
+                ticker="NVDA",
+                title="Unknown date",
+                text="Document without a published timestamp.",
+                published_at=0,
+                source_type="news",
+            ),
+        ]
+    )
+
+    result = retriever.delete_expired_documents(now=now)
+
+    assert result["status"] == "completed"
+    assert result["cutoff_timestamp"] == now - 30 * day
+    assert result["deleted_count"] == 1
+    remaining_doc_ids = {
+        point.payload["doc_id"]
+        for point in fake_client.collections[retriever._collection_name].values()
+    }
+    assert remaining_doc_ids == {"fresh-news", "unknown-date"}
+
+
+def test_memory_retriever_deletes_documents_older_than_retention_window(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_EVIDENCE_RETENTION_DAYS", "30")
+    get_settings.cache_clear()
+    retriever = InMemoryExternalRetriever()
+    now = 1_800_000_000
+    day = 86_400
+    retriever.upsert_documents(
+        [
+            ExternalDocument(
+                doc_id="expired-news",
+                ticker="NVDA",
+                text="Old guidance article.",
+                published_at=now - 31 * day,
+            ),
+            ExternalDocument(
+                doc_id="fresh-news",
+                ticker="NVDA",
+                text="Recent guidance article.",
+                published_at=now - 29 * day,
+            ),
+            ExternalDocument(
+                doc_id="unknown-date",
+                ticker="NVDA",
+                text="Document without a published timestamp.",
+                published_at=0,
+            ),
+        ]
+    )
+
+    result = retriever.delete_expired_documents(now=now)
+
+    assert result["deleted_count"] == 1
+    assert set(retriever._documents) == {"fresh-news", "unknown-date"}
+
+
 def test_bm25_lexical_scores_prioritize_exact_event_terms():
     documents = [
         ExternalDocument(
@@ -297,8 +416,8 @@ def test_bm25_lexical_scores_prioritize_exact_event_terms():
     assert scores["filing-1"] > 0.0
 
 
-def test_business_signal_favors_recent_high_importance_filings():
-    filing_score = _business_signal_score(
+def test_business_signal_depends_only_on_recency():
+    recent_score = _business_signal_score(
         document=ExternalDocument(
             doc_id="filing-1",
             ticker="NVDA",
@@ -310,7 +429,7 @@ def test_business_signal_favors_recent_high_importance_filings():
         chunk_timestamp=1741827000,
         lookback_days=7,
     )
-    news_score = _business_signal_score(
+    older_score = _business_signal_score(
         document=ExternalDocument(
             doc_id="news-1",
             ticker="NVDA",
@@ -323,4 +442,80 @@ def test_business_signal_favors_recent_high_importance_filings():
         lookback_days=7,
     )
 
-    assert filing_score > news_score
+    assert recent_score > older_score
+
+
+def test_chunk_document_uses_token_windows_and_overlap(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_CHUNK_SIZE_TOKENS", "5")
+    monkeypatch.setenv("EXTERNAL_CHUNK_OVERLAP_TOKENS", "2")
+    monkeypatch.setattr(
+        "core.external_retriever._encode_chunk_tokens",
+        lambda text: list(range(12)),
+    )
+    monkeypatch.setattr(
+        "core.external_retriever._decode_chunk_tokens",
+        lambda token_ids: " ".join(f"t{i}" for i in token_ids),
+    )
+    get_settings.cache_clear()
+
+    document = ExternalDocument(
+        doc_id="news-1",
+        ticker="NVDA",
+        text="placeholder",
+    )
+
+    chunks = _chunk_document(document)
+
+    assert [chunk.doc_id for chunk in chunks] == [
+        "news-1#chunk-0",
+        "news-1#chunk-1",
+        "news-1#chunk-2",
+        "news-1#chunk-3",
+    ]
+    assert [chunk.text for chunk in chunks] == [
+        "t0 t1 t2 t3 t4",
+        "t3 t4 t5 t6 t7",
+        "t6 t7 t8 t9 t10",
+        "t9 t10 t11",
+    ]
+    assert all(chunk.metadata["original_doc_id"] == "news-1" for chunk in chunks)
+
+
+def test_openai_embedding_provider_uses_text_embedding_3_large(monkeypatch):
+    captured: dict[str, Any] = {}
+    embedding_a = [float(index) for index in range(64)]
+    embedding_b = [float(index) for index in range(64, 128)]
+
+    class _FakeEmbeddings:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(embedding=embedding_a),
+                    SimpleNamespace(embedding=embedding_b),
+                ]
+            )
+
+    class _FakeOpenAIClient:
+        def __init__(self, *, api_key: str):
+            captured["api_key"] = api_key
+            self.embeddings = _FakeEmbeddings()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "openai")
+    monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-3-large")
+    monkeypatch.setenv("EMBEDDING_DIMENSION", "64")
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=_FakeOpenAIClient))
+    get_settings.cache_clear()
+
+    provider = _build_embedding_provider()
+    assert isinstance(provider, OpenAIEmbeddingProvider)
+
+    embeddings = provider.embed_texts(["alpha", "beta"])
+
+    assert embeddings == [embedding_a, embedding_b]
+    assert captured["api_key"] == "test-openai-key"
+    assert captured["model"] == "text-embedding-3-large"
+    assert captured["input"] == ["alpha", "beta"]
+    assert captured["dimensions"] == 64
+    assert captured["encoding_format"] == "float"
