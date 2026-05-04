@@ -1,5 +1,6 @@
 package com.earningwhisperer.infrastructure.sync;
 
+import com.earningwhisperer.domain.earnings.EarningsCalendarRepository;
 import com.earningwhisperer.domain.earnings.EarningsResult;
 import com.earningwhisperer.domain.earnings.EarningsResultRepository;
 import com.earningwhisperer.domain.stock.DailyBar;
@@ -9,6 +10,7 @@ import com.earningwhisperer.domain.stock.StockMetaRepository;
 import com.earningwhisperer.domain.stock.StockRepository;
 import com.earningwhisperer.infrastructure.finnhub.EarningsResultSyncService;
 import com.earningwhisperer.infrastructure.finnhub.FinnhubClient;
+import com.earningwhisperer.infrastructure.finnhub.FinnhubEarningsSyncService;
 import com.earningwhisperer.infrastructure.fmp.DailyBarSyncService;
 import com.earningwhisperer.infrastructure.fmp.FmpClient;
 import com.earningwhisperer.infrastructure.fmp.StockMetaSyncService;
@@ -62,7 +64,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         StockRepository.class,
         StockMetaRepository.class,
         DailyBarRepository.class,
-        EarningsResultRepository.class
+        EarningsResultRepository.class,
+        EarningsCalendarRepository.class
 })
 // 엔티티 메타모델 등록 — 도메인 패키지만 한정. 운영 ComponentScan 의 ConditionalOnExpression
 // 빈들 (Service / Scheduler / Client / RateLimiter) 은 끌려오지 않는다.
@@ -94,5 +97,11 @@ public class SyncServiceTxIsolationTestConfig {
                                                                StockRepository stockRepository,
                                                                EarningsResultRepository earningsResultRepository) {
         return new EarningsResultSyncService(finnhubClient, stockRepository, earningsResultRepository);
+    }
+
+    @Bean
+    public FinnhubEarningsSyncService finnhubEarningsSyncService(StockRepository stockRepository,
+                                                                 EarningsCalendarRepository earningsCalendarRepository) {
+        return new FinnhubEarningsSyncService(stockRepository, earningsCalendarRepository);
     }
 }
