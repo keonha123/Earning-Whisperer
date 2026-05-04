@@ -10,14 +10,19 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
-@Table(name = "trades", indexes = {
-        @Index(name = "idx_trade_user_ticker", columnList = "user_id, ticker"),
-        @Index(name = "idx_trade_created_at", columnList = "created_at")
-})
+@Table(name = "trades",
+        indexes = {
+                @Index(name = "idx_trade_user_ticker", columnList = "user_id, ticker"),
+                @Index(name = "idx_trade_created_at", columnList = "created_at")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_trade_broker_order_id", columnNames = "broker_order_id")
+        })
 public class Trade {
 
     @Id
@@ -103,10 +108,26 @@ public class Trade {
         this.status = TradeStatus.PENDING;
     }
 
+    /**
+     * EXECUTED 전이. Trading Terminal 의 콜백은 네트워크 retry 로 동일 페이로드가 중복 도착할 수 있어
+     * 같은 입력에 대해서는 멱등으로 동작한다.
+     * - PENDING → EXECUTED 정상 전이
+     * - 이미 EXECUTED 이고 (executedQty, executedPrice, brokerOrderId) 가 모두 같으면 no-op
+     * - 그 외(다른 값으로 EXECUTED, FAILED 에서 전이 시도)는 TradeStateConflictException
+     */
     public void executed(int executedQty, Double executedPrice, String brokerOrderId) {
+        if (this.status == TradeStatus.EXECUTED) {
+            if (this.executedQty == executedQty
+                    && Objects.equals(this.executedPrice, executedPrice)
+                    && Objects.equals(this.brokerOrderId, brokerOrderId)) {
+                return;
+            }
+            throw new TradeStateConflictException(
+                    "이미 EXECUTED 인 Trade 에 다른 체결 결과 콜백 — tradeId=" + this.id);
+        }
         if (this.status != TradeStatus.PENDING) {
-            throw new IllegalStateException(
-                    "PENDING 상태에서만 체결 전환 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
+            throw new TradeStateConflictException(
+                    "PENDING 에서만 EXECUTED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
         }
         this.executedQty = executedQty;
         this.executedPrice = executedPrice;
@@ -115,10 +136,19 @@ public class Trade {
         this.status = TradeStatus.EXECUTED;
     }
 
+    /**
+     * FAILED 전이. executed() 와 마찬가지로 네트워크 retry 멱등성을 보장한다.
+     * - PENDING → FAILED 정상 전이
+     * - 이미 FAILED 면 no-op
+     * - EXECUTED 에서 FAILED 전이 시도는 TradeStateConflictException
+     */
     public void failed() {
+        if (this.status == TradeStatus.FAILED) {
+            return;
+        }
         if (this.status != TradeStatus.PENDING) {
-            throw new IllegalStateException(
-                    "PENDING 상태에서만 실패 전환 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
+            throw new TradeStateConflictException(
+                    "PENDING 에서만 FAILED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
         }
         this.status = TradeStatus.FAILED;
     }

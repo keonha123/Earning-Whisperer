@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Trade 엔티티 단위 테스트")
 class TradeTest {
@@ -103,5 +104,72 @@ class TradeTest {
 
         // Assert
         assertThat(trade.getStatus()).isEqualTo(TradeStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("executed() 동일 입력으로 재호출 시 멱등하게 no-op 한다")
+    void executed_동일_입력_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        // Act — 같은 입력으로 한 번 더 호출 (네트워크 retry 시나리오)
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-1");
+    }
+
+    @Test
+    @DisplayName("executed() 후 다른 결과로 재호출 시 TradeStateConflictException")
+    void executed_다른_입력_재호출은_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(() -> trade.executed(5, 130.00, "BROKER-2"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("failed() 재호출 시 멱등하게 no-op 한다")
+    void failed_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.failed();
+
+        // Act
+        trade.failed();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("EXECUTED 상태에서 failed() 호출 시 TradeStateConflictException")
+    void EXECUTED에서_failed_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(trade::failed)
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("FAILED 상태에서 executed() 호출 시 TradeStateConflictException")
+    void FAILED에서_executed_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.failed();
+
+        assertThatThrownBy(() -> trade.executed(3, 125.50, "BROKER-1"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    private Trade pendingTrade() {
+        return Trade.builder()
+                .user(user)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .build();
     }
 }

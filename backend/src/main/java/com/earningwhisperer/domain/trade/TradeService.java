@@ -94,15 +94,25 @@ public class TradeService {
             throw new SecurityException("Trade 소유권 불일치 - tradeId=" + tradeId + " callerId=" + callerId);
         }
 
+        TradeStatus before = trade.getStatus();
         if ("EXECUTED".equals(request.getStatus())) {
             int qty = request.getExecutedQty() != null ? request.getExecutedQty() : 0;
             double price = request.getExecutedPrice() != null ? request.getExecutedPrice() : 0.0;
             trade.executed(qty, price, request.getBrokerOrderId());
-            log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
-                    tradeId, request.getBrokerOrderId(), qty);
+            if (before == TradeStatus.EXECUTED) {
+                log.warn("[TradeService] 멱등 콜백 감지(EXECUTED 재수신) - tradeId={} brokerOrderId={}",
+                        tradeId, request.getBrokerOrderId());
+            } else {
+                log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
+                        tradeId, request.getBrokerOrderId(), qty);
+            }
         } else {
             trade.failed();
-            log.warn("[TradeService] 체결 실패 - tradeId={} error={}", tradeId, request.getErrorMessage());
+            if (before == TradeStatus.FAILED) {
+                log.warn("[TradeService] 멱등 콜백 감지(FAILED 재수신) - tradeId={}", tradeId);
+            } else {
+                log.warn("[TradeService] 체결 실패 - tradeId={} error={}", tradeId, request.getErrorMessage());
+            }
         }
         tradeRepository.save(trade);
     }
