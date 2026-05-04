@@ -176,4 +176,9 @@
   .pagination-btn-active {
     @apply pagination-btn bg-accent-500 text-white hover:bg-accent-600;
   }
+
+  /* Toast — IPC error 알림 (PR-2b) */
+  .toast-ipc-error   { @apply bg-surface-2 border border-sell/40 text-text-primary text-sm rounded-lg shadow-lg px-4 py-3; }
+  .toast-ipc-warning { @apply bg-surface-2 border border-warning/40 text-text-primary text-sm rounded-lg shadow-lg px-4 py-3; }
+  .toast-ipc-action  { @apply mt-2 text-xs text-accent-400 underline cursor-pointer hover:text-accent-300; }
 }

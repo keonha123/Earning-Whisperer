@@ -8,6 +8,7 @@ import KisStatusTimeline, {
   type KisTimelineStep,
 } from '../components/settings/KisStatusTimeline'
 import { kisStatusDevMock } from '../fixtures/kisStatus.dev-mock'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 // fixture 메타데이터(AppKey, 핑 지연 등)는 dev 빌드에서만 노출.
 // prod 에서는 generic 메시지만 표시 — 사용자가 더미 값을 진짜로 오인하지 않도록.
@@ -45,8 +46,10 @@ export default function SettingsPage() {
       .then((v) => {
         if (!cancelled && typeof v === 'boolean') setIsPaperTrading(v)
       })
-      .catch(() => {
-        // 조회 실패 시 디폴트 true 유지 (안전한 쪽)
+      .catch((err: unknown) => {
+        // 디폴트 true 유지 (안전한 쪽). 실전 모드인데 조회 실패 시 화면이 "모의" 로
+        // 거짓 표시되어 사용자가 안전한 모의로 착각하는 silent fail 차단 (review F3).
+        if (!cancelled) showIpcErrorToast(err)
       })
     return () => {
       cancelled = true
@@ -67,8 +70,8 @@ export default function SettingsPage() {
       setIsPaperTrading(next)
       // 토큰이 무효화됐으므로 connection store 표시도 갱신
       setKisTokenStatus('UNKNOWN')
-    } catch (err: any) {
-      alert('환경 전환 실패: ' + (err?.message ?? 'unknown'))
+    } catch (err: unknown) {
+      showIpcErrorToast(err)
     } finally {
       setPaperToggleBusy(false)
     }
@@ -108,8 +111,11 @@ export default function SettingsPage() {
         setSaved(false)
         savedTimerRef.current = null
       }, 2000)
-    } catch (err: any) {
-      setSaveError(err?.message ?? '저장에 실패했습니다.')
+    } catch (err: unknown) {
+      // 기존 인라인 setSaveError 는 유지 + toast 추가.
+      const fallback = err instanceof Error ? err.message : '저장에 실패했습니다.'
+      setSaveError(fallback)
+      showIpcErrorToast(err)
     } finally {
       setSaving(false)
     }
@@ -135,8 +141,8 @@ export default function SettingsPage() {
     try {
       await ipc.invoke(IPC_CHANNELS.KIS_ISSUE_TOKEN)
       setKisTokenStatus('VALID')
-    } catch (err: any) {
-      alert('토큰 발급 실패: ' + err?.message)
+    } catch (err: unknown) {
+      showIpcErrorToast(err)
     }
   }
 

@@ -4,6 +4,7 @@ import {
   useMarketIndicesStore,
   type MarketIndexItem,
 } from '../store/useMarketIndicesStore'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 /**
  * Backend 가 내려주는 snake_case payload (Contract 4.4 STOMP / 7.7 REST 동일 스키마).
@@ -87,6 +88,7 @@ export function useMarketIndices() {
       } catch (e) {
         // graceful: store 변경 없이 placeholder 유지.
         console.error('[useMarketIndices] 초기 스냅샷 조회 실패:', e)
+        showIpcErrorToast(e)
       }
     })()
 

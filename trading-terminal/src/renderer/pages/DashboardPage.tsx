@@ -25,6 +25,9 @@ import { useNavigate } from 'react-router-dom'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
 // step=100 (수십만~수백만 단위 자산 차트) 으로 호출.
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
+import { showIpcErrorToast } from '../components/common/Toast'
+import { useConnectionStore } from '../store/useConnectionStore'
+import { isIpcError } from '../../lib/types/ipcError'
 
 /**
  * DashboardPage — 4-Row 레이아웃.
@@ -57,10 +60,19 @@ export default function DashboardPage() {
     setSyncing,
     setError,
   } = usePortfolioStore()
-  const { plan, settings, setSettings } = useUserStore()
+  const { plan, settings, setSettings, clear: clearUser } = useUserStore()
+  const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
 
   const openDrawer = useDrawerStore((s) => s.open)
   const navigate = useNavigate()
+
+  // AUTH_EXPIRED toast 의 "다시 로그인" 클릭 핸들러.
+  // KIS_GET_BALANCE 등 인증 만료 시 호출됨 — 인증 store/유저 store 정리 후 라우팅.
+  function handleAuthExpiredNavigate(): void {
+    setAuthenticated(false)
+    clearUser()
+    navigate('/auth')
+  }
 
   useEffect(() => {
     syncBalance()
@@ -84,10 +96,19 @@ export default function DashboardPage() {
         await ipc.invoke(IPC_CHANNELS.HOLDINGS_TICKERS_UPDATE, { tickers })
       } catch (e) {
         console.error('[DashboardPage] HOLDINGS_TICKERS_UPDATE 실패:', e)
+        showIpcErrorToast(e)
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('잔고 조회 실패:', e)
+      // 기존 인라인 에러 배지(setError) 는 유지 + toast 추가.
+      // AUTH_EXPIRED 의 경우 "다시 로그인" 액션으로 라우팅 정리.
       setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
+      showIpcErrorToast(e, {
+        onNavigate:
+          isIpcError(e) && e.code === 'AUTH_EXPIRED'
+            ? handleAuthExpiredNavigate
+            : undefined,
+      })
     } finally {
       setSyncing(false)
     }
@@ -105,6 +126,7 @@ export default function DashboardPage() {
       setSettings({ tradingMode: newMode })
     } catch (e) {
       console.error('모드 변경 실패:', e)
+      showIpcErrorToast(e)
     }
   }
 

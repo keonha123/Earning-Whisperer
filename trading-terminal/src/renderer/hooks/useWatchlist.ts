@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useWatchlistStore, type WatchlistItem } from '../store/useWatchlistStore'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 /**
  * payload 가드 — main 이 항상 camelCase 배열을 보내지만 형식 불일치 메시지로 인한 store 오염 방지.
@@ -41,6 +42,7 @@ export function useWatchlist() {
       setItems(filterValid(fresh))
     } catch (e) {
       console.error('[useWatchlist] refresh 실패:', e)
+      showIpcErrorToast(e)
     }
   }, [setItems])
 
@@ -54,6 +56,7 @@ export function useWatchlist() {
         setItems(filterValid(cached))
       } catch (e) {
         console.error('[useWatchlist] 초기 캐시 조회 실패:', e)
+        showIpcErrorToast(e)
       }
     })()
 

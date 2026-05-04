@@ -9,6 +9,7 @@ import { usePrices } from '../../hooks/usePrices'
 import { useWatchlist } from '../../hooks/useWatchlist'
 import { ipc, IPC_CHANNELS } from '../../lib/ipc'
 import type { StockDetailResponsePayload } from '../../../lib/types/stockDetail'
+import { showIpcErrorToast } from '../common/Toast'
 import {
   pickYTicks as pickYTicksUtil,
   pickXLabels as pickXLabelsUtil,
@@ -322,10 +323,10 @@ function ActionBar({
       }
       // store 는 WATCHLIST_UPDATE broadcast 로 자동 갱신 — 별도 setState 불요.
     } catch (e) {
-      // optimistic update 미적용 — broadcast 가 빠름. 실패는 콘솔에만 남기고
-      // 사용자 알림 toast 는 본 PR 범위 외.
+      // optimistic update 미적용 — broadcast 가 빠름. 실패 시 toast 알림.
       // eslint-disable-next-line no-console
       console.error('[CompanyDrawer] watchlist toggle 실패:', e)
+      showIpcErrorToast(e)
     }
   }, [isWatched, ticker])
 
