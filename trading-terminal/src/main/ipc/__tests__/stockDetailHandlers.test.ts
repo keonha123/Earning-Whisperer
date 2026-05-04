@@ -18,6 +18,7 @@ import {
   BackendClient,
   type StockDetailResponsePayload,
 } from '../../services/BackendClient'
+import { expectIpcError } from '../../../test/ipcErrorTestUtils'
 
 type IpcInvokeHandler = (
   event: unknown,
@@ -101,6 +102,17 @@ describe('stockDetailHandlers — ticker validation', () => {
     const handler = getRegisteredHandler(IPC_CHANNELS.STOCK_GET_DETAIL)
 
     await expect(handler({} as never, { ticker: 'AA PL' })).rejects.toThrow('invalid ticker')
+  })
+
+  it('정규식 위반 시 IpcError code=VALIDATION 으로 분류', async () => {
+    registerStockDetailHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.STOCK_GET_DETAIL)
+
+    await expectIpcError(
+      handler({} as never, { ticker: 'aapl' }) as Promise<unknown>,
+      'VALIDATION',
+      /invalid ticker/,
+    )
   })
 })
 

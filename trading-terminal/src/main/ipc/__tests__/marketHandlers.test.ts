@@ -5,6 +5,8 @@ import { ipcMain } from 'electron'
 import { BackendClient } from '../../services/BackendClient'
 import { registerMarketHandlers } from '../marketHandlers'
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
+import { IpcError } from '../../../lib/types/ipcError'
+import { expectIpcError } from '../../../test/ipcErrorTestUtils'
 
 type IpcInvokeHandler = (
   event: unknown,
@@ -64,5 +66,17 @@ describe('marketHandlers', () => {
 
     spy.mockRestore()
     errSpy.mockRestore()
+  })
+
+  it('AUTH_EXPIRED 는 swallow 하지 않고 rethrow — 다른 IPC 와 일관된 토큰 만료 신호', async () => {
+    const spy = vi
+      .spyOn(BackendClient, 'getMarketIndices')
+      .mockRejectedValue(new IpcError('AUTH_EXPIRED', '인증 만료'))
+
+    registerMarketHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.MARKET_INDICES_GET)
+
+    await expectIpcError(handler({} as never) as Promise<unknown>, 'AUTH_EXPIRED')
+    spy.mockRestore()
   })
 })

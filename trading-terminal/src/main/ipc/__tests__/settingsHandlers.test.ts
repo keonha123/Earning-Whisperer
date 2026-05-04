@@ -8,6 +8,7 @@ import { IPC_CHANNELS } from '../../../lib/ipcChannels'
 import { mainState } from '../../store/mainState'
 import { kisLimiter } from '../../services/KisRateLimiter'
 import { KisService } from '../../services/KisService'
+import { expectIpcError } from '../../../test/ipcErrorTestUtils'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
@@ -150,6 +151,36 @@ describe('settingsHandlers — paper-trading 토글 H5 가드', () => {
     expect(paperTradingCalls).toHaveLength(0)
 
     invalidateSpy.mockRestore()
+  })
+
+  it('IpcError code 분류 — AUTH_REQUIRED / VALIDATION / BUSINESS_RULE', async () => {
+    registerSettingsHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING)
+
+    // AUTH_REQUIRED — 미로그인
+    mainState.setBackendToken(null)
+    await expectIpcError(
+      handler({} as never, { value: false }) as Promise<unknown>,
+      'AUTH_REQUIRED',
+      /로그인/,
+    )
+    mainState.setBackendToken('test-jwt')
+
+    // VALIDATION — boolean 아님
+    await expectIpcError(
+      handler({} as never, { value: 'true' as unknown as boolean }) as Promise<unknown>,
+      'VALIDATION',
+      /boolean/,
+    )
+
+    // BUSINESS_RULE — 주문 진행 중
+    mainState.setOrderInProgress(true)
+    await expectIpcError(
+      handler({} as never, { value: false }) as Promise<unknown>,
+      'BUSINESS_RULE',
+      /주문 진행 중/,
+    )
+    mainState.setOrderInProgress(false)
   })
 
   it('이미 같은 값으로 set 시 no-op — setRate / invalidateRuntime / keytar.setPassword 미호출', async () => {

@@ -1,15 +1,16 @@
-import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { IpcError } from '../../lib/types/ipcError'
 import { BackendClient, type StockDetailResponsePayload } from '../services/BackendClient'
+import { registerHandler } from './registerHandler'
 
 /**
  * 종목 상세 IPC handler.
  *
  * - STOCK_GET_DETAIL (invoke): payload `{ ticker }`.
- *   - ticker 정규식 검증 실패 시 throw (Electron 이 reject 로 전파).
+ *   - ticker 정규식 검증 실패 시 IpcError(VALIDATION) throw.
  *   - 캐시 hit (30s TTL) 시 백엔드 호출 없이 캐시된 payload 반환.
  *   - miss/만료 시 BackendClient.getStockDetail 호출 → 캐시 갱신 → 응답.
- *   - axios throw 시 그대로 propagate (handler 측 swallow 없음).
+ *   - axios error 는 BackendClient interceptor 가 IpcError 로 변환 → 그대로 propagate.
  *
  * 캐시 정책:
  *   - ticker별 독립 entry, 30s TTL (full) / 5s TTL (partial).
@@ -38,12 +39,12 @@ function ttlFor(payload: StockDetailResponsePayload): number {
 }
 
 export function registerStockDetailHandlers(): void {
-  ipcMain.handle(
+  registerHandler<{ ticker: string } | undefined, StockDetailResponsePayload>(
     IPC_CHANNELS.STOCK_GET_DETAIL,
-    async (_e, payload: { ticker: string } | undefined): Promise<StockDetailResponsePayload> => {
+    async (_e, payload) => {
       const ticker = payload?.ticker
       if (typeof ticker !== 'string' || !TICKER_PATTERN.test(ticker)) {
-        throw new Error('invalid ticker')
+        throw new IpcError('VALIDATION', 'invalid ticker')
       }
 
       const cached = cache.get(ticker)
