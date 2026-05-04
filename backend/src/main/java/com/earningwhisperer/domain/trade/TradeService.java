@@ -3,15 +3,20 @@ package com.earningwhisperer.domain.trade;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
+import com.earningwhisperer.infrastructure.websocket.TradeCommandMessage;
 import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
 import com.earningwhisperer.presentation.trade.TradeResponse;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.transaction.annotation.Transactional;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 매매 명령 생성 서비스.
@@ -34,6 +39,9 @@ public class TradeService {
 
     private final TradeRepository tradeRepository;
 
+    @Value("${app.trade.pending-ttl-seconds:30}")
+    private long pendingTtlSeconds;
+
     @Transactional(readOnly = true)
     public Page<TradeResponse> getMyTrades(Long userId, Pageable pageable) {
         return tradeRepository.findByUserId(userId, pageable)
@@ -44,15 +52,17 @@ public class TradeService {
      * PENDING 상태의 Trade를 생성하고 tradeId + userId를 반환한다.
      * Trading Terminal이 tradeId를 받아 주문을 실행하고 콜백으로 결과를 보고한다.
      *
-     * @param user   대상 사용자 (이미 조회된 엔티티)
-     * @param ticker 종목 심볼
-     * @param action RuleEngine 결과
-     * @param mode   사용자의 TradingMode
+     * @param user        대상 사용자 (이미 조회된 엔티티)
+     * @param ticker      종목 심볼
+     * @param action      RuleEngine 결과
+     * @param mode        사용자의 TradingMode
+     * @param orderRatio  주문 비율 — 재접속 시 명령 복원용으로 엔티티에 보존
+     * @param aiScore     시그널 AI 점수 — 재접속 시 명령 복원용
      * @return PendingTradeResult (MANUAL이거나 HOLD이면 null)
      */
     @Transactional
-    public PendingTradeResult createPendingTrade(User user, String ticker,
-                                                  TradeAction action, TradingMode mode) {
+    public PendingTradeResult createPendingTrade(User user, String ticker, TradeAction action,
+                                                  TradingMode mode, double orderRatio, double aiScore) {
         if (action == TradeAction.HOLD) {
             return null;
         }
@@ -70,12 +80,54 @@ public class TradeService {
                 .orderType(OrderType.MARKET)
                 .orderQty(PENDING_ORDER_QTY_SENTINEL)
                 .price(0.0)
+                .orderRatio(orderRatio)
+                .aiScore(aiScore)
                 .build();
 
         Trade saved = tradeRepository.save(trade);
         log.info("[TradeService] PENDING 거래 생성 - tradeId={} userId={} ticker={} action={} mode={}",
                 saved.getId(), user.getId(), ticker, action, mode);
         return new PendingTradeResult(saved.getId(), user.getId());
+    }
+
+    /**
+     * Terminal 재접속 시 호출. TTL 내 미만료 PENDING 명령을 복원한다.
+     * orderRatio/aiScore 가 null 인 레거시 행은 제외한다 (복원 불가능 — 폐기).
+     */
+    @Transactional(readOnly = true)
+    public List<TradeCommandMessage> getPendingCommandsForUser(Long userId) {
+        LocalDateTime threshold = LocalDateTime.now().minusSeconds(pendingTtlSeconds);
+        return tradeRepository
+                .findByUserIdAndStatusAndCreatedAtAfter(userId, TradeStatus.PENDING, threshold)
+                .stream()
+                .filter(t -> t.getOrderRatio() != null && t.getAiScore() != null)
+                .map(t -> TradeCommandMessage.builder()
+                        .tradeId(t.getId())
+                        .action(t.getSide().name())
+                        .orderRatio(t.getOrderRatio())
+                        .ticker(t.getTicker())
+                        .aiScore(t.getAiScore())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * Scheduler 진입점. TTL 초과한 PENDING Trade 를 EXPIRED 로 일괄 전환한다.
+     *
+     * 단일 @Modifying UPDATE 로 처리하므로 (1) 멀티 인스턴스 동시 실행 시 lost update 가 없고
+     * (2) WHERE status = 'PENDING' 절이 동시에 commit 된 EXECUTED 콜백을 절대 덮어쓰지 않는다.
+     *
+     * @return 만료된 Trade 개수
+     */
+    @Transactional
+    public int expireStalePending() {
+        LocalDateTime threshold = LocalDateTime.now().minusSeconds(pendingTtlSeconds);
+        int affected = tradeRepository.expirePendingBefore(threshold);
+        if (affected > 0) {
+            log.info("[TradeService] PENDING TTL 만료 전환 - count={} threshold={}",
+                    affected, threshold);
+        }
+        return affected;
     }
 
     /**

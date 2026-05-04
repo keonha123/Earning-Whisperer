@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { mainState } from '../store/mainState'
 import type { StockDetailResponsePayload } from '../../lib/types/stockDetail'
+import type { TradeSignal } from './TradeExecutor'
 import { axiosErrorToIpcError } from '../../lib/types/ipcError'
 
 // Phase 5: StockDetailResponsePayload 정의를 src/lib/types/stockDetail.ts 로 이동.
@@ -104,6 +105,17 @@ export const BackendClient = {
 
   async sendCallback(tradeId: string, payload: CallbackPayload): Promise<void> {
     await http.post(`/api/v1/trades/${tradeId}/callback`, payload)
+  },
+
+  /**
+   * Terminal 재접속 시점에 호출. 백엔드 STOMP convertAndSendToUser 가 미접속 사용자에게
+   * silent drop 되므로, TTL 내 미만료 PENDING 명령을 REST 로 fetch 해 복구한다.
+   * 응답 형식은 STOMP /user/queue/signals 메시지와 동일 (TradeCommandMessage 직렬화 결과).
+   * 실패 시 throw — 호출 측이 catch 해 graceful 처리.
+   */
+  async fetchPendingTrades(): Promise<TradeSignal[]> {
+    const { data } = await http.get<TradeSignal[]>('/api/v1/trades/pending')
+    return Array.isArray(data) ? data : []
   },
 
   async syncPortfolio(payload: PortfolioSyncPayload): Promise<void> {

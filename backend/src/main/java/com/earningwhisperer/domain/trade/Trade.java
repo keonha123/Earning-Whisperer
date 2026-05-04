@@ -86,6 +86,21 @@ public class Trade {
     @Column(length = 50)
     private String brokerOrderId;
 
+    /**
+     * Terminal 로 발행된 주문 비율 (BUY: 예수금 대비 매수, SELL: 보유수량 대비 매도).
+     * Terminal 미접속 후 재접속 시 PENDING 명령을 그대로 복원하기 위해 보존한다.
+     * 마이그레이션 호환을 위해 nullable.
+     */
+    @Column
+    private Double orderRatio;
+
+    /**
+     * Trade 를 유발한 시그널의 AI 점수. 재접속 시 명령 복원용.
+     * 마이그레이션 호환을 위해 nullable.
+     */
+    @Column
+    private Double aiScore;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -96,7 +111,8 @@ public class Trade {
 
     @Builder
     public Trade(User user, SignalHistory signal, String ticker, TradeAction side,
-                 OrderType orderType, Integer orderQty, Double price) {
+                 OrderType orderType, Integer orderQty, Double price,
+                 Double orderRatio, Double aiScore) {
         this.user = user;
         this.signal = signal;
         this.ticker = ticker;
@@ -104,6 +120,8 @@ public class Trade {
         this.orderType = orderType;
         this.orderQty = orderQty;
         this.price = price;
+        this.orderRatio = orderRatio;
+        this.aiScore = aiScore;
         this.executedQty = 0;
         this.status = TradeStatus.PENDING;
     }
@@ -140,7 +158,7 @@ public class Trade {
      * FAILED 전이. executed() 와 마찬가지로 네트워크 retry 멱등성을 보장한다.
      * - PENDING → FAILED 정상 전이
      * - 이미 FAILED 면 no-op
-     * - EXECUTED 에서 FAILED 전이 시도는 TradeStateConflictException
+     * - EXECUTED/EXPIRED 에서 FAILED 전이 시도는 TradeStateConflictException
      */
     public void failed() {
         if (this.status == TradeStatus.FAILED) {
@@ -151,5 +169,23 @@ public class Trade {
                     "PENDING 에서만 FAILED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
         }
         this.status = TradeStatus.FAILED;
+    }
+
+    /**
+     * EXPIRED 전이. TTL 만료 scheduler 가 호출한다.
+     * - PENDING → EXPIRED 정상 전이
+     * - 이미 EXPIRED 면 no-op (scheduler 중복 실행 안전)
+     * - EXECUTED/FAILED 에서 EXPIRED 전이 시도는 TradeStateConflictException
+     *   (콜백이 먼저 도착해 종결된 Trade 는 expire 대상 아님)
+     */
+    public void expire() {
+        if (this.status == TradeStatus.EXPIRED) {
+            return;
+        }
+        if (this.status != TradeStatus.PENDING) {
+            throw new TradeStateConflictException(
+                    "PENDING 에서만 EXPIRED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
+        }
+        this.status = TradeStatus.EXPIRED;
     }
 }

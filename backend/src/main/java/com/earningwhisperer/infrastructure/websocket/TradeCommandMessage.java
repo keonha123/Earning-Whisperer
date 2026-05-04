@@ -1,6 +1,8 @@
 package com.earningwhisperer.infrastructure.websocket;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -19,7 +21,12 @@ import lombok.Getter;
 @Builder
 public class TradeCommandMessage {
 
+    /**
+     * Long 을 JSON number 로 직렬화하면 Terminal validateSignal 의 string 체크에서 거부되므로
+     * 문자열로 직렬화한다. STOMP 메시지와 GET /pending 응답이 동일 형식이 되도록 일원화.
+     */
     @JsonProperty("trade_id")
+    @JsonSerialize(using = ToStringSerializer.class)
     private final Long tradeId;
 
     /** BUY | SELL */

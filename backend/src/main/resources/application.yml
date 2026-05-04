@@ -59,6 +59,12 @@ app:
     # 미설정(빈 문자열) 시 InternalSecretFilter 가 모든 internal 요청을 401 로 차단한다.
     secret: ${INTERNAL_SECRET:}
 
+  trade:
+    # PENDING Trade 명령의 유효시간(초). 발행 후 이 시간 내에 Trading Terminal 이
+    # 콜백을 보내지 않으면 scheduler 가 EXPIRED 로 전환한다. 자동매매 신호의 시의성을
+    # 고려해 짧게 잡는다.
+    pending-ttl-seconds: ${TRADE_PENDING_TTL_SECONDS:30}
+
 management:
   endpoints:
     web:
