@@ -6,6 +6,7 @@ import { useUserStore } from '../store/useUserStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 type Step = 'login' | 'vault'
 
@@ -140,6 +141,8 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
       }
       // 원본 에러는 devtools 한정으로만 보존
       console.debug('[auth] login failed:', err)
+      // form 위 인라인 에러 + toast 동시 노출 — 사용자가 두 위치 모두에서 인지 가능.
+      showIpcErrorToast(err)
     } finally {
       setLoading(false)
     }
@@ -160,6 +163,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
       // user enumeration 방지: 백엔드 메시지를 그대로 노출하지 않고 generic 메시지로 통일
       setError('소셜 로그인에 실패했습니다. 다시 시도해 주세요.')
       console.debug('[auth] oauth failed:', err)
+      showIpcErrorToast(err)
     } finally {
       setOauthLoading(null)
     }
@@ -380,6 +384,7 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     } catch (err: any) {
       setError(err?.message ?? 'API 키 저장에 실패했습니다.')
+      showIpcErrorToast(err)
     } finally {
       setLoading(false)
     }

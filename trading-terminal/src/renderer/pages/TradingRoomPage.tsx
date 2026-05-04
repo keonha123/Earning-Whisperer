@@ -9,6 +9,7 @@ import SignalFeed from '../components/trading/SignalFeed'
 import STTScriptPanel from '../components/trading/STTScriptPanel'
 import OrderBar, { type OrderBarSubmitPayload } from '../components/trading/OrderBar'
 import TradingRoomHeader from '../components/trading/TradingRoomHeader'
+import { showIpcErrorToast } from '../components/common/Toast'
 import {
   sttTranscriptDevMock,
   type TranscriptLine,
@@ -113,6 +114,7 @@ export default function TradingRoomPage() {
       setSettings({ tradingMode: newMode })
     } catch (e) {
       console.error('모드 변경 실패:', e)
+      showIpcErrorToast(e)
     }
   }
 

@@ -4,8 +4,15 @@ import { resolve } from 'path'
 /**
  * Main 프로세스(Node.js 환경) 단위 테스트 전용 설정.
  * Renderer/Preload 테스트는 별도 환경이 필요하므로 추후 분리한다.
+ *
+ * esbuild.jsx = 'automatic': tsconfig 가 jsx=preserve 라 vite 가 JSX 변환을 거부하는 문제를
+ * 우회. 본 vitest 설정은 PR-2b 의 Toast.tsx 를 import 할 때만 영향 — 실제 main/preload
+ * 빌드는 electron.vite.config 의 react() 플러그인이 별도로 처리한다.
  */
 export default defineConfig({
+  oxc: {
+    jsx: { runtime: 'automatic' },
+  },
   test: {
     environment: 'node',
     globals: false,
@@ -19,6 +26,9 @@ export default defineConfig({
       // Phase 5: CompanyDrawer 표시용 포맷팅 helper 단위 테스트
       // (컴포넌트 렌더는 jsdom 미설정으로 skip, 순수 함수만 검증).
       'src/renderer/lib/__tests__/**/*.test.ts',
+      // PR-2b: Toast helper (showIpcErrorToast / makeToastId / CODE_CONFIG) 단위 테스트.
+      // react-hot-toast 를 mock 해서 jsdom 없이도 호출 분기를 검증한다.
+      'src/renderer/components/**/__tests__/**/*.test.ts',
     ],
     clearMocks: true,
     restoreMocks: true,

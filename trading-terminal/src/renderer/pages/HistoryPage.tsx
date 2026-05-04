@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import Pagination from '../components/common/Pagination'
 import SegmentedControl from '../components/common/SegmentedControl'
 import Dropdown from '../components/common/Dropdown'
 import MiniGauge from '../components/common/MiniGauge'
+import { showIpcErrorToast } from '../components/common/Toast'
+import { isIpcError } from '../../lib/types/ipcError'
+import { useConnectionStore } from '../store/useConnectionStore'
+import { useUserStore } from '../store/useUserStore'
 import {
   historyRowsDevMock,
   historySummaryDevMock,
@@ -67,6 +72,10 @@ export default function HistoryPage() {
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
 
+  const navigate = useNavigate()
+  const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
+  const clearUser = useUserStore((s) => s.clear)
+
   useEffect(() => {
     loadTrades(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,8 +99,18 @@ export default function HistoryPage() {
       setTrades(data.content ?? [])
       setTotalPages(data.totalPages ?? 0)
       setLastUpdatedAt(Date.now())
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('거래 내역 조회 실패:', e)
+      showIpcErrorToast(e, {
+        onNavigate:
+          isIpcError(e) && e.code === 'AUTH_EXPIRED'
+            ? () => {
+                setAuthenticated(false)
+                clearUser()
+                navigate('/auth')
+              }
+            : undefined,
+      })
     } finally {
       setLoading(false)
     }

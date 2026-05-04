@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { usePricesStore, type PriceEntry } from '../store/usePricesStore'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 /**
  * PRICES_UPDATE batch 단건 가드.
@@ -74,6 +75,7 @@ export function usePrices() {
       } catch (e) {
         // graceful: store 변경 없이 placeholder 유지.
         console.error('[usePrices] 초기 캐시 조회 실패:', e)
+        showIpcErrorToast(e)
       }
     })()
 

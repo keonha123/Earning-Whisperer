@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import type { StockDetailResponsePayload } from '../../lib/types/stockDetail'
+import { showIpcErrorToast } from '../components/common/Toast'
 
 /**
  * useCompanyDetail — drawer 가 열린 ticker 의 상세 정보를 IPC 로 fetch.
@@ -63,7 +64,12 @@ export function useCompanyDetail(ticker: string | null): CompanyDetailState {
         if (!cancelled) setState({ data, loading: false, error: null })
       })
       .catch((err: Error) => {
-        if (!cancelled) setState({ data: null, loading: false, error: err })
+        if (!cancelled) {
+          setState({ data: null, loading: false, error: err })
+          // 인라인 에러 UI 는 그대로 두고 toast 도 함께 노출 — drawer 가
+          // 닫혀 있어도 사용자가 실패 사실을 알 수 있게 한다.
+          showIpcErrorToast(err)
+        }
       })
 
     return () => {
