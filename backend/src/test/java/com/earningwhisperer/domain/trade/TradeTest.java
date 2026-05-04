@@ -162,6 +162,65 @@ class TradeTest {
                 .isInstanceOf(TradeStateConflictException.class);
     }
 
+    @Test
+    @DisplayName("expire() 호출 시 status 가 EXPIRED 로 변경된다")
+    void expire_호출시_상태가_EXPIRED로_변경된다() {
+        Trade trade = pendingTrade();
+
+        trade.expire();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("expire() 재호출은 멱등하게 no-op")
+    void expire_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.expire();
+
+        trade.expire();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("EXECUTED 상태에서 expire() 호출 시 TradeStateConflictException")
+    void EXECUTED에서_expire_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(trade::expire)
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("EXPIRED 상태에서 executed() 호출 시 TradeStateConflictException")
+    void EXPIRED에서_executed_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.expire();
+
+        assertThatThrownBy(() -> trade.executed(3, 125.50, "BROKER-1"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("orderRatio/aiScore 가 builder 로 보존된다")
+    void builder_orderRatio_aiScore_보존() {
+        Trade trade = Trade.builder()
+                .user(user)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .orderRatio(0.1)
+                .aiScore(0.85)
+                .build();
+
+        assertThat(trade.getOrderRatio()).isEqualTo(0.1);
+        assertThat(trade.getAiScore()).isEqualTo(0.85);
+    }
+
     private Trade pendingTrade() {
         return Trade.builder()
                 .user(user)

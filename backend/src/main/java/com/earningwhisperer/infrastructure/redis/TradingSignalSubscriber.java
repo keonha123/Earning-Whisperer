@@ -70,7 +70,8 @@ public class TradingSignalSubscriber {
         for (UserProcessedSignal result : userResults) {
             try {
                 PendingTradeResult tradeResult = tradeService.createPendingTrade(
-                        result.user(), signal.getTicker(), result.action(), result.mode());
+                        result.user(), signal.getTicker(), result.action(), result.mode(),
+                        result.orderRatio(), result.aiScore());
 
                 if (tradeResult != null) {
                     TradeCommandMessage command = TradeCommandMessage.builder()

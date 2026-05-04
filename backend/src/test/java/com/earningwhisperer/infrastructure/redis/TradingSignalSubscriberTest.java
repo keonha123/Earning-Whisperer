@@ -22,6 +22,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -56,7 +58,7 @@ class TradingSignalSubscriberTest {
         List<UserProcessedSignal> results = List.of(
                 new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
-        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(new PendingTradeResult(1L, 1L));
 
         // Act
@@ -65,7 +67,7 @@ class TradingSignalSubscriberTest {
         // Assert — 호출 순서 검증
         InOrder inOrder = inOrder(signalService, tradeService, liveSignalPublisher);
         inOrder.verify(signalService).processSignalForAllUsers(any());
-        inOrder.verify(tradeService).createPendingTrade(eq(user1), eq("NVDA"), eq(TradeAction.BUY), eq(TradingMode.AUTO_PILOT));
+        inOrder.verify(tradeService).createPendingTrade(eq(user1), eq("NVDA"), eq(TradeAction.BUY), eq(TradingMode.AUTO_PILOT), anyDouble(), anyDouble());
         inOrder.verify(liveSignalPublisher).publish(any());
         verify(tradeCommandPublisher).publish(eq(1L), any());
     }
@@ -81,9 +83,9 @@ class TradingSignalSubscriberTest {
                 new UserProcessedSignal(user1, TradeAction.BUY, 0.8, TradingMode.AUTO_PILOT, 0.1),
                 new UserProcessedSignal(user2, TradeAction.BUY, 0.8, TradingMode.SEMI_AUTO, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
-        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(new PendingTradeResult(10L, 1L));
-        when(tradeService.createPendingTrade(eq(user2), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user2), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(new PendingTradeResult(11L, 2L));
 
         // Act
@@ -103,7 +105,7 @@ class TradingSignalSubscriberTest {
         List<UserProcessedSignal> results = List.of(
                 new UserProcessedSignal(user1, TradeAction.HOLD, 0.8, TradingMode.MANUAL, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
-        when(tradeService.createPendingTrade(any(User.class), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(any(User.class), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(null);
 
         // Act
@@ -122,7 +124,7 @@ class TradingSignalSubscriberTest {
 
         // Assert
         verify(signalService, never()).processSignalForAllUsers(any());
-        verify(tradeService, never()).createPendingTrade(any(User.class), anyString(), any(), any());
+        verify(tradeService, never()).createPendingTrade(any(User.class), anyString(), any(), any(), anyDouble(), anyDouble());
         verify(liveSignalPublisher, never()).publish(any());
     }
 
@@ -134,7 +136,7 @@ class TradingSignalSubscriberTest {
 
         // Assert
         verify(signalService, never()).processSignalForAllUsers(any());
-        verify(tradeService, never()).createPendingTrade(any(User.class), anyString(), any(), any());
+        verify(tradeService, never()).createPendingTrade(any(User.class), anyString(), any(), any(), anyDouble(), anyDouble());
         verify(liveSignalPublisher, never()).publish(any());
     }
 
@@ -152,9 +154,9 @@ class TradingSignalSubscriberTest {
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
 
         // user1 Trade 생성 시 예외 발생
-        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenThrow(new RuntimeException("DB 오류"));
-        when(tradeService.createPendingTrade(eq(user2), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user2), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(new PendingTradeResult(11L, 2L));
 
         // Act
@@ -173,14 +175,14 @@ class TradingSignalSubscriberTest {
         List<UserProcessedSignal> results = List.of(
                 new UserProcessedSignal(user1, TradeAction.SELL, -0.8, TradingMode.AUTO_PILOT, 0.1));
         when(signalService.processSignalForAllUsers(any())).thenReturn(results);
-        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any()))
+        when(tradeService.createPendingTrade(eq(user1), anyString(), any(), any(), anyDouble(), anyDouble()))
                 .thenReturn(new PendingTradeResult(20L, 1L));
 
         // Act
         subscriber.handleMessage(VALID_MESSAGE);
 
         // Assert
-        verify(tradeService).createPendingTrade(eq(user1), eq("NVDA"), eq(TradeAction.SELL), eq(TradingMode.AUTO_PILOT));
+        verify(tradeService).createPendingTrade(eq(user1), eq("NVDA"), eq(TradeAction.SELL), eq(TradingMode.AUTO_PILOT), anyDouble(), anyDouble());
         verify(tradeCommandPublisher).publish(eq(1L), any());
         verify(liveSignalPublisher).publish(any());
     }

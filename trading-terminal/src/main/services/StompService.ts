@@ -3,7 +3,8 @@ import WebSocket from 'ws'
 import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
-import { TradeExecutor } from './TradeExecutor'
+import { TradeExecutor, type TradeSignal } from './TradeExecutor'
+import { BackendClient } from './BackendClient'
 import { NotificationService } from './NotificationService'
 
 const WS_URL = (process.env.BACKEND_URL ?? 'http://localhost:8082')
@@ -32,6 +33,37 @@ function pushToRenderer(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   })
+}
+
+/**
+ * STOMP /user/queue/signals 단건 처리. Renderer 통보 + AUTO_PILOT 자동 실행을 한 곳에서 관리.
+ * 콜백 멱등성(PR1)에 의해 STOMP+fetch 중복 도착도 안전.
+ */
+function dispatchTradeSignal(signal: TradeSignal) {
+  pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
+  if (mainState.tradingMode === 'AUTO_PILOT') {
+    TradeExecutor.execute(signal).catch((e) => {
+      console.error('[StompService] AUTO_PILOT 실행 실패:', e)
+    })
+  }
+}
+
+/**
+ * fetch 로 복원된 N 개 명령을 직렬로 실행.
+ * TradeExecutor 가 mainState.isOrderInProgress 락을 즉시 set 하므로 await 없이 병렬 호출하면
+ * 첫 명령만 실행되고 나머지는 silent FAILED 가 된다. 직렬 실행으로 모든 명령을 처리한다.
+ */
+async function dispatchPendingBatch(signals: TradeSignal[]): Promise<void> {
+  for (const signal of signals) {
+    pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
+    if (mainState.tradingMode === 'AUTO_PILOT') {
+      try {
+        await TradeExecutor.execute(signal)
+      } catch (e) {
+        console.error('[StompService] AUTO_PILOT 실행 실패 (PENDING 복구):', e)
+      }
+    }
+  }
 }
 
 function onStatusChange(status: WsStatus) {
@@ -78,20 +110,29 @@ export const StompService = {
           `/user/queue/signals`,
           (message: IMessage) => {
             try {
-              const signal = JSON.parse(message.body)
-              pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
-
-              // AUTO_PILOT: 신호 수신 즉시 자동 실행
-              if (mainState.tradingMode === 'AUTO_PILOT') {
-                TradeExecutor.execute(signal).catch((e) => {
-                  console.error('[StompService] AUTO_PILOT 실행 실패:', e)
-                })
-              }
+              const signal = JSON.parse(message.body) as TradeSignal
+              dispatchTradeSignal(signal)
             } catch (e) {
               console.error('[StompService] 신호 파싱 실패:', e)
             }
           },
         )
+
+        /*
+         * 미접속 중에 STOMP convertAndSendToUser 가 silent drop 한 명령을 REST 로 복구한다.
+         * 첫 connect / 재연결 양쪽 모두에서 실행. 백엔드 TTL(기본 30초) 내 PENDING 만 반환되며,
+         * STOMP 와 중복 도착해도 PR1 콜백 멱등성으로 안전.
+         */
+        BackendClient.fetchPendingTrades()
+          .then(async (pending) => {
+            if (pending.length > 0) {
+              console.log(`[StompService] PENDING ${pending.length}건 복구 fetch`)
+            }
+            await dispatchPendingBatch(pending)
+          })
+          .catch((e) => {
+            console.error('[StompService] PENDING fetch 실패:', e)
+          })
 
         /*
          * Public 시장 지수 채널 구독 (Contract 4.4).

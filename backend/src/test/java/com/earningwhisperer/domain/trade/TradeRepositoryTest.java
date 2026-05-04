@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,6 +87,52 @@ class TradeRepositoryTest {
 
         // Assert
         assertThat(result).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("findByUserIdAndStatusAndCreatedAtAfter - threshold 이후 PENDING 만 반환")
+    void findByUserIdAndStatusAndCreatedAtAfter_미만료_PENDING_반환() {
+        // Arrange — PENDING 2건 저장 (현재 시각 기준)
+        tradeRepository.save(buildTrade(user, "NVDA", TradeAction.BUY));
+        tradeRepository.save(buildTrade(user, "TSLA", TradeAction.SELL));
+
+        LocalDateTime threshold = LocalDateTime.now().minusSeconds(30);
+
+        // Act
+        List<Trade> result = tradeRepository
+                .findByUserIdAndStatusAndCreatedAtAfter(user.getId(), TradeStatus.PENDING, threshold);
+
+        // Assert — threshold 이후에 만들어졌으므로 모두 반환
+        assertThat(result).hasSize(2);
+
+        // Act2 — threshold 가 미래이면 결과 없음
+        List<Trade> empty = tradeRepository
+                .findByUserIdAndStatusAndCreatedAtAfter(user.getId(), TradeStatus.PENDING,
+                        LocalDateTime.now().plusMinutes(1));
+
+        // Assert
+        assertThat(empty).isEmpty();
+    }
+
+    @Test
+    @DisplayName("expirePendingBefore - threshold 이전 PENDING 만 EXPIRED 로 일괄 update")
+    void expirePendingBefore_PENDING_만_EXPIRED로_전환() {
+        // Arrange
+        Trade pending = tradeRepository.save(buildTrade(user, "NVDA", TradeAction.BUY));
+        Long pendingId = pending.getId();
+
+        // Act — 미래 threshold 면 모두 만료 대상
+        int affected = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1));
+
+        // Assert — UPDATE row 수 + DB 상태 검증
+        assertThat(affected).isEqualTo(1);
+        Trade reloaded = tradeRepository.findById(pendingId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+
+        // Act2 — 이미 EXPIRED 면 두 번째 호출은 0 (멱등)
+        int second = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1));
+
+        assertThat(second).isZero();
     }
 
     private Trade buildTrade(User owner, String ticker, TradeAction side) {
