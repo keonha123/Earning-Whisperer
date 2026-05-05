@@ -2,6 +2,7 @@ package com.earningwhisperer.domain.signal;
 
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.infrastructure.redis.TradingSignalMessage;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import java.util.List;
 public class SignalService {
 
     private final PortfolioSettingsService portfolioSettingsService;
+    private final PositionService positionService;
     private final SignalHistoryRepository signalHistoryRepository;
 
     @Transactional
@@ -55,8 +57,29 @@ public class SignalService {
                     continue;
                 }
 
-                TradeAction action = RuleEngine.evaluate(
-                        aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown);
+                Double maxPositionRatio = settings.getMaxPositionRatio();
+                if (maxPositionRatio == null || maxPositionRatio <= 0) {
+                    // 설정 누락 — 비중 검증을 우회하지 않도록 1.0 으로 처리 (즉 검증 실효화 X)
+                    // 정책상 PortfolioSettings 생성 시 NOT NULL 이므로 운영에선 거의 발생 안 함.
+                    maxPositionRatio = 1.0;
+                }
+
+                // cashBalance 가 null 이면 KIS 첫 sync 미완료 — currentPositionRatio 산출 불가.
+                // BUY 가 무제한 통과되어 maxPositionRatio 가드가 무력화되는 사고를 막기 위해
+                // 신호 자체를 HOLD 로 강제 (fail-safe). SELL 도 보유 정보 없이 진행하면 위험하므로 동일.
+                Double cashBalance = settings.getCashBalance();
+                TradeAction action;
+                if (cashBalance == null || cashBalance < 0) {
+                    log.info("[SignalService] cashBalance 미동기화 — fail-safe HOLD userId={}", user.getId());
+                    action = TradeAction.HOLD;
+                } else {
+                    double currentPositionRatio = positionService.computeBookRatio(
+                            user.getId(), signal.getTicker(), cashBalance);
+
+                    action = RuleEngine.evaluate(
+                            aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown,
+                            currentPositionRatio, ratio, maxPositionRatio);
+                }
 
                 SignalHistory history = SignalHistory.builder()
                         .user(user)

@@ -2,6 +2,7 @@ package com.earningwhisperer.domain.signal;
 
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.infrastructure.redis.TradingSignalMessage;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.verify;
 class SignalServiceTest {
 
     @Mock private PortfolioSettingsService portfolioSettingsService;
+    @Mock private PositionService positionService;
     @Mock private SignalHistoryRepository signalHistoryRepository;
 
     @InjectMocks
@@ -48,6 +50,8 @@ class SignalServiceTest {
         given(settings.getAiScoreThreshold()).willReturn(threshold);
         given(settings.getTradingMode()).willReturn(mode);
         given(settings.getBuyAmountRatio()).willReturn(0.1);
+        given(settings.getMaxPositionRatio()).willReturn(1.0); // 가드 끔 (기존 룰 회귀 보호)
+        given(settings.getCashBalance()).willReturn(10_000.0); // sync 완료 사용자 (fail-safe 통과)
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
         return settings;
     }
@@ -147,12 +151,16 @@ class SignalServiceTest {
         given(settingsA.getAiScoreThreshold()).willReturn(0.6);
         given(settingsA.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
         given(settingsA.getBuyAmountRatio()).willReturn(0.1);
+        given(settingsA.getMaxPositionRatio()).willReturn(1.0);
+        given(settingsA.getCashBalance()).willReturn(10_000.0);
 
         given(settingsB.getUser()).willReturn(userB);
         given(settingsB.getCooldownMinutes()).willReturn(5);
         given(settingsB.getAiScoreThreshold()).willReturn(0.9);
         given(settingsB.getTradingMode()).willReturn(TradingMode.MANUAL);
         given(settingsB.getBuyAmountRatio()).willReturn(0.1);
+        given(settingsB.getMaxPositionRatio()).willReturn(1.0);
+        given(settingsB.getCashBalance()).willReturn(10_000.0);
 
         given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settingsA, settingsB));
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
@@ -163,6 +171,53 @@ class SignalServiceTest {
         assertThat(results).hasSize(2);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.BUY);   // threshold=0.6, AUTO_PILOT
         assertThat(results.get(1).action()).isEqualTo(TradeAction.HOLD);  // MANUAL → 항상 HOLD
+    }
+
+    @Test
+    @DisplayName("cashBalance 가 null (KIS sync 미완료) 이면 fail-safe HOLD — RuleEngine 호출 안 함")
+    void cashBalance_null이면_fail_safe_HOLD() {
+        User user = org.mockito.Mockito.mock(User.class);
+        given(user.getId()).willReturn(1L);
+        PortfolioSettings settings = org.mockito.Mockito.mock(PortfolioSettings.class);
+        given(settings.getUser()).willReturn(user);
+        given(settings.getCooldownMinutes()).willReturn(5);
+        given(settings.getBuyAmountRatio()).willReturn(0.1);
+        given(settings.getCashBalance()).willReturn(null); // 핵심 — fail-safe 분기 진입
+        given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
+        given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
+                .willReturn(Optional.empty());
+
+        List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
+    }
+
+    @Test
+    @DisplayName("BUY 시그널이지만 ticker 보유 비중이 maxPositionRatio 한도에 도달하면 HOLD")
+    void maxPositionRatio_도달시_BUY가_HOLD로_변경된다() {
+        // 0.25 (현재 비중) + 0.1 (buyRatio) = 0.35 > 0.30 (maxRatio)
+        User user = org.mockito.Mockito.mock(User.class);
+        given(user.getId()).willReturn(1L);
+        PortfolioSettings settings = org.mockito.Mockito.mock(PortfolioSettings.class);
+        given(settings.getUser()).willReturn(user);
+        given(settings.getCooldownMinutes()).willReturn(5);
+        given(settings.getAiScoreThreshold()).willReturn(0.6);
+        given(settings.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
+        given(settings.getBuyAmountRatio()).willReturn(0.1);
+        given(settings.getMaxPositionRatio()).willReturn(0.30);
+        given(settings.getCashBalance()).willReturn(10_000.0);
+        given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
+
+        given(positionService.computeBookRatio(eq(1L), eq("NVDA"), eq(10_000.0)))
+                .willReturn(0.25);
+        given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
+                .willReturn(Optional.empty());
+
+        List<UserProcessedSignal> results = signalService.processSignalForAllUsers(signal);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
     }
 
     @Test
