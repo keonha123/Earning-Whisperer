@@ -32,7 +32,14 @@ const TR_IDS = {
   placeSell: { paper: 'VTTT1006U', real: 'TTTT1006U' },
   balance: { paper: 'VTTS3012R', real: 'TTTS3012R' },
   psamount: { paper: 'VTTS3007R', real: 'TTTS3007R' },
+  inquireCcnl: { paper: 'VTTS3035R', real: 'TTTS3035R' }, // 미국주식 주문체결내역 조회
 } as const
+
+/**
+ * 시장가 주문 후 체결조회 전 대기시간 — KIS 시스템에 즉시 체결이 반영되는 시간.
+ * 테스트 환경에서는 0 으로 단축 (vitest 의 NODE_ENV='test') — fake timer 도입 회피.
+ */
+const ORDER_FILL_INQUIRE_WAIT_MS = process.env.NODE_ENV === 'test' ? 0 : 500
 
 function trId(key: keyof typeof TR_IDS): string {
   return mainState.isPaperTrading ? TR_IDS[key].paper : TR_IDS[key].real
@@ -427,10 +434,26 @@ export const KisService = {
       throw new Error(`KIS 주문 거부: ${msg}`)
     }
 
+    const orderId = data.output?.ODNO ?? ''
+
+    // 시장가 주문 후 짧은 대기 → 체결조회로 실제 executedQty/executedPrice 채움.
+    // 체결조회 실패 시 fallback: executedQty=qty 가정(기존 동작) — 정확성은 떨어지지만 회귀는 없음.
+    // 후속 portfolio sync 가 KIS 잔고 재조회로 보정한다.
+    if (!orderId) {
+      console.warn('[KisService] ODNO 미반환 — 체결조회 skip, fallback 사용')
+      return { orderId: '', executedPrice: null, executedQty: qty }
+    }
+
+    await sleep(ORDER_FILL_INQUIRE_WAIT_MS)
+    const fill = await inquireOrderFill(appKey, appSecret, accountNo, ticker, orderId)
+    if (fill === null) {
+      console.warn(`[KisService] 체결조회 실패 — fallback (qty=${qty} 가정) orderId=${orderId}`)
+      return { orderId, executedPrice: null, executedQty: qty }
+    }
     return {
-      orderId: data.output?.ODNO ?? '',
-      executedPrice: null, // 시장가는 즉시 체결가 미확정
-      executedQty: qty,
+      orderId,
+      executedPrice: fill.executedQty > 0 ? fill.avgPrice : null,
+      executedQty: fill.executedQty,
     }
   },
 
@@ -508,6 +531,93 @@ export async function migrateLegacyKeysIfNeeded(): Promise<void> {
 
 // 마이그레이션은 main/index.ts의 app.whenReady에서 await 호출 — 모듈 로드 시 자동 실행 X
 // (자동 실행 시 restorePaperTradingFlag/issueToken과 race 발생)
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * KIS 미국주식 주문체결내역 조회 (TR_ID inquireCcnl).
+ * placeOrder 직후 호출하여 ODNO 매칭 row 의 실제 체결수량/평균가를 가져온다.
+ *
+ * 반환값:
+ *   - { executedQty, avgPrice }: 정상 조회 (미체결이면 executedQty=0)
+ *   - null: 조회 실패 (rt_cd 비정상, 네트워크 오류, ODNO 매칭 row 없음 등) → 호출 측 fallback
+ *
+ * 응답 필드명은 KIS 명세에 따라 다를 수 있으며 (실제 운영 시 검증 필요),
+ * 일반적인 KIS 컨벤션 (`output1` 배열 + `odno`/`tot_ccld_qty`/`avg_prvs`) 을 가정한다.
+ */
+async function inquireOrderFill(
+  appKey: string,
+  appSecret: string,
+  accountNo: string,
+  ticker: string,
+  orderId: string,
+): Promise<{ executedQty: number; avgPrice: number | null } | null> {
+  try {
+    const today = new Date()
+    const yyyy = today.getUTCFullYear()
+    const mm = String(today.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(today.getUTCDate()).padStart(2, '0')
+    const yyyymmdd = `${yyyy}${mm}${dd}`
+
+    await kisLimiter.acquire('HIGH')
+    const { data } = await kisHttp.get(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      {
+        headers: buildKisHeaders(appKey, appSecret, trId('inquireCcnl')),
+        signal: activeAbortController.signal,
+        params: {
+          CANO: accountNo.slice(0, 8),
+          ACNT_PRDT_CD: accountNo.slice(8) || '01',
+          PDNO: ticker,
+          ORD_STRT_DT: yyyymmdd,
+          ORD_END_DT: yyyymmdd,
+          SLL_BUY_DVSN: '00',     // 전체
+          CCLD_NCCS_DVSN: '00',   // 전체
+          OVRS_EXCG_CD: 'NASD',
+          SORT_SQN: 'DS',
+          ORD_DT: '',
+          ORD_GNO_BRNO: '',
+          ODNO: orderId,
+          CTX_AREA_NK200: '',
+          CTX_AREA_FK200: '',
+        },
+      },
+    )
+
+    if (data.rt_cd !== '0') {
+      console.warn('[KisService] inquireCcnl rt_cd 실패:', data.msg1 || data.msg_cd)
+      return null
+    }
+
+    const rows: Array<Record<string, string>> = Array.isArray(data.output) ? data.output
+      : Array.isArray(data.output1) ? data.output1
+      : []
+    const row = rows.find((r) => r.odno === orderId || r.ODNO === orderId)
+    if (!row) {
+      console.warn(`[KisService] inquireCcnl 응답에 ODNO=${orderId} 매칭 row 없음`)
+      return null
+    }
+
+    const executedQty = Number(row.tot_ccld_qty ?? row.ft_ccld_qty ?? 0)
+    const avgPriceRaw = Number(row.avg_prvs ?? row.ft_ccld_unpr3 ?? 0)
+    if (!Number.isFinite(executedQty) || executedQty < 0) return null
+
+    return {
+      executedQty,
+      avgPrice: avgPriceRaw > 0 ? avgPriceRaw : null,
+    }
+  } catch (e: unknown) {
+    if (isAbortError(e)) {
+      console.info('[KisService] inquireCcnl abort (모드 전환)')
+      return null
+    }
+    const msg = e instanceof Error ? e.message : 'unknown'
+    console.warn('[KisService] inquireCcnl 호출 실패:', msg)
+    return null
+  }
+}
 
 function buildKisHeaders(appKey: string, appSecret: string, trId: string) {
   return {
