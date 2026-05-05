@@ -178,6 +178,13 @@ export const KisService = {
    * isPaperTrading 인자는 저장 대상 모드(현재 입력 폼이 paper 키인지 real 키인지) 를 명시한다.
    * 호출 시점의 활성 모드와 저장 대상 모드가 일치할 때만 토큰 발급을 시도하고,
    * 다른 모드 키 등록 시는 token 발급을 건너뛴다 — 활성 모드와 무관한 백그라운드 등록을 허용.
+   *
+   * 옛 토큰 명시 무효화 (review hotfix #1):
+   *   키가 "수정"되면 옛 appKey 로 발급된 keytar 의 access token 은 더 이상 유효하지 않다.
+   *   EGW00133 (1초 1회 발급 제한) 시 loadTokenFromVaultForFallback 이 옛 토큰을 부활시키면
+   *   새 키와 옛 토큰이 결합되어 KIS 가 거부 (정합성 깨짐).
+   *   따라서 saveCredentials 는 항상 해당 모드의 token slot 을 정리.
+   *   활성 모드와 일치하면 메모리/timer/in-flight 도 함께 reset.
    */
   async saveCredentials(
     appKey: string,
@@ -188,6 +195,60 @@ export const KisService = {
     await keytar.setPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading), appKey)
     await keytar.setPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading), appSecret)
     await keytar.setPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading), accountNo)
+
+    // 옛 키 기준의 access token 은 새 키와 결합 시 정합성이 깨지므로 항상 해당 모드 slot 정리.
+    // 비활성 모드여도 다음 활성화 시 재발급되도록 (옛 토큰 부활 차단).
+    await keytar.deletePassword(KEYTAR_SERVICE, tokenKey(isPaperTrading))
+    await keytar.deletePassword(KEYTAR_SERVICE, expiryKey(isPaperTrading))
+
+    // 활성 모드와 일치할 때만 메모리/timer/in-flight 를 reset — 비활성 모드 운영 영향 없음.
+    if (isPaperTrading === mainState.isPaperTrading) {
+      mainState.setKisAccessToken(null)
+      if (refreshTimer) {
+        clearTimeout(refreshTimer)
+        refreshTimer = null
+      }
+      tokenRefreshAttempts = 0
+      issueTokenInFlight = null
+      getBalanceInFlight = null
+    }
+  },
+
+  /**
+   * 모드별 마스킹된 자격증명 조회 (A3).
+   * UI 카드에 등록 여부 + 일부 식별 가능한 일부 prefix/suffix 만 표시하기 위함.
+   *
+   * 보안:
+   *   - **appSecret 은 절대 응답에 포함하지 않는다.** 사용자가 다시 보고 싶다면 재등록(수정) 흐름으로만.
+   *   - appKey/accountNo 도 평문이 아니라 마스킹 형식으로 노출 (prefix + 마스크 + suffix).
+   *
+   * 마스킹 규칙:
+   *   - appKey: 16자 이상 → `prefix4 + **** + suffix4`, 그 외(8자 미만 포함) → `****` (전체 마스킹)
+   *   - accountNo: 8자 이상 → `prefix4 + **** + suffix2`, 그 외 → `****` (전체 마스킹)
+   *
+   * 모드별 키 미등록(appKey/accountNo 어느 하나라도 누락)이면 해당 모드는 `null` 반환.
+   * (appSecret 등록 여부는 반환에 영향 없음 — 표시 페이로드에 포함되지 않으므로.)
+   */
+  async getMaskedCredentials(): Promise<{
+    paper: { appKeyMasked: string; accountNoMasked: string } | null
+    real: { appKeyMasked: string; accountNoMasked: string } | null
+  }> {
+    const [pk, pa, rk, ra] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
+    ])
+    return {
+      paper:
+        pk && pa
+          ? { appKeyMasked: maskAppKey(pk), accountNoMasked: maskAccountNo(pa) }
+          : null,
+      real:
+        rk && ra
+          ? { appKeyMasked: maskAppKey(rk), accountNoMasked: maskAccountNo(ra) }
+          : null,
+    }
   },
 
   /**
@@ -624,6 +685,32 @@ export async function migrateLegacyKeysIfNeeded(): Promise<void> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * AppKey 마스킹.
+ * 16자 이상이면 prefix 4 + suffix 4 노출 (예: `PSDK****ABCD`).
+ * 그 외(8자 미만 포함, 8~15자도 prefix/suffix 가 겹쳐 정보 노출 — 보수적으로 전체 마스킹)
+ *
+ * 호출 측은 keytar 에서 키를 읽은 직후 이 함수를 통해서만 노출한다 — 평문이
+ * IPC 페이로드/렌더러 메모리에 박히는 것을 차단.
+ */
+export function maskAppKey(appKey: string): string {
+  if (appKey.length >= 16) {
+    return `${appKey.slice(0, 4)}****${appKey.slice(-4)}`
+  }
+  return '****'
+}
+
+/**
+ * 계좌번호 마스킹.
+ * 8자 이상이면 prefix 4 + suffix 2 노출 (예: `5012****34`), 그 외는 전체 마스킹.
+ */
+export function maskAccountNo(accountNo: string): string {
+  if (accountNo.length >= 8) {
+    return `${accountNo.slice(0, 4)}****${accountNo.slice(-2)}`
+  }
+  return '****'
 }
 
 /**

@@ -11,6 +11,13 @@ export const IPC_CHANNELS = {
   VAULT_SAVE: 'terminal:vault:save-credentials',
   VAULT_HAS: 'terminal:vault:has-credentials',
   VAULT_DELETE: 'terminal:vault:delete-credentials',
+  /**
+   * 모드별 마스킹된 자격증명 조회 (A3).
+   * 응답: MaskedCredentialsResponse — appSecret 은 절대 포함되지 않는다.
+   * SettingsPage 의 카드 표시 / TopHeader 의 식별 표시 등 "어떤 키가 등록되어 있는가" 를
+   * 사용자가 인지하기 위한 최소 정보만 노출.
+   */
+  VAULT_GET_MASKED: 'terminal:vault:get-masked-credentials',
 
   KIS_GET_BALANCE: 'terminal:kis:get-balance',
   KIS_PLACE_ORDER: 'terminal:kis:place-order',
@@ -141,3 +148,18 @@ export const IPC_CHANNELS = {
    */
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
 } as const
+
+/**
+ * VAULT_GET_MASKED 응답 타입 — 모드별 마스킹된 자격증명.
+ *
+ * 각 모드 키:
+ *   - 등록되지 않음 (appKey 또는 accountNo 누락) → `null`
+ *   - 등록됨 → `{ appKeyMasked, accountNoMasked }` (prefix + 마스크 + suffix)
+ *
+ * appSecret 은 응답에 포함되지 않는다 — 사용자가 다시 보고 싶다면 재등록(수정) 흐름으로만.
+ * Renderer 는 이 응답을 렌더 후 보존하지 말고 (예: zustand 에 박지 말고) drawer/카드 닫힐 때 폐기.
+ */
+export interface MaskedCredentialsResponse {
+  paper: { appKeyMasked: string; accountNoMasked: string } | null
+  real: { appKeyMasked: string; accountNoMasked: string } | null
+}
