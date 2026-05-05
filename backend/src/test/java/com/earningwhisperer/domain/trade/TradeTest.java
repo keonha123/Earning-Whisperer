@@ -198,12 +198,47 @@ class TradeTest {
     }
 
     @Test
-    @DisplayName("EXPIRED 상태에서 executed() 호출 시 TradeStateConflictException")
-    void EXPIRED에서_executed_시도는_충돌() {
+    @DisplayName("EXPIRED → EXECUTED 정정 전이 허용 — 만료 후 KIS 체결 도착 시 장부 정합성 회복")
+    void EXPIRED에서_executed_정정_허용() {
+        // Arrange — TTL 만료된 Trade
         Trade trade = pendingTrade();
         trade.expire();
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
 
-        assertThatThrownBy(() -> trade.executed(3, 125.50, "BROKER-1"))
+        // Act — 만료 후 KIS 가 실제 체결 결과 콜백을 보냄
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Assert — 정정 전이 성공 + 체결 정보 반영
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
+        assertThat(trade.getExecutedPrice()).isEqualTo(125.50);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-LATE-1");
+        assertThat(trade.getOrderQty()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("EXPIRED → EXECUTED 정정 후 같은 입력 재호출은 멱등")
+    void EXPIRED_정정_후_동일_입력_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.expire();
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Act — 같은 페이로드의 retry 콜백
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-LATE-1");
+    }
+
+    @Test
+    @DisplayName("EXPIRED → EXECUTED 정정 후 다른 입력 재호출은 충돌")
+    void EXPIRED_정정_후_다른_입력_재호출은_충돌() {
+        Trade trade = pendingTrade();
+        trade.expire();
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Act & Assert — 정정된 EXECUTED 도 멱등 분기는 그대로 작동
+        assertThatThrownBy(() -> trade.executed(5, 130.00, "BROKER-LATE-2"))
                 .isInstanceOf(TradeStateConflictException.class);
     }
 

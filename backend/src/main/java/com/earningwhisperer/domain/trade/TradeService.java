@@ -164,6 +164,9 @@ public class TradeService {
             if (before == TradeStatus.EXECUTED) {
                 log.warn("[TradeService] 멱등 콜백 감지(EXECUTED 재수신) - tradeId={} brokerOrderId={}",
                         tradeId, request.getBrokerOrderId());
+            } else if (before == TradeStatus.EXPIRED) {
+                log.warn("[TradeService] late EXECUTED 정정 — 만료 후 KIS 체결 도착 tradeId={} brokerOrderId={} qty={}",
+                        tradeId, request.getBrokerOrderId(), qty);
             } else {
                 log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
                         tradeId, request.getBrokerOrderId(), qty);

@@ -144,6 +144,31 @@ class TradeServiceTest {
     }
 
     @Test
+    @DisplayName("callback EXPIRED 상태에서 EXECUTED 수신 시 정정 전이 — trade.executed 호출 + save")
+    void callback_EXPIRED에서_EXECUTED_수신시_정정() {
+        // Arrange — 이미 TTL 만료로 EXPIRED 된 Trade
+        Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
+        given(trade.getStatus()).willReturn(TradeStatus.EXPIRED);
+        given(tradeRepository.findByIdForUpdate(99L)).willReturn(Optional.of(trade));
+
+        TradeCallbackRequest request = mock(TradeCallbackRequest.class);
+        given(request.getStatus()).willReturn("EXECUTED");
+        given(request.getExecutedQty()).willReturn(3);
+        given(request.getExecutedPrice()).willReturn(125.50);
+        given(request.getBrokerOrderId()).willReturn("BROKER-LATE-1");
+
+        // Act — 만료 후 KIS 가 실제 체결 결과를 보냄
+        tradeService.processCallback(99L, 1L, request);
+
+        // Assert — 도메인 메서드 위임 + 저장. 정정 자체는 Trade.executed 단위 테스트에서 검증.
+        verify(trade).executed(3, 125.50, "BROKER-LATE-1");
+        verify(tradeRepository).save(trade);
+    }
+
+    @Test
     @DisplayName("callback FAILED 시 Trade 상태가 FAILED로 변경된다")
     void callback_FAILED_정상처리() {
         // Arrange

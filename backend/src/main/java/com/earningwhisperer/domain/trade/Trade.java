@@ -139,6 +139,8 @@ public class Trade {
      * EXECUTED 전이. Trading Terminal 의 콜백은 네트워크 retry 로 동일 페이로드가 중복 도착할 수 있어
      * 같은 입력에 대해서는 멱등으로 동작한다.
      * - PENDING → EXECUTED 정상 전이
+     * - EXPIRED → EXECUTED 정정 전이 (백엔드 TTL 추정이 틀렸음을 KIS 가 사후 확인 → 장부 정합성 회복).
+     *   late 정정 로깅은 호출 측(Service 레이어) 에서 담당.
      * - 이미 EXECUTED 이고 (executedQty, executedPrice, brokerOrderId) 가 모두 같으면 no-op
      * - 그 외(다른 값으로 EXECUTED, FAILED 에서 전이 시도)는 TradeStateConflictException
      */
@@ -152,9 +154,9 @@ public class Trade {
             throw new TradeStateConflictException(
                     "이미 EXECUTED 인 Trade 에 다른 체결 결과 콜백 — tradeId=" + this.id);
         }
-        if (this.status != TradeStatus.PENDING) {
+        if (this.status != TradeStatus.PENDING && this.status != TradeStatus.EXPIRED) {
             throw new TradeStateConflictException(
-                    "PENDING 에서만 EXECUTED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
+                    "PENDING/EXPIRED 에서만 EXECUTED 전이 가능 — 현재 status=" + this.status + " tradeId=" + this.id);
         }
         this.executedQty = executedQty;
         this.executedPrice = executedPrice;
