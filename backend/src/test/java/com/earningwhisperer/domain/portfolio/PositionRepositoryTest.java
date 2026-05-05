@@ -24,6 +24,7 @@ class PositionRepositoryTest {
     @Autowired private UserRepository userRepository;
 
     private User user;
+    private final long brokerAccountId = 100L;
 
     @BeforeEach
     void setUp() {
@@ -32,61 +33,69 @@ class PositionRepositoryTest {
     }
 
     @Test
-    @DisplayName("findByUserId - 해당 사용자의 모든 position 반환")
-    void findByUserId_사용자별_position_반환() {
-        positionRepository.save(Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build());
-        positionRepository.save(Position.builder().user(user).ticker("TSLA").quantity(5).avgPrice(200.0).build());
+    @DisplayName("findByBrokerAccountId - 해당 broker 의 모든 position 반환")
+    void findByBrokerAccountId_broker별_position_반환() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("TSLA").quantity(5).avgPrice(200.0).build());
 
-        List<Position> result = positionRepository.findByUserId(user.getId());
+        List<Position> result = positionRepository.findByBrokerAccountId(brokerAccountId);
 
         assertThat(result).hasSize(2);
     }
 
     @Test
-    @DisplayName("findByUserIdAndTicker - 특정 ticker 조회")
-    void findByUserIdAndTicker_특정_ticker() {
-        positionRepository.save(Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build());
+    @DisplayName("findByBrokerAccountIdAndTicker - 특정 ticker 조회")
+    void findByBrokerAccountIdAndTicker_특정_ticker() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
 
-        assertThat(positionRepository.findByUserIdAndTicker(user.getId(), "NVDA")).isPresent();
-        assertThat(positionRepository.findByUserIdAndTicker(user.getId(), "AAPL")).isEmpty();
+        assertThat(positionRepository.findByBrokerAccountIdAndTicker(brokerAccountId, "NVDA")).isPresent();
+        assertThat(positionRepository.findByBrokerAccountIdAndTicker(brokerAccountId, "AAPL")).isEmpty();
     }
 
     @Test
-    @DisplayName("deleteByUserIdAndTickerNotIn - 보낸 목록에 없는 ticker 만 삭제")
-    void deleteByUserIdAndTickerNotIn_누락_삭제() {
-        positionRepository.save(Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build());
-        positionRepository.save(Position.builder().user(user).ticker("TSLA").quantity(5).avgPrice(200.0).build());
-        positionRepository.save(Position.builder().user(user).ticker("AAPL").quantity(3).avgPrice(180.0).build());
+    @DisplayName("deleteByBrokerAccountIdAndTickerNotIn - 보낸 목록에 없는 ticker 만 삭제")
+    void deleteByBrokerAccountIdAndTickerNotIn_누락_삭제() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("TSLA").quantity(5).avgPrice(200.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("AAPL").quantity(3).avgPrice(180.0).build());
 
-        // NVDA, TSLA 만 유지 (AAPL 은 사용자가 매도해서 더이상 보유 안 함)
-        int deleted = positionRepository.deleteByUserIdAndTickerNotIn(user.getId(), Set.of("NVDA", "TSLA"));
+        int deleted = positionRepository.deleteByBrokerAccountIdAndTickerNotIn(
+                brokerAccountId, Set.of("NVDA", "TSLA"));
 
         assertThat(deleted).isEqualTo(1);
-        List<Position> remaining = positionRepository.findByUserId(user.getId());
+        List<Position> remaining = positionRepository.findByBrokerAccountId(brokerAccountId);
         assertThat(remaining).extracting(Position::getTicker).containsExactlyInAnyOrder("NVDA", "TSLA");
     }
 
     @Test
-    @DisplayName("deleteByUserId - 사용자의 모든 position 삭제")
-    void deleteByUserId_전체_삭제() {
-        positionRepository.save(Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build());
-        positionRepository.save(Position.builder().user(user).ticker("TSLA").quantity(5).avgPrice(200.0).build());
+    @DisplayName("deleteByBrokerAccountId - 해당 broker 의 모든 position 삭제")
+    void deleteByBrokerAccountId_전체_삭제() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(brokerAccountId)
+                .ticker("TSLA").quantity(5).avgPrice(200.0).build());
 
-        int deleted = positionRepository.deleteByUserId(user.getId());
+        int deleted = positionRepository.deleteByBrokerAccountId(brokerAccountId);
 
         assertThat(deleted).isEqualTo(2);
-        assertThat(positionRepository.findByUserId(user.getId())).isEmpty();
+        assertThat(positionRepository.findByBrokerAccountId(brokerAccountId)).isEmpty();
     }
 
     @Test
-    @DisplayName("unique(user_id, ticker) - 다른 사용자는 같은 ticker 보유 가능")
-    void unique_제약_사용자별_분리() {
-        User otherUser = userRepository.save(User.builder()
-                .email("o@test.com").password("pwd").nickname("o").build());
-        positionRepository.save(Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build());
-        positionRepository.save(Position.builder().user(otherUser).ticker("NVDA").quantity(20).avgPrice(130.0).build());
+    @DisplayName("unique(broker_account_id, ticker) - 다른 broker_account 면 같은 ticker 보유 가능")
+    void unique_제약_broker별_분리() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(100L)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(200L)
+                .ticker("NVDA").quantity(20).avgPrice(130.0).build());
 
-        assertThat(positionRepository.findByUserId(user.getId())).hasSize(1);
-        assertThat(positionRepository.findByUserId(otherUser.getId())).hasSize(1);
+        assertThat(positionRepository.findByBrokerAccountId(100L)).hasSize(1);
+        assertThat(positionRepository.findByBrokerAccountId(200L)).hasSize(1);
     }
 }

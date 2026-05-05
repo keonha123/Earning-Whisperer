@@ -69,13 +69,20 @@ public class TradingSignalSubscriber {
         // Step 2: 사용자별 Trade 생성 + Private WebSocket 라우팅
         for (UserProcessedSignal result : userResults) {
             try {
+                // 활성 BrokerAccount 가 없는 사용자는 SignalService 가 brokerAccountId=null 로 반환
+                // → 여기서 Trade 생성 건너뜀.
+                if (result.brokerAccountId() == null) {
+                    continue;
+                }
                 PendingTradeResult tradeResult = tradeService.createPendingTrade(
-                        result.user(), signal.getTicker(), result.action(), result.mode(),
+                        result.user(), result.brokerAccountId(), signal.getTicker(),
+                        result.action(), result.mode(),
                         result.orderRatio(), result.aiScore());
 
                 if (tradeResult != null) {
                     TradeCommandMessage command = TradeCommandMessage.builder()
                             .tradeId(tradeResult.tradeId())
+                            .brokerAccountId(result.brokerAccountId())
                             .action(result.action().name())
                             .orderRatio(result.orderRatio())
                             .ticker(signal.getTicker())

@@ -90,24 +90,25 @@ class TradeRepositoryTest {
     }
 
     @Test
-    @DisplayName("findByUserIdAndStatusAndCreatedAtAfter - threshold 이후 PENDING 만 반환")
-    void findByUserIdAndStatusAndCreatedAtAfter_미만료_PENDING_반환() {
+    @DisplayName("findByBrokerAccountIdAndStatusAndCreatedAtAfter - threshold 이후 PENDING 만 반환")
+    void findByBrokerAccountIdAndStatusAndCreatedAtAfter_미만료_PENDING_반환() {
         // Arrange — PENDING 2건 저장 (현재 시각 기준)
-        tradeRepository.save(buildTrade(user, "NVDA", TradeAction.BUY));
-        tradeRepository.save(buildTrade(user, "TSLA", TradeAction.SELL));
+        long brokerAccountId = 100L;
+        tradeRepository.save(buildTrade(user, brokerAccountId, "NVDA", TradeAction.BUY));
+        tradeRepository.save(buildTrade(user, brokerAccountId, "TSLA", TradeAction.SELL));
 
         LocalDateTime threshold = LocalDateTime.now().minusSeconds(30);
 
         // Act
         List<Trade> result = tradeRepository
-                .findByUserIdAndStatusAndCreatedAtAfter(user.getId(), TradeStatus.PENDING, threshold);
+                .findByBrokerAccountIdAndStatusAndCreatedAtAfter(brokerAccountId, TradeStatus.PENDING, threshold);
 
         // Assert — threshold 이후에 만들어졌으므로 모두 반환
         assertThat(result).hasSize(2);
 
         // Act2 — threshold 가 미래이면 결과 없음
         List<Trade> empty = tradeRepository
-                .findByUserIdAndStatusAndCreatedAtAfter(user.getId(), TradeStatus.PENDING,
+                .findByBrokerAccountIdAndStatusAndCreatedAtAfter(brokerAccountId, TradeStatus.PENDING,
                         LocalDateTime.now().plusMinutes(1));
 
         // Assert
@@ -118,7 +119,7 @@ class TradeRepositoryTest {
     @DisplayName("expirePendingBefore - threshold 이전 PENDING 만 EXPIRED 로 일괄 update")
     void expirePendingBefore_PENDING_만_EXPIRED로_전환() {
         // Arrange
-        Trade pending = tradeRepository.save(buildTrade(user, "NVDA", TradeAction.BUY));
+        Trade pending = tradeRepository.save(buildTrade(user, 100L, "NVDA", TradeAction.BUY));
         Long pendingId = pending.getId();
 
         // Act — 미래 threshold 면 모두 만료 대상
@@ -136,8 +137,13 @@ class TradeRepositoryTest {
     }
 
     private Trade buildTrade(User owner, String ticker, TradeAction side) {
+        return buildTrade(owner, 100L, ticker, side);
+    }
+
+    private Trade buildTrade(User owner, long brokerAccountId, String ticker, TradeAction side) {
         return Trade.builder()
                 .user(owner)
+                .brokerAccountId(brokerAccountId)
                 .ticker(ticker)
                 .side(side)
                 .orderType(OrderType.MARKET)

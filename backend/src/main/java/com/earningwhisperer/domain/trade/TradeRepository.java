@@ -19,11 +19,11 @@ public interface TradeRepository extends JpaRepository<Trade, Long> {
     Page<Trade> findByUserId(Long userId, Pageable pageable);
 
     /**
-     * Terminal 재접속 시 미만료 PENDING 명령을 복원하기 위한 조회.
+     * Terminal 재접속 시 활성 BrokerAccount 의 미만료 PENDING 명령을 복원하기 위한 조회.
      * createdAt &gt; threshold 인 PENDING 만 반환한다 (TTL 내).
      */
-    List<Trade> findByUserIdAndStatusAndCreatedAtAfter(
-            Long userId, TradeStatus status, LocalDateTime threshold);
+    List<Trade> findByBrokerAccountIdAndStatusAndCreatedAtAfter(
+            Long brokerAccountId, TradeStatus status, LocalDateTime threshold);
 
     /**
      * TTL 초과 PENDING 일괄 EXPIRED 전환 — 단일 UPDATE 로 race 차단.

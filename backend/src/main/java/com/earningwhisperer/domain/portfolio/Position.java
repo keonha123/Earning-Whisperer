@@ -22,10 +22,12 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "positions",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_position_user_ticker", columnNames = {"user_id", "ticker"})
+                @UniqueConstraint(name = "uk_position_account_ticker",
+                        columnNames = {"broker_account_id", "ticker"})
         },
         indexes = {
-                @Index(name = "idx_position_user", columnList = "user_id")
+                @Index(name = "idx_position_user", columnList = "user_id"),
+                @Index(name = "idx_position_broker_account", columnList = "broker_account_id")
         })
 public class Position extends BaseEntity {
 
@@ -36,6 +38,13 @@ public class Position extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    /**
+     * 보유종목이 속한 BrokerAccount. 모드별/계정별 포지션 분리의 핵심 식별자.
+     * unique(broker_account_id, ticker) 로 한 계정 내 동일 종목 중복 방지.
+     */
+    @Column(name = "broker_account_id", nullable = false)
+    private Long brokerAccountId;
 
     @Column(nullable = false, length = 20)
     private String ticker;
@@ -50,8 +59,9 @@ public class Position extends BaseEntity {
     private LocalDateTime syncedAt;
 
     @Builder
-    public Position(User user, String ticker, Integer quantity, Double avgPrice) {
+    public Position(User user, Long brokerAccountId, String ticker, Integer quantity, Double avgPrice) {
         this.user = user;
+        this.brokerAccountId = brokerAccountId;
         this.ticker = ticker;
         this.quantity = quantity;
         this.avgPrice = avgPrice;

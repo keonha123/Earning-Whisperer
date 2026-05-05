@@ -29,6 +29,7 @@ class TradeTest {
         // Arrange & Act
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -48,6 +49,7 @@ class TradeTest {
         // Arrange
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -71,6 +73,7 @@ class TradeTest {
         // Arrange — PENDING 시점엔 orderQty=0 센티널
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -92,6 +95,7 @@ class TradeTest {
         // Arrange
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -208,6 +212,7 @@ class TradeTest {
     void builder_orderRatio_aiScore_보존() {
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)

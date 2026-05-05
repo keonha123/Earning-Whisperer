@@ -1,5 +1,7 @@
 package com.earningwhisperer.domain.user;
 
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +17,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -25,6 +28,7 @@ class OAuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PortfolioSettingsRepository portfolioSettingsRepository;
+    @Mock private BrokerAccountService brokerAccountService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
 
@@ -81,14 +85,14 @@ class OAuthServiceTest {
                 .willReturn(Optional.empty());
         given(passwordEncoder.encode(anyString())).willReturn("encoded-sentinel");
 
-        User savedUser = User.builder()
-                .email("kakao_9876543210@earningwhisperer.local")
-                .password("encoded-sentinel")
-                .nickname("카카오사용자_3210")
-                .build();
+        User savedUser = mock(User.class);
+        given(savedUser.getId()).willReturn(50L);
         given(userRepository.save(any(User.class))).willReturn(savedUser);
-        given(refreshTokenService.issue(savedUser.getId()))
+        given(refreshTokenService.issue(50L))
                 .willReturn(new TokenPair("at", "rt"));
+        BrokerAccount brokerAccount = mock(BrokerAccount.class);
+        given(brokerAccount.getId()).willReturn(100L);
+        given(brokerAccountService.ensure(any(), any(), anyBoolean())).willReturn(brokerAccount);
 
         TokenPair result = oAuthService.socialLogin(kakaoProfile);
 
@@ -101,20 +105,25 @@ class OAuthServiceTest {
         assertThat(created.getProviderId()).isEqualTo("9876543210");
         assertThat(created.getEmail()).isEqualTo("kakao_9876543210@earningwhisperer.local");
         assertThat(created.getNickname()).isEqualTo("카카오사용자_3210");
+        verify(brokerAccountService).activateIfFirst(50L, 100L);
     }
 
     @Test
-    @DisplayName("신규 사용자 → 자동 생성 + 기본 PortfolioSettings")
+    @DisplayName("신규 사용자 → 자동 생성 + 기본 PortfolioSettings + KIS 모의 BrokerAccount")
     void 신규_소셜_사용자_생성() {
         given(userRepository.findByProviderAndProviderId(any(), anyString()))
                 .willReturn(Optional.empty());
         given(userRepository.findByEmail(anyString())).willReturn(Optional.empty());
         given(passwordEncoder.encode(anyString())).willReturn("encoded-sentinel");
 
-        User savedUser = User.builder().email("user@gmail.com").password("enc").nickname("Test").build();
+        User savedUser = mock(User.class);
+        given(savedUser.getId()).willReturn(60L);
         given(userRepository.save(any(User.class))).willReturn(savedUser);
-        given(refreshTokenService.issue(savedUser.getId()))
+        given(refreshTokenService.issue(60L))
                 .willReturn(new TokenPair("at", "rt"));
+        BrokerAccount brokerAccount = mock(BrokerAccount.class);
+        given(brokerAccount.getId()).willReturn(100L);
+        given(brokerAccountService.ensure(any(), any(), anyBoolean())).willReturn(brokerAccount);
 
         oAuthService.socialLogin(googleProfile);
 
@@ -125,5 +134,6 @@ class OAuthServiceTest {
         assertThat(created.getProviderId()).isEqualTo("google-sub-123");
 
         verify(portfolioSettingsRepository).save(any(PortfolioSettings.class));
+        verify(brokerAccountService).activateIfFirst(60L, 100L);
     }
 }
