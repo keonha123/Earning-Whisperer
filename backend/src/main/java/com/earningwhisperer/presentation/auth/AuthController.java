@@ -20,11 +20,12 @@ import java.util.Map;
  * 인증 REST API.
  *
  * POST /api/v1/auth/signup  — 회원가입
- * POST /api/v1/auth/login   — 로그인 (Access + Refresh 토큰 발급)
- * POST /api/v1/auth/refresh — 토큰 갱신 (Refresh Token 로테이션)
+ * POST /api/v1/auth/login   — 로그인 (Access 토큰 + HttpOnly refresh 쿠키 발급)
+ * POST /api/v1/auth/refresh — 토큰 갱신 (Refresh Token 로테이션, 쿠키 only)
  * POST /api/v1/auth/logout  — 로그아웃 (Refresh Token 폐기)
  *
- * Refresh Token 전송: Cookie(브라우저) / X-Refresh-Token 헤더(Electron) / Body(fallback)
+ * Refresh Token 은 HttpOnly + SameSite=Strict 쿠키로만 전달된다. 응답 헤더 / body 에는 노출하지 않는다.
+ * 클라이언트(웹/Electron) 는 fetch 의 credentials: 'include' 로 자동 첨부.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -32,7 +33,6 @@ import java.util.Map;
 public class AuthController {
 
     private static final String REFRESH_COOKIE_NAME = "refresh_token";
-    private static final String REFRESH_HEADER_NAME = "X-Refresh-Token";
     private static final String COOKIE_PATH = "/api/v1/auth";
 
     private final AuthService authService;
@@ -56,11 +56,8 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(
-            HttpServletRequest request,
-            @RequestBody(required = false) RefreshRequest body) {
-
-        String rt = extractRefreshToken(request, body);
+    public ResponseEntity<AuthResponse> refresh(HttpServletRequest request) {
+        String rt = extractRefreshTokenFromCookie(request);
         if (rt == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -76,11 +73,8 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(
-            HttpServletRequest request,
-            @RequestBody(required = false) RefreshRequest body) {
-
-        String rt = extractRefreshToken(request, body);
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        String rt = extractRefreshTokenFromCookie(request);
         if (rt != null) {
             authService.logout(rt);
         }
@@ -109,30 +103,15 @@ public class AuthController {
 
         return ResponseEntity.status(status)
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .header(REFRESH_HEADER_NAME, pair.refreshToken())
-                .body(new AuthResponse(pair.accessToken(), pair.refreshToken()));
+                .body(new AuthResponse(pair.accessToken()));
     }
 
-    /**
-     * Refresh Token 추출: Cookie -> X-Refresh-Token 헤더 -> Body 순서.
-     */
-    private String extractRefreshToken(HttpServletRequest request, RefreshRequest body) {
-        // 1. Cookie
-        if (request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if (REFRESH_COOKIE_NAME.equals(cookie.getName())) {
-                    return cookie.getValue();
-                }
+    private String extractRefreshTokenFromCookie(HttpServletRequest request) {
+        if (request.getCookies() == null) return null;
+        for (Cookie cookie : request.getCookies()) {
+            if (REFRESH_COOKIE_NAME.equals(cookie.getName())) {
+                return cookie.getValue();
             }
-        }
-        // 2. Header
-        String header = request.getHeader(REFRESH_HEADER_NAME);
-        if (header != null && !header.isBlank()) {
-            return header;
-        }
-        // 3. Body fallback
-        if (body != null && body.getRefreshToken() != null && !body.getRefreshToken().isBlank()) {
-            return body.getRefreshToken();
         }
         return null;
     }

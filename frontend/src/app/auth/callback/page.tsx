@@ -10,7 +10,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8082";
 function CallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { setTokens } = useAuthStore();
+  const { setAccessToken } = useAuthStore();
   const calledRef = useRef(false);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ function CallbackInner() {
         }
 
         const data = await res.json();
-        setTokens(data.access_token, data.refresh_token);
+        setAccessToken(data.access_token);
         router.replace("/");
       } catch {
         router.replace("/auth?error=oauth_failed");
@@ -56,7 +56,7 @@ function CallbackInner() {
         sessionStorage.removeItem("oauth_provider");
       }
     })();
-  }, [searchParams, router, setTokens]);
+  }, [searchParams, router, setAccessToken]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">

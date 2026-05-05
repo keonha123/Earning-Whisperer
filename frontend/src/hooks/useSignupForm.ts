@@ -30,7 +30,7 @@ interface UseSignupFormOptions {
 
 export function useSignupForm({ onLoadingChange, onSwitchToLogin }: UseSignupFormOptions = {}) {
   const router = useRouter();
-  const { setTokens } = useAuthStore();
+  const { setAccessToken } = useAuthStore();
   const abortRef = useRef<AbortController | null>(null);
 
   const [email, setEmail] = useState("");
@@ -119,7 +119,7 @@ export function useSignupForm({ onLoadingChange, onSwitchToLogin }: UseSignupFor
       }
 
       const data = await loginRes.json();
-      setTokens(data.access_token, data.refresh_token);
+      setAccessToken(data.access_token);
       router.push("/");
     } catch (err) {
       if ((err as Error).name === "AbortError") return;

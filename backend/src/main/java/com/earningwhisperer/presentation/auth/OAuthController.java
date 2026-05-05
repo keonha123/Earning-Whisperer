@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 public class OAuthController {
 
     private static final String REFRESH_COOKIE_NAME = "refresh_token";
-    private static final String REFRESH_HEADER_NAME = "X-Refresh-Token";
     private static final String COOKIE_PATH = "/api/v1/auth";
 
     private final Map<OAuthProvider, OAuthClient> clients;
@@ -89,7 +88,6 @@ public class OAuthController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
-                .header(REFRESH_HEADER_NAME, pair.refreshToken())
-                .body(new AuthResponse(pair.accessToken(), pair.refreshToken()));
+                .body(new AuthResponse(pair.accessToken()));
     }
 }

@@ -33,6 +33,9 @@ jwt:
   expiration-ms: 900000  # 15분 (ms)
   refresh-expiration-seconds: 604800  # 7일 (s)
   cookie-secure: ${JWT_COOKIE_SECURE:false}  # 운영: true (HTTPS only)
+  # 환경별 issuer/audience 로 토큰 교차 통용 차단. 환경마다 다르게 주입 권장.
+  issuer: ${JWT_ISSUER:earning-whisperer}
+  audience: ${JWT_AUDIENCE:earning-whisperer-api}
 
 oauth:
   google:
@@ -58,6 +61,12 @@ app:
     # 운영/배포 환경에서는 반드시 환경변수 INTERNAL_SECRET 으로 주입.
     # 미설정(빈 문자열) 시 InternalSecretFilter 가 모든 internal 요청을 401 로 차단한다.
     secret: ${INTERNAL_SECRET:}
+
+  cors:
+    # 콤마 구분 origin 목록. 운영 도메인 / vercel 프리뷰 패턴을 환경변수 CORS_ALLOWED_ORIGINS 로 주입.
+    # 정확한 origin (스킴+호스트+포트) 또는 와일드카드 패턴 (예: https://*-keonha123.vercel.app) 모두 허용.
+    # 미설정 시 dev 로컬 호스트(3000/5173) 만 허용.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
 
   trade:
     # PENDING Trade 명령의 유효시간(초). 발행 후 이 시간 내에 Trading Terminal 이
