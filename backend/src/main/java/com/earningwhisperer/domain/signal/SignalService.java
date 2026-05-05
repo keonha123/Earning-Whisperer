@@ -80,29 +80,47 @@ public class SignalService {
                 Double cashBalance = active.getCashBalance();
 
                 TradeAction action;
+                boolean degradedFromSell = false;
                 if (cashBalance == null || cashBalance <= 0) {
                     log.info("[SignalService] cashBalance 미동기화/0 — fail-safe HOLD userId={} brokerAccountId={}",
                             user.getId(), active.getId());
                     action = TradeAction.HOLD;
                 } else {
-                    double currentPositionRatio = positionService.computeBookRatio(
+                    double currentPositionRatio = positionService.computePositionRatio(
                             active.getId(), signal.getTicker(), cashBalance);
 
                     action = RuleEngine.evaluate(
                             aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown,
                             currentPositionRatio, ratio, maxPositionRatio);
+
+                    // SELL 미보유 가드 — RuleEngine 은 순수 계산만 담당, 정합성 가드는 SignalService 책임.
+                    // 활성 broker 의 ticker 보유 0 인데 SELL 이면 HOLD 로 강등 → 무의미한 PENDING/FAILED
+                    // Trade 라운드트립 + 사용자 거래내역 노이즈 차단. 강등된 HOLD 는 SignalHistory 저장도 skip
+                    // → 사용자가 거래하지 않은 신호가 다음 BUY 의 쿨다운을 트리거하지 않도록 한다
+                    // (cooldown 은 최신 SignalHistory 기준이므로). 활성 broker 미설정 시 SignalHistory skip 정책과 동일한 결.
+                    if (action == TradeAction.SELL) {
+                        int holding = positionService.getHoldingQuantity(active.getId(), signal.getTicker());
+                        if (holding <= 0) {
+                            log.info("[SignalService] SELL 시그널이지만 미보유 — HOLD 강등 + 기록 skip userId={} ticker={}",
+                                    user.getId(), signal.getTicker());
+                            action = TradeAction.HOLD;
+                            degradedFromSell = true;
+                        }
+                    }
                 }
 
-                SignalHistory history = SignalHistory.builder()
-                        .user(user)
-                        .ticker(signal.getTicker())
-                        .aiScore(aiScore)
-                        .rationale(signal.getRationale())
-                        .textChunk(signal.getTextChunk())
-                        .action(action)
-                        .signalTimestamp(signal.getTimestamp())
-                        .build();
-                histories.add(history);
+                if (!degradedFromSell) {
+                    SignalHistory history = SignalHistory.builder()
+                            .user(user)
+                            .ticker(signal.getTicker())
+                            .aiScore(aiScore)
+                            .rationale(signal.getRationale())
+                            .textChunk(signal.getTextChunk())
+                            .action(action)
+                            .signalTimestamp(signal.getTimestamp())
+                            .build();
+                    histories.add(history);
+                }
 
                 results.add(new UserProcessedSignal(
                         user, active.getId(), action, aiScore, settings.getTradingMode(), ratio));

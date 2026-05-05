@@ -1,5 +1,7 @@
 package com.earningwhisperer.domain.portfolio;
 
+import com.earningwhisperer.domain.stock.DailyBarRepository;
+import com.earningwhisperer.domain.stock.TickerLatestClose;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.presentation.portfolio.PortfolioSyncRequest;
@@ -14,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 사용자 보유종목(Position) 관리.
@@ -29,6 +32,7 @@ public class PositionService {
 
     private final PositionRepository positionRepository;
     private final UserRepository userRepository;
+    private final DailyBarRepository dailyBarRepository;
 
     @Transactional(readOnly = true)
     public List<Position> getPositions(Long brokerAccountId) {
@@ -105,32 +109,84 @@ public class PositionService {
     }
 
     /**
-     * RuleEngine 용 ticker 의 매수 기준 비중 계산. 활성 BrokerAccount 의 cashBalance 와 보유종목으로 산출.
+     * RuleEngine 용 ticker 의 비중 계산. 활성 BrokerAccount 의 cashBalance 와 보유종목으로 산출.
      *
-     * <p>currentPositionRatio = (ticker bookValue) / (cashBalance + Σ all bookValues).
-     * cashBalance 가 null/0 이면 0 반환 (= 검증 우회). 호출 측이 fail-safe HOLD 처리.
+     * <p>시장 기준(daily_bar 의 가장 최근 close × quantity) 우선 + close 부재 시 매수 평균가 fallback.
+     * positionRatio = (ticker marketValue) / (cashBalance + Σ all marketValues).
      * ticker 미보유면 0 반환.
      *
-     * <p>실시간 가격이 아닌 매수 평균가 기반이라 보수적 추정치.
+     * <p>cashBalance ≤ 0 시 0 반환 — 단 호출 측이 cashBalance 미동기화/0 을 별도 fail-safe HOLD 로
+     * 처리한다는 가정. 본 메서드는 비중 분모가 0 이 되는 산술 오류 회피용으로만 0 을 반환하며,
+     * "검증 우회" 의미가 아니다. SignalService 가 cashBalance ≤ 0 을 RuleEngine 호출 전에
+     * HOLD 로 가로채는 정책 (SignalService.java) 으로 이 메서드의 0 반환이 BUY 가드 무력화로
+     * 이어지지 않는다.
+     *
+     * <p>daily_bar 는 1일 지연 데이터 — 실시간 시세 인프라 도입 전까지는 D-1 close 가 정확도 한계.
+     * fallback (avgPrice) 사용 시 운영 가시성을 위해 카운트 집계 후 비율에 따라 WARN/DEBUG 로깅한다.
      */
     @Transactional(readOnly = true)
-    public double computeBookRatio(Long brokerAccountId, String ticker, Double cashBalance) {
+    public double computePositionRatio(Long brokerAccountId, String ticker, Double cashBalance) {
         if (cashBalance == null || cashBalance <= 0) return 0.0;
 
         List<Position> positions = positionRepository.findByBrokerAccountId(brokerAccountId);
-        double totalBookValue = 0.0;
-        double tickerBookValue = 0.0;
+        if (positions.isEmpty()) return 0.0;
+
+        // 모든 보유 ticker 의 lastClose 를 일괄 batch fetch — N+1 회피.
+        Set<String> allTickers = positions.stream()
+                .map(Position::getTicker)
+                .collect(Collectors.toSet());
+        Map<String, Double> latestCloses = dailyBarRepository
+                .findLatestClosesByTickers(allTickers).stream()
+                .filter(t -> t.close() != null && t.close() > 0)
+                .collect(Collectors.toMap(TickerLatestClose::ticker, TickerLatestClose::close, (a, b) -> a));
+
+        double totalMarketValue = 0.0;
+        double tickerMarketValue = 0.0;
+        int fallbackCount = 0;
         for (Position p : positions) {
-            double v = p.bookValue();
-            totalBookValue += v;
+            // lastClose 없으면 avgPrice fallback (= 매수 기준).
+            Double close = latestCloses.get(p.getTicker());
+            if (close == null || close <= 0) {
+                fallbackCount++;
+            }
+            double price = (close != null && close > 0) ? close : p.getAvgPrice();
+            double v = price * p.getQuantity();
+            totalMarketValue += v;
             if (ticker.equals(p.getTicker())) {
-                tickerBookValue = v;
+                tickerMarketValue = v;
             }
         }
-        if (tickerBookValue <= 0) return 0.0;
 
-        double totalAssets = cashBalance + totalBookValue;
+        // 운영 가시성 — fallback 비율 ≥ 50% 이면 sync 누락 의심으로 WARN, 1건이라도 있으면 DEBUG.
+        int total = positions.size();
+        if (total > 0) {
+            double fallbackRatio = (double) fallbackCount / total;
+            if (fallbackRatio >= 0.5) {
+                log.warn("[PositionService] avgPrice fallback 비율 높음 - brokerAccountId={} fallback={}/{} (DailyBar sync 누락 의심)",
+                        brokerAccountId, fallbackCount, total);
+            } else if (fallbackCount > 0) {
+                log.debug("[PositionService] avgPrice fallback 사용 - brokerAccountId={} fallback={}/{}",
+                        brokerAccountId, fallbackCount, total);
+            }
+        }
+
+        if (tickerMarketValue <= 0) return 0.0;
+
+        double totalAssets = cashBalance + totalMarketValue;
         if (totalAssets <= 0) return 0.0;
-        return tickerBookValue / totalAssets;
+        return tickerMarketValue / totalAssets;
+    }
+
+    /**
+     * 활성 BrokerAccount 의 ticker 보유 수량 조회. SignalService 의 SELL 미보유 가드용.
+     *
+     * <p>미보유면 0 반환 — RuleEngine 이 SELL 결정해도 SignalService 가 HOLD 로 강등하여
+     * Trade PENDING/FAILED 라운드트립을 차단한다.
+     */
+    @Transactional(readOnly = true)
+    public int getHoldingQuantity(Long brokerAccountId, String ticker) {
+        return positionRepository.findByBrokerAccountIdAndTicker(brokerAccountId, ticker)
+                .map(Position::getQuantity)
+                .orElse(0);
     }
 }

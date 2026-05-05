@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,6 +25,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,6 +36,8 @@ class SignalServiceTest {
     @Mock private PositionService positionService;
     @Mock private BrokerAccountService brokerAccountService;
     @Mock private SignalHistoryRepository signalHistoryRepository;
+
+    @Captor private ArgumentCaptor<List<SignalHistory>> historiesCaptor;
 
     @InjectMocks
     private SignalService signalService;
@@ -213,7 +218,7 @@ class SignalServiceTest {
         given(active.getCashBalance()).willReturn(10_000.0);
         given(brokerAccountService.getActive(1L)).willReturn(Optional.of(active));
 
-        given(positionService.computeBookRatio(eq(ACTIVE_BROKER_ID), eq("NVDA"), eq(10_000.0)))
+        given(positionService.computePositionRatio(eq(ACTIVE_BROKER_ID), eq("NVDA"), eq(10_000.0)))
                 .willReturn(0.25);
         given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
                 .willReturn(Optional.empty());
@@ -222,6 +227,48 @@ class SignalServiceTest {
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
+    }
+
+    @Test
+    @DisplayName("SELL 시그널이지만 활성 broker 의 ticker 보유 0주 → HOLD 강등 + SignalHistory 저장 skip (cooldown 부수효과 차단)")
+    void SELL시그널_미보유면_HOLD_강등() {
+        TradingSignalMessage sellSignal = buildSignal("NVDA", -0.75);
+        stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
+        given(positionService.computePositionRatio(eq(ACTIVE_BROKER_ID), eq("NVDA"), eq(10_000.0)))
+                .willReturn(0.0);
+        given(positionService.getHoldingQuantity(ACTIVE_BROKER_ID, "NVDA")).willReturn(0);
+        given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
+                .willReturn(Optional.empty());
+
+        List<UserProcessedSignal> results = signalService.processSignalForAllUsers(sellSignal);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
+        // 강등된 HOLD 는 SignalHistory 에 저장되지 않아야 한다 (다른 사용자가 없는 단일 시나리오 → saveAll 호출 자체 안 됨).
+        verify(signalHistoryRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("SELL 시그널 + ticker 보유 있음 → SELL 그대로 + SignalHistory 에 SELL action 저장")
+    void SELL시그널_보유있으면_SELL_유지() {
+        TradingSignalMessage sellSignal = buildSignal("NVDA", -0.75);
+        stubSingleUser(TradingMode.AUTO_PILOT, 0.6);
+        given(positionService.computePositionRatio(eq(ACTIVE_BROKER_ID), eq("NVDA"), eq(10_000.0)))
+                .willReturn(0.1);
+        given(positionService.getHoldingQuantity(ACTIVE_BROKER_ID, "NVDA")).willReturn(5);
+        given(signalHistoryRepository.findTop1ByUserIdAndTickerOrderByCreatedAtDesc(any(), anyString()))
+                .willReturn(Optional.empty());
+
+        List<UserProcessedSignal> results = signalService.processSignalForAllUsers(sellSignal);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).action()).isEqualTo(TradeAction.SELL);
+        // SELL 정상 진행 시 SignalHistory 는 SELL action 으로 저장된다.
+        verify(signalHistoryRepository).saveAll(historiesCaptor.capture());
+        List<SignalHistory> saved = historiesCaptor.getValue();
+        assertThat(saved).hasSize(1);
+        assertThat(saved.get(0).getAction()).isEqualTo(TradeAction.SELL);
+        assertThat(saved.get(0).getTicker()).isEqualTo("NVDA");
     }
 
     @Test
