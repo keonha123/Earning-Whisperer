@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
  * 추후 같은 broker+isPaper 조합 안에서 다중 계정으로 확장 가능하도록 명시적으로 닫아두지 않았다 (alias 로 구분).
  *
  * <p>cashBalance 는 이전에 PortfolioSettings 에 단일 컬럼으로 있던 값을 broker 별로 분리해
- * 본 엔티티로 옮긴 것. RuleEngine 의 maxPositionRatio 검증과 PositionService.computeBookRatio 모두
+ * 본 엔티티로 옮긴 것. RuleEngine 의 maxPositionRatio 검증과 PositionService.computePositionRatio 모두
  * 본 엔티티의 cashBalance 를 기반으로 계산한다.
  */
 @Getter
