@@ -50,8 +50,8 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("로그인 시 access_token, refresh_token, Set-Cookie 모두 반환된다")
-    void login_정상_요청_200_토큰쌍_반환() throws Exception {
+    @DisplayName("로그인 시 access_token + Set-Cookie(HttpOnly) 만 반환되고 refresh_token 은 body/header 에 노출되지 않는다")
+    void login_정상_요청_200_access만_반환() throws Exception {
         when(authService.login(any(), any()))
                 .thenReturn(new TokenPair("access-jwt", "refresh-uuid"));
 
@@ -63,10 +63,10 @@ class AuthControllerTest {
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.access_token").value("access-jwt"))
-                .andExpect(jsonPath("$.refresh_token").value("refresh-uuid"))
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
+                .andExpect(jsonPath("$.refresh_token").doesNotExist())
                 .andExpect(header().exists("Set-Cookie"))
-                .andExpect(header().exists("X-Refresh-Token"));
+                .andExpect(header().doesNotExist("X-Refresh-Token"));
     }
 
     @Test
@@ -85,7 +85,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("Cookie로 refresh 요청 시 새 토큰 쌍이 반환된다")
+    @DisplayName("Cookie 로 refresh 요청 시 새 access_token 만 반환 (refresh_token 은 새 쿠키로 회전)")
     void refresh_Cookie로_갱신_성공() throws Exception {
         when(authService.refresh("old-rt"))
                 .thenReturn(new TokenPair("new-access", "new-refresh"));
@@ -94,19 +94,17 @@ class AuthControllerTest {
                         .cookie(new Cookie("refresh_token", "old-rt")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.access_token").value("new-access"))
-                .andExpect(jsonPath("$.refresh_token").value("new-refresh"));
+                .andExpect(jsonPath("$.refresh_token").doesNotExist())
+                .andExpect(header().exists("Set-Cookie"))
+                .andExpect(header().doesNotExist("X-Refresh-Token"));
     }
 
     @Test
-    @DisplayName("X-Refresh-Token 헤더로 refresh 요청 성공")
-    void refresh_헤더로_갱신_성공() throws Exception {
-        when(authService.refresh("old-rt"))
-                .thenReturn(new TokenPair("new-access", "new-refresh"));
-
+    @DisplayName("X-Refresh-Token 헤더는 더이상 refresh fallback 으로 동작하지 않고 401")
+    void refresh_헤더만_보내면_401() throws Exception {
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .header("X-Refresh-Token", "old-rt"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.access_token").value("new-access"));
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -117,13 +115,13 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("만료된 RT로 refresh 요청 시 401")
+    @DisplayName("만료된 RT 쿠키로 refresh 요청 시 401")
     void refresh_만료RT_401() throws Exception {
         when(authService.refresh("expired-rt"))
                 .thenThrow(new RefreshTokenService.InvalidRefreshTokenException());
 
         mockMvc.perform(post("/api/v1/auth/refresh")
-                        .header("X-Refresh-Token", "expired-rt"))
+                        .cookie(new Cookie("refresh_token", "expired-rt")))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -134,7 +132,7 @@ class AuthControllerTest {
                 .thenThrow(new RefreshTokenService.ConcurrentRefreshException());
 
         mockMvc.perform(post("/api/v1/auth/refresh")
-                        .header("X-Refresh-Token", "racing-rt"))
+                        .cookie(new Cookie("refresh_token", "racing-rt")))
                 .andExpect(status().isTooManyRequests());
     }
 

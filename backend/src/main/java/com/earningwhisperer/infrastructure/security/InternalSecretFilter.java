@@ -13,6 +13,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * Data Pipeline → Backend 내부 전용 엔드포인트(`/api/v1/internal/**`)의 시크릿 검증 필터.
@@ -62,13 +64,24 @@ public class InternalSecretFilter extends OncePerRequestFilter {
         }
 
         String provided = request.getHeader(HEADER_NAME);
-        if (!configuredSecret.equals(provided)) {
+        if (!secretsMatch(configuredSecret, provided)) {
             log.warn("[InternalSecret] 시크릿 불일치 — path={}", path);
             writeUnauthorized(response, "invalid internal secret");
             return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * timing-safe 비교 — String.equals 의 short-circuit 이 노출하는
+     * 응답시간 차이를 통해 시크릿이 추정되는 것을 차단한다.
+     */
+    private static boolean secretsMatch(String configured, String provided) {
+        if (configured == null || provided == null) return false;
+        byte[] expected = configured.getBytes(StandardCharsets.UTF_8);
+        byte[] actual = provided.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expected, actual);
     }
 
     private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {

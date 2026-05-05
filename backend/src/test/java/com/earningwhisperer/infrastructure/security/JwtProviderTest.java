@@ -14,7 +14,7 @@ class JwtProviderTest {
         // 테스트용 고정 시크릿 (운영 환경에서는 환경변수로 주입)
         String secret = "test-secret-key-minimum-32-characters-long";
         long expirationMs = 3600_000L; // 1시간
-        jwtProvider = new JwtProvider(secret, expirationMs);
+        jwtProvider = new JwtProvider(secret, expirationMs, "test-issuer", "test-audience");
     }
 
     @Test
@@ -43,7 +43,8 @@ class JwtProviderTest {
     void validateToken_만료된_토큰_false_반환() {
         // Arrange: 만료 시간 0ms (즉시 만료)
         JwtProvider expiredProvider = new JwtProvider(
-                "test-secret-key-minimum-32-characters-long", 0L);
+                "test-secret-key-minimum-32-characters-long", 0L,
+                "test-issuer", "test-audience");
         String token = expiredProvider.generateToken(1L);
 
         // Act & Assert
@@ -63,5 +64,33 @@ class JwtProviderTest {
     @Test
     void validateToken_빈_문자열_false_반환() {
         assertThat(jwtProvider.validateToken("")).isFalse();
+    }
+
+    @Test
+    void 다른_issuer로_발행된_토큰은_검증_실패() {
+        // 다른 환경에서 발행된 것처럼 issuer 가 다른 provider 로 토큰 생성
+        JwtProvider otherProvider = new JwtProvider(
+                "test-secret-key-minimum-32-characters-long", 3600_000L,
+                "other-env-issuer", "test-audience");
+        String token = otherProvider.generateToken(1L);
+
+        // 본 provider 의 issuer 와 다르므로 검증 실패
+        assertThat(jwtProvider.validateToken(token)).isFalse();
+    }
+
+    @Test
+    void 다른_audience로_발행된_토큰은_검증_실패() {
+        JwtProvider otherProvider = new JwtProvider(
+                "test-secret-key-minimum-32-characters-long", 3600_000L,
+                "test-issuer", "other-audience");
+        String token = otherProvider.generateToken(1L);
+
+        assertThat(jwtProvider.validateToken(token)).isFalse();
+    }
+
+    @Test
+    void secret_길이_32미만이면_생성자에서_거부() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> new JwtProvider("short", 3600_000L, "i", "a"));
     }
 }
