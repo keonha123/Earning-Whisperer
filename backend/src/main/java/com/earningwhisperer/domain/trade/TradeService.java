@@ -140,11 +140,16 @@ public class TradeService {
      * Trade 상태를 PENDING → EXECUTED / FAILED 로 전환한다.
      * 순수 DB 작업이므로 @Transactional 사용 (외부 HTTP 없음).
      *
+     * <p>같은 tradeId 의 다른 brokerOrderId 를 가진 두 콜백이 거의 동시에 도착해도
+     * {@link TradeRepository#findByIdForUpdate}(SELECT ... FOR UPDATE) 로 row 를 잠가
+     * lost update 를 차단한다. 늦게 진입한 트랜잭션은 commit 후 EXECUTED/FAILED 를 읽고
+     * {@link Trade#executed} / {@link Trade#failed} 의 멱등 분기로 200 OK 를 반환한다.
+     *
      * @param callerId JWT에서 추출한 요청자 userId — 소유권 검증에 사용
      */
     @Transactional
     public void processCallback(Long tradeId, Long callerId, TradeCallbackRequest request) {
-        Trade trade = tradeRepository.findById(tradeId)
+        Trade trade = tradeRepository.findByIdForUpdate(tradeId)
                 .orElseThrow(() -> new EntityNotFoundException("Trade를 찾을 수 없습니다. tradeId=" + tradeId));
 
         if (!trade.getUser().getId().equals(callerId)) {
