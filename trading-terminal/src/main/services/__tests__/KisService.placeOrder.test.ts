@@ -219,15 +219,18 @@ describe('KisService.placeOrder — KIS rt_cd 비즈니스 실패 처리', () =>
     expect(result.executedPrice).toBeNull()
   })
 
-  it('주문 호출 직전 acquire(HIGH) 1회 호출', async () => {
+  it('주문 + 체결조회 각각 acquire(HIGH) 호출 (총 2회)', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-LIM') })
+    // inquireOrderFill 의 GET 도 HIGH 토큰 1개 사용. mock 안 하면 fallback 으로 빠지지만
+    // 그 전에 acquire 는 호출됨.
+    kisHttpMock.get.mockRejectedValueOnce(new Error('inquire skip'))
 
     await KisService.placeOrder('BUY', 'TSLA', 1)
 
     const acquireMock = vi.mocked(kisLimiter.acquire)
     const highCalls = acquireMock.mock.calls.filter((c) => c[0] === 'HIGH')
-    expect(highCalls).toHaveLength(1)
+    expect(highCalls).toHaveLength(2)
   })
 })
 
@@ -263,5 +266,122 @@ describe('KisService.placeOrder — TR_ID 모드별 분기 (C1)', () => {
 
     const [, , config] = kisHttpMock.post.mock.calls[0]
     expect(config.headers.tr_id).toBe('VTTT1002U')
+  })
+})
+
+describe('KisService.placeOrder — 체결조회로 executedQty 정확화', () => {
+  function buildCcnlResponse(odno: string, totQty: string, avgPrice: string) {
+    return {
+      data: {
+        rt_cd: '0',
+        msg1: '정상',
+        output: [
+          { odno, tot_ccld_qty: totQty, avg_prvs: avgPrice, pdno: 'TSLA' },
+        ],
+      },
+    }
+  }
+
+  it('정상 체결 (요청 = 체결) → 정확한 executedQty/executedPrice 반환', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-FILL') })
+    kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OD-FILL', '10', '125.50'))
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 10)
+
+    expect(result.orderId).toBe('OD-FILL')
+    expect(result.executedQty).toBe(10)
+    expect(result.executedPrice).toBe(125.50)
+    // inquireCcnl 호출 검증
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({
+        headers: expect.objectContaining({ tr_id: 'VTTS3035R' }),
+      }),
+    )
+  })
+
+  it('부분 체결 (요청 10 > 체결 7) → executedQty=7 반환', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-PART') })
+    kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OD-PART', '7', '124.30'))
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 10)
+
+    expect(result.executedQty).toBe(7)
+    expect(result.executedPrice).toBe(124.30)
+  })
+
+  it('미체결 (executedQty=0) → executedQty=0, executedPrice=null', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-NONE') })
+    kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OD-NONE', '0', '0'))
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 10)
+
+    expect(result.executedQty).toBe(0)
+    expect(result.executedPrice).toBeNull()
+  })
+
+  it('inquire-ccnl rt_cd 실패 → fallback (executedQty=qty 가정, 회귀 없음)', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-FB1') })
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: { rt_cd: '1', msg1: '조회 실패' },
+    })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 10)
+
+    expect(result.executedQty).toBe(10) // fallback
+    expect(result.executedPrice).toBeNull()
+  })
+
+  it('inquire-ccnl 네트워크 오류 → fallback', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-FB2') })
+    kisHttpMock.get.mockRejectedValueOnce(new Error('network down'))
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 5)
+
+    expect(result.executedQty).toBe(5)
+    expect(result.executedPrice).toBeNull()
+  })
+
+  it('inquire-ccnl 응답에 ODNO 매칭 row 없음 → fallback', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-MISS') })
+    kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OTHER-ODNO', '10', '125.0'))
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 10)
+
+    expect(result.executedQty).toBe(10)
+    expect(result.executedPrice).toBeNull()
+  })
+
+  it('ODNO 빈 문자열 → 체결조회 skip + fallback (호출 자체 안 함)', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: { rt_cd: '0', output: {} } })
+
+    const result = await KisService.placeOrder('BUY', 'TSLA', 3)
+
+    expect(result.orderId).toBe('')
+    expect(result.executedQty).toBe(3)
+    expect(kisHttpMock.get).not.toHaveBeenCalled()
+  })
+
+  it('실전 모드 → tr_id=TTTS3035R 로 체결조회', async () => {
+    mainState.setPaperTrading(false)
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-REAL') })
+    kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OD-REAL', '5', '200.0'))
+
+    await KisService.placeOrder('BUY', 'TSLA', 5)
+
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({
+        headers: expect.objectContaining({ tr_id: 'TTTS3035R' }),
+      }),
+    )
   })
 })
