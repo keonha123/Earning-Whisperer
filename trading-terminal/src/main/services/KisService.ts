@@ -436,7 +436,7 @@ export const KisService = {
           CANO: cano,
           ACNT_PRDT_CD: acntPrdtCd,
           OVRS_EXCG_CD: 'NASD',
-          OVRS_ORD_UNPR: '0',
+          OVRS_ORD_UNPR: '1',
           ITEM_CD: 'AAPL',
           CTX_AREA_FK100: '',
           CTX_AREA_NK100: '',

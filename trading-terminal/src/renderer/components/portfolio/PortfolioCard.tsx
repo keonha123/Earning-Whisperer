@@ -20,12 +20,16 @@ interface Props {
   lastSyncedAt?: number | null
 }
 
-function AssetBar({ ratio, color }: { ratio: number; color: string }) {
+function StackedBar({ cashRatio, stockRatio }: { cashRatio: number; stockRatio: number }) {
   return (
-    <div className="w-full h-1 bg-[#1e2738] rounded-full overflow-hidden">
+    <div className="w-full h-1.5 bg-[#1e2738] rounded-full overflow-hidden flex">
       <div
-        className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${Math.min(ratio * 100, 100)}%`, backgroundColor: color }}
+        className="h-full transition-all duration-500 bg-[#3b82f6]"
+        style={{ width: `${Math.min(cashRatio * 100, 100)}%` }}
+      />
+      <div
+        className="h-full transition-all duration-500 bg-[#22c55e]"
+        style={{ width: `${Math.min(stockRatio * 100, 100)}%` }}
       />
     </div>
   )
@@ -58,83 +62,35 @@ export default function PortfolioCard({
         </p>
       </div>
 
-      {/* 현금/평가 섹션 */}
-      <div className="px-5 py-4 border-b border-[#1e2738] flex flex-col gap-3">
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
+      {/* 현금/평가 통합 섹션 */}
+      <div className="px-5 py-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3b82f6] shrink-0" />
             <span className="text-[10px] text-text-disabled uppercase tracking-wide">현금</span>
-            <div className="flex items-center gap-2">
-              <div className="text-right">
-                <span className="num text-sm text-text-primary">
-                  ${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </span>
-                <p className="num text-[10px] text-text-disabled">
-                  주문가능 ${orderableCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <span className="num text-[10px] text-text-disabled w-8 text-right">
-                {(cashRatio * 100).toFixed(0)}%
-              </span>
-            </div>
+            <span className="num text-sm text-text-primary">
+              ${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+            <span className="num text-[10px] text-text-disabled">
+              ({(cashRatio * 100).toFixed(0)}%)
+            </span>
           </div>
-          <AssetBar ratio={cashRatio} color="#3b82f6" />
-        </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="num text-[10px] text-text-disabled">
+              ({(stockRatio * 100).toFixed(0)}%)
+            </span>
+            <span className="num text-sm text-text-primary">
+              ${stockValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
             <span className="text-[10px] text-text-disabled uppercase tracking-wide">평가</span>
-            <div className="flex items-center gap-2">
-              <span className="num text-sm text-text-primary">
-                ${stockValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </span>
-              <span className="num text-[10px] text-text-disabled w-8 text-right">
-                {(stockRatio * 100).toFixed(0)}%
-              </span>
-            </div>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] shrink-0" />
           </div>
-          <AssetBar ratio={stockRatio} color="#22c55e" />
         </div>
+        <StackedBar cashRatio={cashRatio} stockRatio={stockRatio} />
+        <p className="num text-[10px] text-text-disabled mt-1.5">
+          주문가능 ${orderableCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        </p>
       </div>
-
-      {/* 보유 종목 */}
-      {holdings.length > 0 ? (
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-5 pt-3 pb-1">
-            <span className="text-[10px] text-text-disabled uppercase tracking-widest">보유 종목</span>
-          </div>
-          {holdings.map((h) => {
-            const price = h.currentPrice ?? 0
-            const evalValue = h.qty * price
-            const pnl = (price - h.avgPrice) * h.qty
-            const pnlPct = h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0
-            const isPositive = pnl >= 0
-            return (
-              <div
-                key={h.ticker}
-                className="flex items-center justify-between px-5 py-2.5
-                           border-b border-[#1e2738] last:border-b-0
-                           hover:bg-[#1c2330] transition-colors duration-100"
-              >
-                <div>
-                  <p className="num text-sm font-semibold text-text-primary">{h.ticker}</p>
-                  <p className="num text-[10px] text-text-disabled">{h.qty}주 @ ${h.avgPrice.toFixed(2)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="num text-sm text-text-primary">
-                    ${evalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </p>
-                  <p className={`num text-[10px] ${isPositive ? 'text-buy' : 'text-sell'}`}>
-                    {isPositive ? '+' : ''}{pnl.toFixed(2)} ({isPositive ? '+' : ''}{pnlPct.toFixed(1)}%)
-                  </p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <span className="text-text-disabled text-xs">보유 종목 없음</span>
-        </div>
-      )}
 
       {/* F-2: stale 데이터 overlay — error 가 null 일 때 컴포넌트 자체가 null 반환하므로 무비용. */}
       <StaleDataOverlay
