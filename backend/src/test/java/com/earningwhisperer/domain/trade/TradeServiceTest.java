@@ -110,7 +110,7 @@ class TradeServiceTest {
         User owner = mock(User.class);
         given(owner.getId()).willReturn(1L);
         given(trade.getUser()).willReturn(owner);
-        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+        given(tradeRepository.findByIdForUpdate(99L)).willReturn(Optional.of(trade));
 
         TradeCallbackRequest request = mock(TradeCallbackRequest.class);
 
@@ -127,7 +127,7 @@ class TradeServiceTest {
         User owner = mock(User.class);
         given(owner.getId()).willReturn(1L);
         given(trade.getUser()).willReturn(owner);
-        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+        given(tradeRepository.findByIdForUpdate(99L)).willReturn(Optional.of(trade));
 
         TradeCallbackRequest request = mock(TradeCallbackRequest.class);
         given(request.getStatus()).willReturn("EXECUTED");
@@ -151,7 +151,7 @@ class TradeServiceTest {
         User owner = mock(User.class);
         given(owner.getId()).willReturn(1L);
         given(trade.getUser()).willReturn(owner);
-        given(tradeRepository.findById(99L)).willReturn(Optional.of(trade));
+        given(tradeRepository.findByIdForUpdate(99L)).willReturn(Optional.of(trade));
 
         TradeCallbackRequest request = mock(TradeCallbackRequest.class);
         given(request.getStatus()).willReturn("FAILED");
@@ -162,6 +162,27 @@ class TradeServiceTest {
         // Assert
         verify(trade).failed();
         verify(tradeRepository).save(trade);
+    }
+
+    @Test
+    @DisplayName("processCallback 은 비관적 락 메서드(findByIdForUpdate)로 Trade 를 조회한다 — 회귀 보호")
+    void processCallback_비관적_락_메서드_사용_회귀_보호() {
+        // Arrange
+        Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
+        given(tradeRepository.findByIdForUpdate(99L)).willReturn(Optional.of(trade));
+
+        TradeCallbackRequest request = mock(TradeCallbackRequest.class);
+        given(request.getStatus()).willReturn("FAILED");
+
+        // Act
+        tradeService.processCallback(99L, 1L, request);
+
+        // Assert — 동시 콜백 lost update 차단을 위해 반드시 락 메서드를 사용해야 한다.
+        verify(tradeRepository).findByIdForUpdate(99L);
+        verify(tradeRepository, never()).findById(99L);
     }
 
     @Test
