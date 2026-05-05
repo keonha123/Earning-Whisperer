@@ -11,8 +11,9 @@ import { tokenIssueSuccessResponse } from '../../../test/fixtures/kisResponses'
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 async function seedApiKeys(): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
+  // 디폴트 paper 모드 기준 slot 에 시드
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey-paper', 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret-paper', 'app-secret')
 }
 
 beforeEach(() => {
@@ -87,21 +88,20 @@ describe('KisService.invalidateRuntime — 환경 전환 시 런타임 무효화
     mainState.setOrderInProgress(false)
   })
 
-  it('keytar 양 모드 토큰을 모두 삭제한다 (옛 모드 fallback 부활 차단)', async () => {
-    // Arrange — 양 모드 토큰을 vault 에 미리 저장
+  it('keytar 양 모드 토큰을 보존한다 (옛 모드 활성화 시 재사용 가능)', async () => {
+    // A2: invalidateRuntime 은 메모리 토큰/timer/in-flight 만 reset, keytar 토큰은 보존.
+    // 옛 모드 axios resolve 가 새 모드 mainState 에 박히는 race 는 modeChangedSince 가드가 차단하므로
+    // keytar 까지 지울 필요 없음 — 사용자가 다시 옛 모드로 돌아왔을 때 그 토큰 재사용 가능.
     await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'paper-token')
     await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(Date.now() + 86400_000))
     await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-real', 'real-token')
     await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real', String(Date.now() + 86400_000))
 
-    // Act
     KisService.invalidateRuntime()
     await flushMicrotasks()
 
-    // Assert — 양 모드 토큰/만료시각 모두 삭제
-    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')).toBeNull()
-    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper')).toBeNull()
-    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-real')).toBeNull()
-    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real')).toBeNull()
+    // 양 모드 토큰 모두 그대로 보존되어야 함
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')).toBe('paper-token')
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-real')).toBe('real-token')
   })
 })

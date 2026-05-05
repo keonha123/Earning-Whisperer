@@ -11,10 +11,14 @@ import { orderSuccessResponse, kisOrderRejectResponse } from '../../../test/fixt
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
+/**
+ * 활성 모드 기준 slot 에 시드. 모드 전환 케이스는 setPaperTrading 후 직접 다른 slot 에 set.
+ */
 async function seedCredentials(accountNo = '1234567801'): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-accountNo', accountNo)
+  const mode = mainState.isPaperTrading ? 'paper' : 'real'
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appKey-${mode}`, 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appSecret-${mode}`, 'app-secret')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-accountNo-${mode}`, accountNo)
 }
 
 beforeEach(() => {
@@ -148,10 +152,10 @@ describe('KisService.placeOrder', () => {
 
   it('placeOrder — placeOrder 본체 가드: 토큰은 유효하나 accountNo만 누락', async () => {
     // 1. 자격증명 + 토큰 시드
-    await seedCredentials() // appKey/appSecret/accountNo 모두 저장
+    await seedCredentials() // appKey/appSecret/accountNo 모두 저장 (paper slot)
     // (토큰은 beforeEach에서 setKisAccessToken으로 valid 상태)
-    // 2. accountNo만 삭제 → ensureToken은 통과, placeOrder 본체 가드(라인 286)에서 throw
-    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo')
+    // 2. accountNo만 삭제 → ensureToken은 통과, placeOrder 본체 가드에서 throw
+    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo-paper')
 
     // 3. 호출 → "자격 증명이 등록되지 않았" throw
     await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
@@ -163,7 +167,7 @@ describe('KisService.placeOrder', () => {
 
   it('placeOrder — appKey만 있고 appSecret 누락 시 placeOrder 본체 가드에서 throw (토큰 유효)', async () => {
     // 토큰은 유효(beforeEach), appKey만 등록 — appSecret/accountNo 모두 누락
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey-paper', 'app-key')
 
     await expect(KisService.placeOrder('BUY', 'TSLA', 1)).rejects.toThrow(
       /자격 증명이 등록되지 않았/,

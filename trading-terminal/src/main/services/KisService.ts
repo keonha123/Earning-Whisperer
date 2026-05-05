@@ -23,6 +23,24 @@ function expiryKey(isPaperTrading: boolean): string {
 }
 
 /**
+ * KIS API 자격증명도 토큰과 동일한 모드별 slot 패턴 (`kis-{key}-{mode}`).
+ * 모의/실전 환경에서 발급받은 키는 별도 키쌍이며 섞이면 안 된다 — paper 키로 실전 호출
+ * 시 KIS 가 거부하고, 그 반대도 마찬가지. 사용자 입장에서는 양 환경 모두 등록 후
+ * SettingsPage 의 모드 토글로 자유롭게 전환할 수 있어야 한다.
+ */
+function appKeySlot(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-appKey-paper' : 'kis-appKey-real'
+}
+
+function appSecretSlot(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-appSecret-paper' : 'kis-appSecret-real'
+}
+
+function accountNoSlot(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-accountNo-paper' : 'kis-accountNo-real'
+}
+
+/**
  * KIS TR_ID 모드별 매핑.
  * 모의(paper)는 V로 시작 / 실전(real)은 T로 시작 — 첫 글자만 다르다.
  * baseURL/keytar는 분기되어 있어도 TR_ID가 모의용이면 실전 호출이 거부되므로 필수.
@@ -155,34 +173,73 @@ export interface KisOrderResult {
 export const KisService = {
   // ── Credential 관리 ──────────────────────────────────────────
 
-  async saveCredentials(appKey: string, appSecret: string, accountNo: string): Promise<void> {
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', appKey)
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', appSecret)
-    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accountNo', accountNo)
+  /**
+   * 모드별 slot 에 KIS API 키 저장.
+   * isPaperTrading 인자는 저장 대상 모드(현재 입력 폼이 paper 키인지 real 키인지) 를 명시한다.
+   * 호출 시점의 활성 모드와 저장 대상 모드가 일치할 때만 토큰 발급을 시도하고,
+   * 다른 모드 키 등록 시는 token 발급을 건너뛴다 — 활성 모드와 무관한 백그라운드 등록을 허용.
+   */
+  async saveCredentials(
+    appKey: string,
+    appSecret: string,
+    accountNo: string,
+    isPaperTrading: boolean,
+  ): Promise<void> {
+    await keytar.setPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading), appKey)
+    await keytar.setPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading), appSecret)
+    await keytar.setPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading), accountNo)
   },
 
-  async hasCredentials(): Promise<boolean> {
-    const [k, s, a] = await Promise.all([
-      keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey'),
-      keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret'),
-      keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo'),
+  /**
+   * 두 모드 각각의 자격증명 등록 여부 반환.
+   * UI 가 paper/real 카드를 분리해 표시하려면 boolean 단일 값으로는 부족하므로
+   * 객체 응답으로 전환 — A3 의 카드 분리 UI 에 필요.
+   */
+  async hasCredentials(): Promise<{ paper: boolean; real: boolean }> {
+    const [pk, ps, pa, rk, rs, ra] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
     ])
-    return !!(k && s && a)
+    return {
+      paper: !!(pk && ps && pa),
+      real: !!(rk && rs && ra),
+    }
   },
 
-  async deleteCredentials(): Promise<void> {
+  /**
+   * 특정 모드의 자격증명 + 토큰 slot 일괄 삭제.
+   * 다른 모드의 키/토큰은 보존 — 사용자가 한쪽만 삭제하고 다른 쪽은 계속 사용 가능.
+   *
+   * 활성 모드 (= mainState.isPaperTrading 과 일치하는 모드) 키 삭제 시:
+   *  - 메모리 access token clear (재사용 차단)
+   *  - 자동 갱신 timer cancel (지운 키로 갱신 시도 방지)
+   *  - in-flight Promise reset (옛 흐름이 새 요청에 재사용되지 않도록)
+   *
+   * 비활성 모드 키 삭제 시: 메모리/timer/in-flight 손대지 않음 — 활성 모드 운영에 영향 없음.
+   */
+  async deleteCredentials(isPaperTrading: boolean): Promise<void> {
     await Promise.all([
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-appKey'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-appSecret'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo'),
-      // legacy 단일 키 + paper/real 양쪽 토큰 모두 정리
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken-paper'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken-real'),
-      keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real'),
+      keytar.deletePassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, tokenKey(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, expiryKey(isPaperTrading)),
     ])
+
+    if (isPaperTrading === mainState.isPaperTrading) {
+      mainState.setKisAccessToken(null)
+      if (refreshTimer) {
+        clearTimeout(refreshTimer)
+        refreshTimer = null
+      }
+      tokenRefreshAttempts = 0
+      issueTokenInFlight = null
+      getBalanceInFlight = null
+    }
   },
 
   async loadSavedToken(): Promise<boolean> {
@@ -199,8 +256,8 @@ export const KisService = {
      // 모드가 바뀌면 결과 mainState/vault 반영을 차단해 옛 모드 토큰이 새 모드에 박히는 사고 방지.
     const issuedFor = mainState.isPaperTrading
     issueTokenInFlight = (async () => {
-      const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
-      const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
+      const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(issuedFor))
+      const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(issuedFor))
       if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
       if (modeChangedSince(issuedFor)) {
         console.info('[KisService] issueToken 중단 — 모드 전환 감지')
@@ -278,9 +335,10 @@ export const KisService = {
   async _getBalanceImpl(): Promise<KisBalance> {
     await KisService.ensureToken()
 
-    const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
-    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
-    const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
+    const paper = mainState.isPaperTrading
+    const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(paper))
+    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper))
+    const accountNo = await keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper))
     if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
     const cano = accountNo.slice(0, 8)
     const acntPrdtCd = accountNo.slice(8) || '01'
@@ -357,8 +415,9 @@ export const KisService = {
   async getCurrentPrice(ticker: string): Promise<number> {
     await KisService.ensureToken()
 
-    const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
-    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
+    const paper = mainState.isPaperTrading
+    const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(paper))
+    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper))
     if (!appKey || !appSecret) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
 
     try {
@@ -399,9 +458,10 @@ export const KisService = {
   ): Promise<KisOrderResult> {
     await KisService.ensureToken()
 
-    const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
-    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
-    const accountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
+    const paper = mainState.isPaperTrading
+    const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(paper))
+    const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper))
+    const accountNo = await keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper))
     if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
 
     // TR_ID는 모드별 분기 (paper: V접두, real: T접두)
@@ -459,11 +519,12 @@ export const KisService = {
 
   /**
    * 모의/실전 환경 전환 시 호출 — in-flight axios abort + 메모리 토큰 소거 +
-   * 갱신 timer 취소 + axios baseURL 갱신 + keytar 양 모드 토큰 삭제 + in-flight reset.
+   * 갱신 timer 취소 + axios baseURL 갱신 + in-flight reset.
    *
-   * keytar 양 모드 토큰을 삭제하는 이유: EGW00133 fallback 이 옛 모드 토큰을 부활시켜
-   * 새 모드의 baseURL/TR_ID 와 모드 불일치 토큰으로 호출되는 사고를 차단한다.
-   * (다음 호출에서 재발급되므로 운영 영향 없음.)
+   * keytar 토큰은 보존한다 — 옛 모드 토큰을 다음 모드 활성화 시 재사용 가능하도록.
+   * 모드 불일치 fallback 부활 위험은 PR3 의 mode-snapshot 가드 (`modeChangedSince`) 가 차단한다:
+   * 옛 모드 axios resolve 가 새 모드 mainState 에 박히지 않으며, EGW00133 fallback 도
+   * 새 모드 활성화 후엔 옛 모드 vault 토큰을 거부한다. 따라서 토큰을 keytar 에서 지울 필요가 없다.
    *
    * in-flight Promise reset: 옛 모드의 issueToken/getBalance Promise 가 새 모드 호출자에게
    * 재사용되지 않도록 명시 null. 옛 await 자체는 abort signal 또는 mode-snapshot 가드로 종결.
@@ -492,38 +553,67 @@ export const KisService = {
     issueTokenInFlight = null
     getBalanceInFlight = null
     kisHttp.defaults.baseURL = getKisBaseUrl(mainState.isPaperTrading)
-
-    // keytar 양 모드 토큰 삭제 — 옛 모드 fallback 부활 차단. 실패는 무시.
-    void Promise.all([
-      keytar.deletePassword(KEYTAR_SERVICE, tokenKey(true)),
-      keytar.deletePassword(KEYTAR_SERVICE, expiryKey(true)),
-      keytar.deletePassword(KEYTAR_SERVICE, tokenKey(false)),
-      keytar.deletePassword(KEYTAR_SERVICE, expiryKey(false)),
-    ]).catch((e) => {
-      console.warn('[KisService] invalidateRuntime — keytar 토큰 삭제 실패 (무시):', e)
-    })
   },
 }
 
 /**
- * 기존 단일 키(`kis-accessToken`, `kis-tokenExpiresAt`)에 토큰이 남아 있으면
- * paper 키로 1회 이전 후 legacy 키 삭제. 실패해도 무시.
+ * 단일 slot 키(legacy)를 모드별 slot 으로 이전.
+ * 1) 토큰 (kis-accessToken / kis-tokenExpiresAt) → paper slot (legacy 가 모의 모드에서만 사용됐던 시점)
+ * 2) 자격증명 (kis-appKey / kis-appSecret / kis-accountNo) → 현재 영속화된 모드 slot
+ *
+ * idempotent — 모드별 slot 에 이미 값이 있으면 충돌 회피하고 legacy 키만 정리.
+ * 실패해도 무시 (앱 동작에는 영향 없음, 로그만 남김).
+ *
+ * 자격증명 이전 시 모드 결정: kis-isPaperTrading flag 가 '0'(real) 이면 real, 그 외(미지정/'1') 는 paper.
+ * (legacy 단일 키 사용 시기에는 paper 가 디폴트였고, 사용자가 실전 전환했다면 flag 도 함께 설정됨.)
  */
 export async function migrateLegacyKeysIfNeeded(): Promise<void> {
   try {
+    // 토큰 이전 — legacy 시기 토큰은 페이퍼 모드 사용분으로 간주
     const legacyToken = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken')
     const legacyExpiry = await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
-    if (!legacyToken || !legacyExpiry) return
-
-    // 이미 paper 키가 있으면 충돌 회피 — legacy만 정리
-    const existingPaperToken = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')
-    if (!existingPaperToken) {
-      await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', legacyToken)
-      await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', legacyExpiry)
+    if (legacyToken && legacyExpiry) {
+      const existingPaperToken = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')
+      if (!existingPaperToken) {
+        await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', legacyToken)
+        await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', legacyExpiry)
+      }
+      await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken')
+      await keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
+      console.info('[KisService] legacy keytar 토큰 키 → paper 이전 완료')
     }
-    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accessToken')
-    await keytar.deletePassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt')
-    console.info('[KisService] legacy keytar 토큰 키 → paper 이전 완료')
+
+    // 자격증명 이전 — legacy 단일 slot 의 키는 영속화된 paper/real flag 에 따라 적절한 모드 slot 으로
+    const legacyAppKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
+    const legacyAppSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
+    const legacyAccountNo = await keytar.getPassword(KEYTAR_SERVICE, 'kis-accountNo')
+    if (legacyAppKey || legacyAppSecret || legacyAccountNo) {
+      const paperFlag = await keytar.getPassword(KEYTAR_SERVICE, 'kis-isPaperTrading')
+      // '0' → real, 그 외(미지정 포함) → paper (legacy 디폴트)
+      const targetIsPaper = paperFlag !== '0'
+
+      // 모드별 slot 에 이미 값이 있으면 그대로 두고 legacy 만 정리 (idempotent)
+      const existingAppKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(targetIsPaper))
+      const existingAppSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(targetIsPaper))
+      const existingAccountNo = await keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(targetIsPaper))
+
+      if (legacyAppKey && !existingAppKey) {
+        await keytar.setPassword(KEYTAR_SERVICE, appKeySlot(targetIsPaper), legacyAppKey)
+      }
+      if (legacyAppSecret && !existingAppSecret) {
+        await keytar.setPassword(KEYTAR_SERVICE, appSecretSlot(targetIsPaper), legacyAppSecret)
+      }
+      if (legacyAccountNo && !existingAccountNo) {
+        await keytar.setPassword(KEYTAR_SERVICE, accountNoSlot(targetIsPaper), legacyAccountNo)
+      }
+
+      await keytar.deletePassword(KEYTAR_SERVICE, 'kis-appKey')
+      await keytar.deletePassword(KEYTAR_SERVICE, 'kis-appSecret')
+      await keytar.deletePassword(KEYTAR_SERVICE, 'kis-accountNo')
+      console.info(
+        `[KisService] legacy keytar 자격증명 키 → ${targetIsPaper ? 'paper' : 'real'} 이전 완료`,
+      )
+    }
   } catch (e) {
     console.warn('[KisService] legacy 키 마이그레이션 실패 (무시):', e)
   }

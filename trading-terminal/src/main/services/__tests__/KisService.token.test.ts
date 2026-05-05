@@ -16,12 +16,15 @@ import {
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 async function seedApiKeys(): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
+  // 디폴트 paper 모드 기준 slot 에 시드 — 각 테스트는 beforeEach 에서 mainState.setPaperTrading(true) 가 먹는다
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey-paper', 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret-paper', 'app-secret')
 }
 
 beforeEach(() => {
   mainState.clear()
+  // mainState.clear() 는 isPaperTrading 을 유지하므로 leak 방지로 명시 reset
+  mainState.setPaperTrading(true)
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()
 })
