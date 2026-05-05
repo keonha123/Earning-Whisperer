@@ -2,6 +2,7 @@ package com.earningwhisperer.presentation.portfolio;
 
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 public class PortfolioSettingsController {
 
     private final PortfolioSettingsService portfolioSettingsService;
+    private final PositionService positionService;
 
     @GetMapping("/settings")
     public ResponseEntity<PortfolioSettingsResponse> getSettings(Authentication auth) {
@@ -66,7 +68,8 @@ public class PortfolioSettingsController {
 
     /**
      * Contract 4b — Trading Terminal 실계좌 잔고 동기화.
-     * cashBalance를 저장하여 룰 엔진의 동적 수량 계산에 활용한다.
+     * cashBalance 와 보유종목(positions) 모두 영속화. positions 는 RuleEngine 의
+     * maxPositionRatio 검증에 사용된다 (snapshot — 누락 ticker 는 삭제).
      */
     @PostMapping("/sync")
     public ResponseEntity<Void> sync(
@@ -74,9 +77,11 @@ public class PortfolioSettingsController {
             @Valid @RequestBody PortfolioSyncRequest request) {
         Long userId = (Long) auth.getPrincipal();
         portfolioSettingsService.syncCashBalance(userId, request.getCashBalance());
-        log.info("[PortfolioSync] 잔고 동기화 - userId={} cashBalance={} positions={}",
+        int upserted = positionService.syncSnapshot(userId, request.getPositions());
+        log.info("[PortfolioSync] 동기화 - userId={} cashBalance={} positions(received)={} positions(upserted)={}",
                 userId, request.getCashBalance(),
-                request.getPositions() == null ? 0 : request.getPositions().size());
+                request.getPositions() == null ? 0 : request.getPositions().size(),
+                upserted);
         return ResponseEntity.ok().build();
     }
 }
