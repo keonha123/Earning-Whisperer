@@ -69,15 +69,23 @@ function isAbortError(e: unknown): boolean {
   return code === 'ERR_CANCELED' || name === 'CanceledError' || name === 'AbortError'
 }
 
-async function saveTokenToVault(token: string, expiresIn: number): Promise<void> {
+async function saveTokenToVault(token: string, expiresIn: number, issuedFor: boolean): Promise<void> {
   try {
+    if (modeChangedSince(issuedFor)) return // 옛 모드 토큰을 새 모드 vault 키에 저장하지 않도록 차단
     const expiresAt = Date.now() + expiresIn * 1000
-    const paper = mainState.isPaperTrading
-    await keytar.setPassword(KEYTAR_SERVICE, tokenKey(paper), token)
-    await keytar.setPassword(KEYTAR_SERVICE, expiryKey(paper), String(expiresAt))
+    await keytar.setPassword(KEYTAR_SERVICE, tokenKey(issuedFor), token)
+    await keytar.setPassword(KEYTAR_SERVICE, expiryKey(issuedFor), String(expiresAt))
   } catch (e) {
     console.warn('[KisService] keytar 토큰 저장 실패 (세션 중 동작에는 영향 없음):', e)
   }
+}
+
+/**
+ * 비동기 await 사이에 모드 전환이 발생했는지 검사.
+ * 캡처된 모드와 현재 모드가 다르면 이 흐름의 결과가 새 모드 mainState 에 박히지 않도록 차단.
+ */
+function modeChangedSince(captured: boolean): boolean {
+  return captured !== mainState.isPaperTrading
 }
 
 async function loadTokenFromVault(): Promise<boolean> {
@@ -85,6 +93,7 @@ async function loadTokenFromVault(): Promise<boolean> {
   const token = await keytar.getPassword(KEYTAR_SERVICE, tokenKey(paper))
   const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, expiryKey(paper))
   if (!token || !expiresAtStr) return false
+  if (modeChangedSince(paper)) return false
 
   const expiresAt = Number(expiresAtStr)
   const remainingSec = Math.floor((expiresAt - Date.now()) / 1000)
@@ -96,11 +105,19 @@ async function loadTokenFromVault(): Promise<boolean> {
   return true
 }
 
-async function loadTokenFromVaultForFallback(): Promise<boolean> {
-  const paper = mainState.isPaperTrading
-  const token = await keytar.getPassword(KEYTAR_SERVICE, tokenKey(paper))
-  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, expiryKey(paper))
+/**
+ * EGW00133 fallback 진입점. issueToken IIFE 가 시작 시 캡처한 모드를 인자로 받아
+ * axios resolve 사이에 발생한 모드 전환에서도 옛 모드 토큰이 부활하지 않도록 한다.
+ */
+async function loadTokenFromVaultForFallback(issuedFor: boolean): Promise<boolean> {
+  if (modeChangedSince(issuedFor)) {
+    console.info('[KisService] EGW00133 fallback 거부 — 이슈 시작 후 모드가 전환됨')
+    return false
+  }
+  const token = await keytar.getPassword(KEYTAR_SERVICE, tokenKey(issuedFor))
+  const expiresAtStr = await keytar.getPassword(KEYTAR_SERVICE, expiryKey(issuedFor))
   if (!token || !expiresAtStr) return false
+  if (modeChangedSince(issuedFor)) return false
 
   const expiresAt = Number(expiresAtStr)
   const remainingSec = Math.floor((expiresAt - Date.now()) / 1000)
@@ -171,10 +188,17 @@ export const KisService = {
     // 동시 호출 방지 — in-flight 요청이 있으면 재사용
     if (issueTokenInFlight) return issueTokenInFlight
 
+    // IIFE 진입 시 모드 캡처. axios resolve 까지 이어지는 모든 await 사이에 invalidateRuntime 으로
+     // 모드가 바뀌면 결과 mainState/vault 반영을 차단해 옛 모드 토큰이 새 모드에 박히는 사고 방지.
+    const issuedFor = mainState.isPaperTrading
     issueTokenInFlight = (async () => {
       const appKey = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appKey')
       const appSecret = await keytar.getPassword(KEYTAR_SERVICE, 'kis-appSecret')
       if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
+      if (modeChangedSince(issuedFor)) {
+        console.info('[KisService] issueToken 중단 — 모드 전환 감지')
+        return
+      }
 
       try {
         const { data } = await kisHttp.post('/oauth2/tokenP', {
@@ -183,15 +207,20 @@ export const KisService = {
           appsecret: appSecret,
         })
 
+        if (modeChangedSince(issuedFor)) {
+          console.info('[KisService] 토큰 발급 결과 폐기 — resolve 사이 모드 전환')
+          return
+        }
+
         console.info(`[KisService] 토큰 발급 성공 — expires_in: ${data.expires_in}초`)
         mainState.setKisAccessToken(data.access_token, data.expires_in)
-        await saveTokenToVault(data.access_token, data.expires_in)
+        await saveTokenToVault(data.access_token, data.expires_in, issuedFor)
         scheduleTokenRefresh(data.expires_in)
       } catch (e: any) {
         // EGW00133: KIS 토큰 발급 1초당 1회 제한 초과
         const errorCode = e?.response?.data?.error_code
         if (errorCode === 'EGW00133') {
-          const restored = await loadTokenFromVaultForFallback()
+          const restored = await loadTokenFromVaultForFallback(issuedFor)
           if (restored) {
             console.info('[KisService] EGW00133 — keytar 저장 토큰으로 복원 성공')
             return
@@ -407,10 +436,26 @@ export const KisService = {
 
   /**
    * 모의/실전 환경 전환 시 호출 — in-flight axios abort + 메모리 토큰 소거 +
-   * 갱신 timer 취소 + axios baseURL 갱신.
-   * axios instance 자체는 보존하고 defaults.baseURL만 바꿔 import 측 참조를 깨뜨리지 않는다.
+   * 갱신 timer 취소 + axios baseURL 갱신 + keytar 양 모드 토큰 삭제 + in-flight reset.
+   *
+   * keytar 양 모드 토큰을 삭제하는 이유: EGW00133 fallback 이 옛 모드 토큰을 부활시켜
+   * 새 모드의 baseURL/TR_ID 와 모드 불일치 토큰으로 호출되는 사고를 차단한다.
+   * (다음 호출에서 재발급되므로 운영 영향 없음.)
+   *
+   * in-flight Promise reset: 옛 모드의 issueToken/getBalance Promise 가 새 모드 호출자에게
+   * 재사용되지 않도록 명시 null. 옛 await 자체는 abort signal 또는 mode-snapshot 가드로 종결.
+   *
+   * tokenRefreshAttempts reset: 새 모드에서 갱신은 처음부터 재시도되도록.
+   *
+   * ⚠️ 주문 진행 중 호출 금지 — KIS 측에 주문이 들어간 상태에서 axios 가 abort 되면
+   * 응답을 받지 못해 콜백 누락이 발생한다. 호출자(settingsHandlers 등) 가
+   * mainState.isOrderInProgress 를 사전 체크해야 하며, 본 함수는 방어선으로 한 번 더 검사한다.
    */
   invalidateRuntime(): void {
+    if (mainState.isOrderInProgress) {
+      console.warn('[KisService] invalidateRuntime 호출 무시 — 주문 진행 중')
+      return
+    }
     // 옛 baseURL/토큰으로 떠 있던 in-flight 요청을 즉시 취소
     activeAbortController.abort()
     activeAbortController = new AbortController()
@@ -420,7 +465,20 @@ export const KisService = {
       clearTimeout(refreshTimer)
       refreshTimer = null
     }
+    tokenRefreshAttempts = 0
+    issueTokenInFlight = null
+    getBalanceInFlight = null
     kisHttp.defaults.baseURL = getKisBaseUrl(mainState.isPaperTrading)
+
+    // keytar 양 모드 토큰 삭제 — 옛 모드 fallback 부활 차단. 실패는 무시.
+    void Promise.all([
+      keytar.deletePassword(KEYTAR_SERVICE, tokenKey(true)),
+      keytar.deletePassword(KEYTAR_SERVICE, expiryKey(true)),
+      keytar.deletePassword(KEYTAR_SERVICE, tokenKey(false)),
+      keytar.deletePassword(KEYTAR_SERVICE, expiryKey(false)),
+    ]).catch((e) => {
+      console.warn('[KisService] invalidateRuntime — keytar 토큰 삭제 실패 (무시):', e)
+    })
   },
 }
 
@@ -462,18 +520,41 @@ function buildKisHeaders(appKey: string, appSecret: string, trId: string) {
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let tokenRefreshAttempts = 0
+
+/** 갱신 실패 시 백오프 지연(초) — 6m, 12m, 24m. */
+const REFRESH_RETRY_DELAYS_SEC = [360, 720, 1440] as const
+const MAX_REFRESH_RETRIES = REFRESH_RETRY_DELAYS_SEC.length
+
+/**
+ * 자동 갱신 1회 실행. 성공 시 카운터 reset, 실패 시 백오프 재시도 또는 포기.
+ * scheduleTokenRefresh 와 분리해 재시도 delay 가 정상 갱신 delay 계산
+ * (expiresIn - 1h, 최소 60s) 에 휘둘리지 않도록 한다.
+ */
+async function runRefreshOnce(): Promise<void> {
+  try {
+    await KisService.issueToken()
+    tokenRefreshAttempts = 0
+    pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, KisService.getTokenStatus())
+  } catch (e) {
+    console.error('[KisService] 토큰 자동 갱신 실패:', e instanceof Error ? e.message : 'unknown error')
+    tokenRefreshAttempts++
+    if (tokenRefreshAttempts >= MAX_REFRESH_RETRIES) {
+      console.error(`[KisService] 토큰 자동 갱신 ${MAX_REFRESH_RETRIES}회 연속 실패 — 자동 갱신 포기`)
+      pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESH_FAILED, { attempts: tokenRefreshAttempts })
+      tokenRefreshAttempts = 0
+      return
+    }
+    const retrySec = REFRESH_RETRY_DELAYS_SEC[tokenRefreshAttempts - 1]
+    console.info(`[KisService] 토큰 자동 갱신 재시도 ${tokenRefreshAttempts}/${MAX_REFRESH_RETRIES} — ${retrySec}초 후`)
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => { void runRefreshOnce() }, retrySec * 1000)
+  }
+}
 
 function scheduleTokenRefresh(expiresIn: number) {
   if (refreshTimer) clearTimeout(refreshTimer)
-  // 만료 1시간 전 갱신
+  // 만료 1시간 전 갱신, 최소 60s
   const delay = Math.max((expiresIn - 3600) * 1000, 60_000)
-  refreshTimer = setTimeout(async () => {
-    try {
-      await KisService.issueToken()
-      pushToRenderer(IPC_CHANNELS.KIS_TOKEN_REFRESHED, KisService.getTokenStatus())
-    } catch (e) {
-      console.error('[KisService] 토큰 자동 갱신 실패:', e instanceof Error ? e.message : 'unknown error')
-      scheduleTokenRefresh(360) // 6분 후 재시도
-    }
-  }, delay)
+  refreshTimer = setTimeout(() => { void runRefreshOnce() }, delay)
 }
