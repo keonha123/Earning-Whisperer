@@ -4,7 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.earningwhisperer.domain.portfolio.PositionRepository;
 import com.earningwhisperer.domain.stock.Stock;
+import com.earningwhisperer.domain.stock.StockRepository;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
 import com.earningwhisperer.global.common.SyncPriority;
 import org.junit.jupiter.api.AfterEach;
@@ -22,10 +24,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -40,6 +44,8 @@ class DailyBarSyncSchedulerTest {
 
     @Mock private DailyBarSyncService dailyBarSyncService;
     @Mock private WatchlistRepository watchlistRepository;
+    @Mock private PositionRepository positionRepository;
+    @Mock private StockRepository stockRepository;
 
     @InjectMocks
     private DailyBarSyncScheduler scheduler;
@@ -53,6 +59,10 @@ class DailyBarSyncSchedulerTest {
         appender = new ListAppender<>();
         appender.start();
         schedulerLogger.addAppender(appender);
+
+        // 기본 stub — 각 테스트가 필요 시 override. lenient 로 strict stubbing 우회.
+        lenient().when(positionRepository.findDistinctTickers()).thenReturn(List.of());
+        lenient().when(stockRepository.findByTickerIn(anyCollection())).thenReturn(List.of());
     }
 
     @AfterEach
@@ -134,7 +144,7 @@ class DailyBarSyncSchedulerTest {
     }
 
     @Test
-    @DisplayName("관심종목 비어있으면 service 호출 없이 skip")
+    @DisplayName("watchlist + position 모두 비어있으면 service 호출 없이 skip")
     void 빈_관심종목_skip() {
         given(watchlistRepository.findDistinctStocks()).willReturn(List.of());
 
@@ -142,7 +152,83 @@ class DailyBarSyncSchedulerTest {
 
         verify(dailyBarSyncService, never()).syncTicker(any(), any(), anyInt(), any());
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
-        assertThat(latestEvent().getFormattedMessage()).contains("관심종목 비어있음");
+        assertThat(latestEvent().getFormattedMessage()).contains("watchlist + position 비어있음");
+    }
+
+    @Test
+    @DisplayName("watchlist 만 있고 position 없음 → 기존 동작과 동일")
+    void watchlist만_있는_경우() {
+        Stock aapl = stockOf(1L, "AAPL");
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl));
+        given(dailyBarSyncService.syncTicker(1L, "AAPL", 30, SyncPriority.LOW)).willReturn(30);
+
+        scheduler.syncDailyBars();
+
+        verify(dailyBarSyncService).syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
+        verify(dailyBarSyncService, never()).syncTicker(eq(2L), anyString(), anyInt(), any());
+        assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
+        assertThat(latestEvent().getFormattedMessage()).contains("tickers=1", "success=1");
+    }
+
+    @Test
+    @DisplayName("position 만 있고 watchlist 없음 → position 기반 sync")
+    void position만_있는_경우() {
+        Stock nvda = stockOf(10L, "NVDA");
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of());
+        given(positionRepository.findDistinctTickers()).willReturn(List.of("NVDA"));
+        given(stockRepository.findByTickerIn(List.of("NVDA"))).willReturn(List.of(nvda));
+        given(dailyBarSyncService.syncTicker(10L, "NVDA", 30, SyncPriority.LOW)).willReturn(30);
+
+        scheduler.syncDailyBars();
+
+        verify(dailyBarSyncService).syncTicker(10L, "NVDA", 30, SyncPriority.LOW);
+        assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
+        assertThat(latestEvent().getFormattedMessage()).contains("tickers=1", "success=1", "bars=30");
+    }
+
+    @Test
+    @DisplayName("watchlist + position ticker 겹침 → dedup 후 한 번만 sync")
+    void watchlist_position_ticker_겹침_dedup() {
+        Stock aapl = stockOf(1L, "AAPL");
+        Stock nvda = stockOf(10L, "NVDA");
+        // watchlist: AAPL, NVDA
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of(aapl, nvda));
+        // position: NVDA, TSLA — NVDA 겹침
+        given(positionRepository.findDistinctTickers()).willReturn(List.of("NVDA", "TSLA"));
+        Stock tsla = stockOf(11L, "TSLA");
+        // findByTickerIn 은 stocks 테이블에서 매칭되는 것만 반환 — NVDA/TSLA 둘 다 등록되어 있다고 가정
+        given(stockRepository.findByTickerIn(List.of("NVDA", "TSLA"))).willReturn(List.of(nvda, tsla));
+        given(dailyBarSyncService.syncTicker(eq(1L), eq("AAPL"), anyInt(), any())).willReturn(30);
+        given(dailyBarSyncService.syncTicker(eq(10L), eq("NVDA"), anyInt(), any())).willReturn(30);
+        given(dailyBarSyncService.syncTicker(eq(11L), eq("TSLA"), anyInt(), any())).willReturn(30);
+
+        scheduler.syncDailyBars();
+
+        // NVDA 는 한 번만 호출되어야 함
+        verify(dailyBarSyncService).syncTicker(10L, "NVDA", 30, SyncPriority.LOW);
+        verify(dailyBarSyncService).syncTicker(1L, "AAPL", 30, SyncPriority.LOW);
+        verify(dailyBarSyncService).syncTicker(11L, "TSLA", 30, SyncPriority.LOW);
+        assertThat(latestEvent().getFormattedMessage()).contains("tickers=3", "success=3");
+    }
+
+    @Test
+    @DisplayName("position ticker 가 stocks 테이블에 미등록인 경우 — debug 로깅 + skip")
+    void position_ticker_stocks_미등록_skip() {
+        schedulerLogger.setLevel(Level.DEBUG);
+        Stock nvda = stockOf(10L, "NVDA");
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of());
+        // position 에 2개 있지만 stocks 테이블엔 NVDA 만 — UNKNOWN_TICKER 미등록
+        given(positionRepository.findDistinctTickers()).willReturn(List.of("NVDA", "UNKNOWN_TICKER"));
+        given(stockRepository.findByTickerIn(List.of("NVDA", "UNKNOWN_TICKER"))).willReturn(List.of(nvda));
+        given(dailyBarSyncService.syncTicker(10L, "NVDA", 30, SyncPriority.LOW)).willReturn(30);
+
+        scheduler.syncDailyBars();
+
+        verify(dailyBarSyncService).syncTicker(10L, "NVDA", 30, SyncPriority.LOW);
+        boolean hasDebugSkipLog = appender.list.stream()
+                .anyMatch(e -> e.getLevel() == Level.DEBUG
+                        && e.getFormattedMessage().contains("stocks 테이블에 미등록"));
+        assertThat(hasDebugSkipLog).isTrue();
     }
 
     // ─────────── helpers ───────────

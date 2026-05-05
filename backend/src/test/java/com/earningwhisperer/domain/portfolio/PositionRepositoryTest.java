@@ -98,4 +98,43 @@ class PositionRepositoryTest {
         assertThat(positionRepository.findByBrokerAccountId(100L)).hasSize(1);
         assertThat(positionRepository.findByBrokerAccountId(200L)).hasSize(1);
     }
+
+    @Test
+    @DisplayName("findDistinctTickers - 같은 ticker 가 여러 broker 에 있어도 1건")
+    void findDistinctTickers_같은_ticker_dedup() {
+        positionRepository.save(Position.builder().user(user).brokerAccountId(100L)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(200L)
+                .ticker("NVDA").quantity(20).avgPrice(130.0).build());
+
+        List<String> tickers = positionRepository.findDistinctTickers();
+
+        assertThat(tickers).containsExactly("NVDA");
+    }
+
+    @Test
+    @DisplayName("findDistinctTickers - 다른 사용자 / 다른 ticker 합산")
+    void findDistinctTickers_다른_사용자_ticker_합산() {
+        User other = userRepository.save(User.builder()
+                .email("o@test.com").password("pwd").nickname("o").build());
+
+        positionRepository.save(Position.builder().user(user).brokerAccountId(100L)
+                .ticker("NVDA").quantity(10).avgPrice(125.0).build());
+        positionRepository.save(Position.builder().user(user).brokerAccountId(100L)
+                .ticker("TSLA").quantity(5).avgPrice(200.0).build());
+        positionRepository.save(Position.builder().user(other).brokerAccountId(300L)
+                .ticker("AAPL").quantity(7).avgPrice(180.0).build());
+        positionRepository.save(Position.builder().user(other).brokerAccountId(300L)
+                .ticker("NVDA").quantity(2).avgPrice(140.0).build());
+
+        List<String> tickers = positionRepository.findDistinctTickers();
+
+        assertThat(tickers).containsExactlyInAnyOrder("NVDA", "TSLA", "AAPL");
+    }
+
+    @Test
+    @DisplayName("findDistinctTickers - 빈 결과")
+    void findDistinctTickers_빈_결과() {
+        assertThat(positionRepository.findDistinctTickers()).isEmpty();
+    }
 }
