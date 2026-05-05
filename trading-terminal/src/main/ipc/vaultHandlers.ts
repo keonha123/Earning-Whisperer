@@ -1,6 +1,6 @@
 import { KisService } from '../services/KisService'
 import { mainState } from '../store/mainState'
-import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { IPC_CHANNELS, type MaskedCredentialsResponse } from '../../lib/ipcChannels'
 import { IpcError } from '../../lib/types/ipcError'
 import { registerHandler } from './registerHandler'
 
@@ -53,6 +53,15 @@ export function registerVaultHandlers() {
     IPC_CHANNELS.VAULT_HAS,
     async () => {
       return KisService.hasCredentials()
+    },
+  )
+
+  registerHandler<void, MaskedCredentialsResponse>(
+    IPC_CHANNELS.VAULT_GET_MASKED,
+    async () => {
+      // KisService 가 이미 appKey/accountNo 만 읽어 마스킹 처리 — appSecret 은 노출 X.
+      // payload 는 void (인자 없음). 모드 양쪽을 한 번에 반환해 UI 가 별도 호출 줄임.
+      return KisService.getMaskedCredentials()
     },
   )
 

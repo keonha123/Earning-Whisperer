@@ -29,6 +29,10 @@ export default defineConfig({
       // PR-2b: Toast helper (showIpcErrorToast / makeToastId / CODE_CONFIG) 단위 테스트.
       // react-hot-toast 를 mock 해서 jsdom 없이도 호출 분기를 검증한다.
       'src/renderer/components/**/__tests__/**/*.test.ts',
+      // A3 hotfix: pages 의 순수 helper 단위 테스트 (resolveSaveOrder /
+      // composePartialFailureMessage / decideCardDelete 등). React 렌더는 검증하지 않고
+      // 순수 함수 분기만 본다 — 컴포넌트 import 시 react/IPC 의존성 회피 위해 별도 helper 모듈 권장.
+      'src/renderer/pages/**/__tests__/**/*.test.ts',
     ],
     clearMocks: true,
     restoreMocks: true,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
@@ -110,7 +110,7 @@ export default function AuthPage() {
         {step === 'login' ? (
           <LoginForm onSuccess={handleLoginSuccess} />
         ) : (
-          <KisVaultForm onSuccess={handleVaultSaved} />
+          <KisVaultDualForm onSuccess={handleVaultSaved} />
         )}
       </div>
 
@@ -379,48 +379,171 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
 }
 
 /* -------------------------------------------------------------------------- */
-/* KisVaultForm — 2-step 흐름 보존. 기존 비즈니스 로직 그대로,                 */
-/* 카드 컨테이너만 새 디자인 토큰으로 정리.                                   */
+/* KisVaultDualForm — 모의/실전 두 카드 폼.                                    */
+/*                                                                              */
+/* A3: 사용자는 양쪽 모두 또는 한쪽만 입력 가능. "기본 모드" 라디오 로 어느           */
+/* 모드를 디폴트로 시작할지 명시. 한쪽만 입력했다면 자동으로 그쪽이 활성.           */
+/*                                                                              */
+/* 빈 카드(세 필드 모두 비어있음)는 등록 skip. 한쪽이라도 일부만 채우면 검증 에러.    */
 /* -------------------------------------------------------------------------- */
-function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
-  const [appKey, setAppKey] = useState('')
-  const [appSecret, setAppSecret] = useState('')
-  const [accountNo, setAccountNo] = useState('')
+export type ModeKey = 'paper' | 'real'
+
+export interface VaultCardState {
+  appKey: string
+  appSecret: string
+  accountNo: string
+}
+
+export const EMPTY_CARD: VaultCardState = { appKey: '', appSecret: '', accountNo: '' }
+
+export function isCardEmpty(c: VaultCardState): boolean {
+  return c.appKey === '' && c.appSecret === '' && c.accountNo === ''
+}
+
+export function isCardComplete(c: VaultCardState): boolean {
+  return c.appKey.trim() !== '' && c.appSecret.trim() !== '' && c.accountNo.trim() !== ''
+}
+
+/**
+ * 입력된 카드와 활성 모드 선택을 받아 VAULT_SAVE 호출 순서를 결정.
+ * 활성 모드 먼저 저장하면 vaultHandlers 가 활성 모드 일치 시 issueToken 트리거 (저장 직후 자동 발급).
+ * 비활성 모드는 후순위 — vaultHandlers 가 활성 모드 가드로 token 발급 skip.
+ *
+ * 반환:
+ *   - 양쪽 모두 입력 → [activeMode, otherMode]
+ *   - 한쪽만 입력 → [filledMode]
+ *   - 양쪽 미입력 → []
+ */
+export function resolveSaveOrder(
+  paperFilled: boolean,
+  realFilled: boolean,
+  activeMode: ModeKey,
+): ModeKey[] {
+  const order: ModeKey[] = []
+  if (activeMode === 'paper') {
+    if (paperFilled) order.push('paper')
+    if (realFilled) order.push('real')
+  } else {
+    if (realFilled) order.push('real')
+    if (paperFilled) order.push('paper')
+  }
+  return order
+}
+
+/**
+ * 카드별 try/catch 결과(성공/실패 모드 + 메시지)를 조합해 사용자 인지용 에러 메시지 반환.
+ * null = 양쪽 다 성공 (호출 측이 onSuccess 트리거).
+ */
+export function composePartialFailureMessage(
+  successes: ModeKey[],
+  failures: { mode: ModeKey; message: string }[],
+): string | null {
+  if (failures.length === 0) return null
+  const label = (m: ModeKey): string => (m === 'paper' ? '모의' : '실전')
+  if (successes.length > 0) {
+    const failureLines = failures
+      .map((f) => `${label(f.mode)} 키 저장 실패: ${f.message}`)
+      .join('\n')
+    const successLine = successes.map(label).join('/')
+    return `${successLine} 키는 저장됐지만 ${failureLines}\n설정 페이지에서 추가 등록 가능합니다.`
+  }
+  // 양쪽 다 실패
+  return failures.map((f) => `${label(f.mode)} 키 저장 실패: ${f.message}`).join('\n')
+}
+
+function KisVaultDualForm({ onSuccess }: { onSuccess: () => void }) {
+  const [paperCard, setPaperCard] = useState<VaultCardState>(EMPTY_CARD)
+  const [realCard, setRealCard] = useState<VaultCardState>(EMPTY_CARD)
+  // 사용자가 명시적으로 선택한 활성 모드. null = 미선택 (한쪽만 입력 시 자동 결정).
+  const [selectedActiveMode, setSelectedActiveMode] = useState<ModeKey | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  // 현재 main 활성 모드를 묻고, 입력된 키를 그 모드 slot 에 저장.
-  // A3 에서 카드 분리 후엔 사용자가 직접 paper/real 을 선택하지만,
-  // A2 단계에서는 단일 폼이므로 활성 모드 기준 — 디폴트 true(paper) 가드.
-  const [isPaperTrading, setIsPaperTrading] = useState<boolean>(true)
 
-  useEffect(() => {
-    let cancelled = false
-    ipc
-      .invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
-      .then((v) => {
-        if (!cancelled && typeof v === 'boolean') setIsPaperTrading(v)
-      })
-      .catch(() => {
-        // 디폴트 true(모의) 유지 — 실전 모드인데 조회 실패 시 사용자가 모의로 오인할 수 있으므로
-        // 안전한 쪽(모의)으로 디폴트.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const paperFilled = !isCardEmpty(paperCard)
+  const realFilled = !isCardEmpty(realCard)
+  // 양쪽 모두 입력 시: 사용자 명시 선택 필수. 한쪽만 입력 시: 자동으로 그쪽이 활성.
+  const resolvedActiveMode: ModeKey | null =
+    paperFilled && realFilled
+      ? selectedActiveMode
+      : paperFilled
+        ? 'paper'
+        : realFilled
+          ? 'real'
+          : null
+
+  // 최소 한쪽이라도 입력되어야 제출 가능 — disabled 가드.
+  const canSubmit = paperFilled || realFilled
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    // 검증: 입력이 시작된 카드는 세 필드 모두 채워져야 함 (부분 입력 거부).
+    if (paperFilled && !isCardComplete(paperCard)) {
+      setError('모의투자 카드의 모든 필드를 입력해주세요. (App Key / App Secret / 계좌번호)')
+      return
+    }
+    if (realFilled && !isCardComplete(realCard)) {
+      setError('실전투자 카드의 모든 필드를 입력해주세요. (App Key / App Secret / 계좌번호)')
+      return
+    }
+    if (!paperFilled && !realFilled) {
+      setError('최소 한쪽 모드의 API 키를 입력해주세요.')
+      return
+    }
+    // 양쪽 입력인데 활성 모드 미선택 — 사용자가 어느 쪽으로 시작할지 명시해야 함.
+    if (paperFilled && realFilled && selectedActiveMode === null) {
+      setError('어느 모드를 기본 모드로 사용할지 선택해주세요.')
+      return
+    }
+
+    const finalActive = resolvedActiveMode
+    if (finalActive === null) {
+      // 위 가드들로 도달 불가능하지만 type narrowing 위해 명시.
+      setError('활성 모드를 결정할 수 없습니다.')
+      return
+    }
+
     setLoading(true)
     try {
-      await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, {
-        appKey,
-        appSecret,
-        accountNo,
-        isPaperTrading,
+      // 1) 활성 모드 먼저 main 에 박아 두면, 후속 VAULT_SAVE 가 활성 모드 일치 시 토큰 발급.
+      //    SETTINGS_SET_PAPER_TRADING 은 invalidateRuntime 을 트리거하므로 VAULT_SAVE 선행 필수.
+      await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, {
+        value: finalActive === 'paper',
       })
-      onSuccess()
+
+      // 2) 카드별 try/catch 분리 — 부분 저장 실패 시 어느 카드 실패인지 사용자에게 명시.
+      // 단일 에러 메시지로는 "첫 카드 성공 + 두 번째 실패" 시 어느 모드 키가 들어갔는지
+      // 사용자가 알 수 없어 재등록 흐름이 막힌다 (review hotfix #2).
+      const saveOrder = resolveSaveOrder(paperFilled, realFilled, finalActive)
+      const failures: { mode: ModeKey; message: string }[] = []
+      const successes: ModeKey[] = []
+      for (const mode of saveOrder) {
+        const card = mode === 'paper' ? paperCard : realCard
+        try {
+          await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, {
+            appKey: card.appKey.trim(),
+            appSecret: card.appSecret.trim(),
+            accountNo: card.accountNo.trim(),
+            isPaperTrading: mode === 'paper',
+          })
+          successes.push(mode)
+        } catch (err: any) {
+          failures.push({
+            mode,
+            message: err?.message ?? '저장 실패',
+          })
+          // 첫 카드 실패는 toast 만 (사용자가 form 으로 재시도 가능). 마지막 실패는 인라인까지 노출.
+          showIpcErrorToast(err)
+        }
+      }
+
+      const partialMessage = composePartialFailureMessage(successes, failures)
+      if (partialMessage === null) {
+        onSuccess()
+        return
+      }
+      setError(partialMessage)
     } catch (err: any) {
       setError(err?.message ?? 'API 키 저장에 실패했습니다.')
       showIpcErrorToast(err)
@@ -431,57 +554,167 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div
-      className="w-[420px] max-w-full bg-surface-1 border border-border-subtle rounded-xl px-[26px] pt-5 pb-[22px]"
+      className="w-[460px] max-w-full bg-surface-1 border border-border-subtle rounded-xl px-[26px] pt-5 pb-[22px]"
       style={{
         boxShadow:
           '0 20px 50px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.02) inset',
       }}
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
         <div>
           <h2 className="text-text-primary text-base font-semibold tracking-tight">
             KIS API 키 등록
           </h2>
+          <p className="text-text-tertiary text-xs mt-1">
+            모의 / 실전 환경별로 키쌍을 등록합니다. 한쪽만 등록해도 진행할 수 있고, 나중에 설정에서 다른 모드를 추가할 수 있습니다.
+          </p>
         </div>
 
-        <div className="p-3 bg-sell/10 border border-sell/30 rounded-md text-sell text-sm">
-          ⚠ 모의투자 API 키를 사용하고 있습니다. 실전 투자 키는 사용하지 마세요.
-        </div>
+        <VaultCard
+          mode="paper"
+          title="KIS 모의투자"
+          accentTone="paper"
+          card={paperCard}
+          onChange={setPaperCard}
+          activeRadio={resolvedActiveMode === 'paper'}
+          onActivateRadio={() => setSelectedActiveMode('paper')}
+          showRadio={paperFilled && realFilled}
+          autoActivated={paperFilled && !realFilled}
+        />
 
-        <AuthInputField
-          label="App Key"
-          value={appKey}
-          onChange={(e) => setAppKey(e.target.value)}
-          required
-        />
-        <AuthInputField
-          label="App Secret"
-          isPassword
-          value={appSecret}
-          onChange={(e) => setAppSecret(e.target.value)}
-          required
-        />
-        <AuthInputField
-          label="계좌번호 (예: 5012345601)"
-          value={accountNo}
-          onChange={(e) => setAccountNo(e.target.value)}
-          required
+        <VaultCard
+          mode="real"
+          title="KIS 실전투자"
+          accentTone="real"
+          card={realCard}
+          onChange={setRealCard}
+          activeRadio={resolvedActiveMode === 'real'}
+          onActivateRadio={() => setSelectedActiveMode('real')}
+          showRadio={paperFilled && realFilled}
+          autoActivated={realFilled && !paperFilled}
         />
 
         {error && <p className="text-sell text-sm">{error}</p>}
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !canSubmit}
           className="w-full h-[38px] rounded-lg bg-accent-500 hover:bg-accent-600 text-accent-foreground font-semibold text-base inline-flex items-center justify-center gap-2 mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           style={{
             boxShadow:
               '0 10px 28px -10px rgba(16,185,129,.7), inset 0 1px 0 rgba(255,255,255,.2)',
           }}
         >
-          {loading ? '저장 중...' : '저장 및 시작'}
+          {loading ? '저장 중...' : '저장하고 시작'}
         </button>
       </form>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* VaultCard — 한 모드용 입력 카드. paper/real 색조만 분기.                     */
+/* -------------------------------------------------------------------------- */
+function VaultCard({
+  mode,
+  title,
+  accentTone,
+  card,
+  onChange,
+  activeRadio,
+  onActivateRadio,
+  showRadio,
+  autoActivated,
+}: {
+  mode: ModeKey
+  title: string
+  accentTone: 'paper' | 'real'
+  card: VaultCardState
+  onChange: (next: VaultCardState) => void
+  activeRadio: boolean
+  onActivateRadio: () => void
+  showRadio: boolean
+  autoActivated: boolean
+}) {
+  const tone =
+    accentTone === 'paper'
+      ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.3)' }
+      : { color: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.3)' }
+
+  return (
+    <div
+      className="rounded-md border bg-surface-2 px-3 pt-2.5 pb-3 flex flex-col gap-2"
+      style={{ borderColor: tone.border, background: tone.bg }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="text-text-primary text-sm font-semibold tracking-tight"
+          style={{ color: tone.color }}
+        >
+          {title}
+        </span>
+        {autoActivated && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-semibold tracking-wider whitespace-nowrap"
+            style={{
+              background: 'rgba(16,185,129,0.10)',
+              color: '#34d399',
+              border: '1px solid rgba(16,185,129,0.25)',
+            }}
+          >
+            기본 모드
+          </span>
+        )}
+      </div>
+
+      <AuthInputField
+        label="App Key"
+        value={card.appKey}
+        onChange={(e) => onChange({ ...card, appKey: e.target.value })}
+      />
+      <AuthInputField
+        label="App Secret"
+        isPassword
+        value={card.appSecret}
+        onChange={(e) => onChange({ ...card, appSecret: e.target.value })}
+      />
+      <AuthInputField
+        label="계좌번호 (예: 5012345601)"
+        value={card.accountNo}
+        onChange={(e) => onChange({ ...card, accountNo: e.target.value })}
+      />
+
+      {showRadio && (
+        <label className="inline-flex items-center gap-2 cursor-pointer select-none mt-1">
+          <input
+            type="radio"
+            name="vault-active-mode"
+            checked={activeRadio}
+            onChange={onActivateRadio}
+            value={mode}
+            className="peer sr-only"
+          />
+          <span
+            className={`w-3.5 h-3.5 rounded-full grid place-items-center transition-colors ${
+              activeRadio ? 'bg-accent-500' : 'bg-surface-3'
+            } peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500/40 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2`}
+            style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.15)' }}
+            aria-hidden
+          >
+            {activeRadio && (
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-foreground" />
+            )}
+          </span>
+          <span className="text-text-secondary text-xs whitespace-nowrap">
+            기본 모드로 사용
+          </span>
+        </label>
+      )}
+      {showRadio && (
+        <span className="text-text-disabled text-[10px] tracking-wide leading-snug">
+          설정에서 언제든 변경 가능
+        </span>
+      )}
     </div>
   )
 }

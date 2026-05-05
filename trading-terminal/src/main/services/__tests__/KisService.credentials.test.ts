@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { kisHttpMock } from '../../../test/setup'
 
 import keytar from 'keytar'
-import { KisService, migrateLegacyKeysIfNeeded } from '../KisService'
+import { KisService, maskAccountNo, maskAppKey, migrateLegacyKeysIfNeeded } from '../KisService'
 import { mainState } from '../../store/mainState'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
@@ -169,6 +169,195 @@ describe('KisService.deleteCredentials — 모드별 삭제', () => {
     // 활성 모드 메모리 토큰은 그대로
     expect(mainState.kisAccessToken).toBe('paper-runtime-token')
     expect(mainState.isKisTokenValid()).toBe(true)
+  })
+})
+
+/**
+ * A3 hotfix #1: saveCredentials 가 옛 token slot 도 항상 정리.
+ * EGW00133 fallback 시 옛 키로 발급된 토큰이 부활하면 새 키와 결합되어 KIS 가 거부.
+ * 따라서 키 [수정] 시 메모리 + keytar token slot 모두 무효화 필수.
+ */
+describe('KisService.saveCredentials — 옛 토큰 명시 무효화 (hotfix #1)', () => {
+  it('활성 모드 키 저장 → 그 모드 token slot keytar 삭제 + 메모리 토큰 clear', async () => {
+    mainState.setPaperTrading(true)
+    mainState.setKisAccessToken('paper-old-token', 3600)
+
+    // 사전에 keytar 에 옛 토큰이 박혀 있음
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'paper-old-token')
+    await keytar.setPassword(
+      KEYTAR_SERVICE,
+      'kis-tokenExpiresAt-paper',
+      String(Date.now() + 86400_000),
+    )
+
+    // 활성 모드(paper) 키 저장
+    await KisService.saveCredentials('new-key', 'new-secret', 'new-account', true)
+
+    // keytar token slot 정리 — EGW00133 fallback 진입 시 옛 토큰 부활 차단
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper')).toBeNull()
+    // 메모리 토큰도 clear
+    expect(mainState.kisAccessToken).toBeNull()
+    expect(mainState.isKisTokenValid()).toBe(false)
+  })
+
+  it('비활성 모드 키 저장 → 그 모드 token slot keytar 만 삭제, 활성 모드 메모리 토큰 보존', async () => {
+    mainState.setPaperTrading(true) // 활성 = paper
+    mainState.setKisAccessToken('paper-runtime-token', 3600)
+
+    // 비활성 모드(real) 의 옛 토큰이 keytar 에 박혀 있음
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-real', 'real-old-token')
+    await keytar.setPassword(
+      KEYTAR_SERVICE,
+      'kis-tokenExpiresAt-real',
+      String(Date.now() + 86400_000),
+    )
+
+    // 비활성(real) 키 저장
+    await KisService.saveCredentials('new-r-key', 'new-r-secret', 'new-r-account', false)
+
+    // real token slot 정리 — 다음 활성화 시 재발급 트리거되도록
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-real')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real')).toBeNull()
+    // 활성(paper) 메모리 토큰은 그대로 — 운영 영향 없음
+    expect(mainState.kisAccessToken).toBe('paper-runtime-token')
+    expect(mainState.isKisTokenValid()).toBe(true)
+  })
+
+  it('활성 모드 키 저장 → 다른 모드 token slot 은 손대지 않음 (분리 보장)', async () => {
+    mainState.setPaperTrading(true)
+    // 양 모드 모두 토큰 시드
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'p-tok')
+    await keytar.setPassword(
+      KEYTAR_SERVICE,
+      'kis-tokenExpiresAt-paper',
+      String(Date.now() + 86400_000),
+    )
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-real', 'r-tok')
+    await keytar.setPassword(
+      KEYTAR_SERVICE,
+      'kis-tokenExpiresAt-real',
+      String(Date.now() + 86400_000),
+    )
+
+    await KisService.saveCredentials('pk', 'ps', 'pa', true)
+
+    // paper(저장한 모드) 토큰 정리됨, real(반대 모드) 토큰 보존
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-real')).toBe('r-tok')
+  })
+})
+
+/**
+ * A3: getMaskedCredentials — UI 카드 표시용 마스킹된 응답.
+ * appSecret 은 절대 응답에 포함되지 않는다.
+ */
+describe('KisService.getMaskedCredentials — 모드별 마스킹 응답', () => {
+  it('양쪽 모두 등록 → 양쪽 모두 마스킹된 응답', async () => {
+    // appKey 16자 이상 / accountNo 8자 이상 (마스킹 prefix+suffix 노출 케이스)
+    await KisService.saveCredentials('PSDK0123456789ABCD', 'p-secret', '5012345601', true)
+    await KisService.saveCredentials('PSDK1111111122RRRR', 'r-secret', '8888888899', false)
+
+    const result = await KisService.getMaskedCredentials()
+
+    expect(result.paper).not.toBeNull()
+    expect(result.real).not.toBeNull()
+    expect(result.paper!.appKeyMasked).toBe('PSDK****ABCD')
+    expect(result.paper!.accountNoMasked).toBe('5012****01')
+    expect(result.real!.appKeyMasked).toBe('PSDK****RRRR')
+    expect(result.real!.accountNoMasked).toBe('8888****99')
+  })
+
+  it('paper 만 등록 → paper 마스킹, real 은 null', async () => {
+    await KisService.saveCredentials('PSDK0123456789ABCD', 'p-secret', '5012345601', true)
+
+    const result = await KisService.getMaskedCredentials()
+
+    expect(result.paper).toEqual({
+      appKeyMasked: 'PSDK****ABCD',
+      accountNoMasked: '5012****01',
+    })
+    expect(result.real).toBeNull()
+  })
+
+  it('real 만 등록 → real 마스킹, paper 는 null', async () => {
+    await KisService.saveCredentials('PSDK1111111122RRRR', 'r-secret', '8888888899', false)
+
+    const result = await KisService.getMaskedCredentials()
+
+    expect(result.paper).toBeNull()
+    expect(result.real).toEqual({
+      appKeyMasked: 'PSDK****RRRR',
+      accountNoMasked: '8888****99',
+    })
+  })
+
+  it('양쪽 미등록 → 양쪽 null', async () => {
+    const result = await KisService.getMaskedCredentials()
+    expect(result.paper).toBeNull()
+    expect(result.real).toBeNull()
+  })
+
+  it('appSecret 만 누락 → 마스킹 응답에는 영향 없음 (appSecret 등록 여부와 무관)', async () => {
+    // 의도적으로 appKey/accountNo 만 채우고 appSecret 누락 — getMasked 는 hasCredentials 와 다름.
+    await keytar.setPassword('EarningWhisperer', 'kis-appKey-paper', 'PSDK0123456789ABCD')
+    await keytar.setPassword('EarningWhisperer', 'kis-accountNo-paper', '5012345601')
+
+    const result = await KisService.getMaskedCredentials()
+    // appSecret 누락 상태여도 appKey + accountNo 가 있으면 마스킹 응답은 채워진다.
+    // (appSecret 노출은 어차피 응답에 없고, 사용자에게는 카드 표시가 등록 인디케이터로 작동.)
+    expect(result.paper).toEqual({
+      appKeyMasked: 'PSDK****ABCD',
+      accountNoMasked: '5012****01',
+    })
+    expect(result.real).toBeNull()
+  })
+
+  it('appKey/accountNo 어느 하나라도 누락 → 그 모드는 null', async () => {
+    await keytar.setPassword('EarningWhisperer', 'kis-appKey-paper', 'PSDK0123456789ABCD')
+    // accountNo 누락
+    const result = await KisService.getMaskedCredentials()
+    expect(result.paper).toBeNull()
+  })
+})
+
+describe('maskAppKey — 마스킹 형식 검증', () => {
+  it('16자 정확히 → prefix4 + **** + suffix4', () => {
+    expect(maskAppKey('PSDK0123456789CD')).toBe('PSDK****89CD')
+  })
+
+  it('16자 초과 → prefix4 + **** + suffix4 (중간 길이는 가려짐)', () => {
+    expect(maskAppKey('PSDK0123456789ABCDEFGHIJ')).toBe('PSDK****GHIJ')
+  })
+
+  it('15자 → 전체 마스킹 (16자 미만)', () => {
+    expect(maskAppKey('PSDK01234567890')).toBe('****')
+  })
+
+  it('8자 미만 → 전체 마스킹', () => {
+    expect(maskAppKey('PSDK')).toBe('****')
+  })
+
+  it('빈 문자열 → 전체 마스킹', () => {
+    expect(maskAppKey('')).toBe('****')
+  })
+})
+
+describe('maskAccountNo — 마스킹 형식 검증', () => {
+  it('10자 → prefix4 + **** + suffix2', () => {
+    expect(maskAccountNo('5012345601')).toBe('5012****01')
+  })
+
+  it('8자 정확히 → prefix4 + **** + suffix2', () => {
+    expect(maskAccountNo('50123456')).toBe('5012****56')
+  })
+
+  it('7자 → 전체 마스킹 (8자 미만)', () => {
+    expect(maskAccountNo('5012345')).toBe('****')
+  })
+
+  it('빈 문자열 → 전체 마스킹', () => {
+    expect(maskAccountNo('')).toBe('****')
   })
 })
 
