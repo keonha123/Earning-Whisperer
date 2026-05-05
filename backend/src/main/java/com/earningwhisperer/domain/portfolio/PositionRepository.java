@@ -26,4 +26,14 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM Position p WHERE p.brokerAccountId = :brokerAccountId")
     int deleteByBrokerAccountId(@Param("brokerAccountId") Long brokerAccountId);
+
+    /**
+     * 모든 사용자/브로커 계정의 Position 에 등록된 unique ticker 목록.
+     *
+     * <p>DailyBarSync 가 watchlist 외 보유 종목까지 포함해 일봉을 사전 적재할 수 있게 한다.
+     * Position.computePositionRatio 의 시장기준 비중 계산이 daily_bar fallback 으로
+     * 떨어지는 케이스를 차단.
+     */
+    @Query("SELECT DISTINCT p.ticker FROM Position p WHERE p.ticker IS NOT NULL")
+    List<String> findDistinctTickers();
 }

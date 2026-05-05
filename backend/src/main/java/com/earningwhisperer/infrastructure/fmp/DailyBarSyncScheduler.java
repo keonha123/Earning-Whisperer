@@ -1,6 +1,8 @@
 package com.earningwhisperer.infrastructure.fmp;
 
+import com.earningwhisperer.domain.portfolio.PositionRepository;
 import com.earningwhisperer.domain.stock.Stock;
+import com.earningwhisperer.domain.stock.StockRepository;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
 import com.earningwhisperer.global.common.SyncPriority;
 import lombok.RequiredArgsConstructor;
@@ -9,7 +11,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 관심종목(Watchlist) unique ticker 의 30일 일봉 사전 동기화.
@@ -40,14 +45,40 @@ public class DailyBarSyncScheduler {
 
     private final DailyBarSyncService dailyBarSyncService;
     private final WatchlistRepository watchlistRepository;
+    private final PositionRepository positionRepository;
+    private final StockRepository stockRepository;
 
-    /** 매일 UTC 22:30 — 관심종목 30D 일봉 적재. */
+    /** 매일 UTC 22:30 — 관심종목 + 보유종목 30D 일봉 적재. */
     @Scheduled(cron = "0 30 22 * * *", zone = "UTC")
     public void syncDailyBars() {
-        List<Stock> uniqueStocks = watchlistRepository.findDistinctStocks();
+        Set<Long> stockIds = new HashSet<>();
+        List<Stock> uniqueStocks = new ArrayList<>();
+
+        // 1) Watchlist 기반
+        for (Stock s : watchlistRepository.findDistinctStocks()) {
+            if (s != null && s.getId() != null && stockIds.add(s.getId())) {
+                uniqueStocks.add(s);
+            }
+        }
+
+        // 2) Position 기반 — Group D 시장기준 비중 계산이 daily_bar fallback 으로 떨어지는 것을 차단
+        List<String> positionTickers = positionRepository.findDistinctTickers();
+        if (!positionTickers.isEmpty()) {
+            List<Stock> positionStocks = stockRepository.findByTickerIn(positionTickers);
+            for (Stock s : positionStocks) {
+                if (s != null && s.getId() != null && stockIds.add(s.getId())) {
+                    uniqueStocks.add(s);
+                }
+            }
+            // Position 에 등록된 ticker 가 stocks 테이블에 미등록인 경우 — sync skip 로깅
+            if (positionStocks.size() < positionTickers.size()) {
+                log.debug("[DailyBarSync] Position 의 일부 ticker 가 stocks 테이블에 미등록 — sync skip (positions={} resolved={})",
+                        positionTickers.size(), positionStocks.size());
+            }
+        }
 
         if (uniqueStocks.isEmpty()) {
-            log.info("[DailyBarSync] 관심종목 비어있음 — 동기화 skip");
+            log.info("[DailyBarSync] watchlist + position 비어있음 — 동기화 skip");
             return;
         }
 
