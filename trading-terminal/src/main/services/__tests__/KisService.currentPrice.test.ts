@@ -16,13 +16,16 @@ import {
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 async function seedCredentials(): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-accountNo', '1234567801')
+  const mode = mainState.isPaperTrading ? 'paper' : 'real'
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appKey-${mode}`, 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appSecret-${mode}`, 'app-secret')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-accountNo-${mode}`, '1234567801')
 }
 
 beforeEach(() => {
   mainState.clear()
+  // 디폴트 paper 모드 명시 — clear() 는 isPaperTrading 을 유지하므로 leak 방지
+  mainState.setPaperTrading(true)
   mainState.setKisAccessToken('valid-token', 86400)
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()

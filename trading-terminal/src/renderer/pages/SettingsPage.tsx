@@ -132,9 +132,27 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteCredentials() {
-    if (!confirm('KIS API 키를 삭제하시겠습니까?')) return
-    await ipc.invoke(IPC_CHANNELS.VAULT_DELETE)
-    setHasCredentials(false)
+    // 활성 모드 + 비활성 모드 등록 상태에 따라 사용자에게 어느 키가 지워지고 어느 키가 보존되는지 명시.
+    // (Security H2) 사용자가 "전체 삭제"로 오인하고 비활성 모드 키까지 잃는 사고 방지.
+    const activeMode = isPaperTrading ? '모의' : '실전'
+    const otherMode = isPaperTrading ? '실전' : '모의'
+    const otherRegistered = isPaperTrading ? hasCredentials.real : hasCredentials.paper
+    const otherClause = otherRegistered
+      ? `\n${otherMode} 키는 유지됩니다.`
+      : ''
+    if (!confirm(`${activeMode} KIS API 키를 삭제하시겠습니까?${otherClause}`)) return
+
+    // A2: 활성 모드 기준 키만 삭제. A3 에서 양 모드 카드 분리 시 모드별 명시 삭제 UI 로 교체 예정.
+    await ipc.invoke(IPC_CHANNELS.VAULT_DELETE, { isPaperTrading })
+    // 삭제 후 양쪽 모드 등록 상태 재조회 — 다른 모드는 보존되므로 단순 false 가 아닐 수 있음.
+    try {
+      const has = await ipc.invoke<{ paper: boolean; real: boolean }>(
+        IPC_CHANNELS.VAULT_HAS,
+      )
+      setHasCredentials(has)
+    } catch {
+      setHasCredentials({ paper: false, real: false })
+    }
   }
 
   async function handleIssueToken() {
@@ -149,11 +167,15 @@ export default function SettingsPage() {
   // KIS 라이브 상태 기반 타임라인.
   // dev 빌드: fixture 메타(AppKey, 만료시간, 핑 등) 결합 표시
   // prod 빌드: generic 메시지만 표시 (fixture 누출 방지)
+  // 표시 기준은 "활성 모드의 키 등록 여부" — 비활성 모드 키만 등록된 상태에서 활성 모드가
+  // 마치 사용 가능한 것처럼 보이지 않도록 (Security H1).
+  const activeModeRegistered = hasCredentials[isPaperTrading ? 'paper' : 'real']
+  const otherModeRegistered = hasCredentials[isPaperTrading ? 'real' : 'paper']
   const liveSteps: KisTimelineStep[] = [
     {
       id: 'apikey',
-      title: hasCredentials ? 'API 키 등록됨' : 'API 키 미등록',
-      sub: hasCredentials
+      title: activeModeRegistered ? 'API 키 등록됨' : 'API 키 미등록',
+      sub: activeModeRegistered
         ? SHOW_DEV_KIS_META
           ? (
               <>
@@ -161,9 +183,13 @@ export default function SettingsPage() {
                 {kisStatusDevMock.registeredAt}
               </>
             )
-          : 'API 키가 안전하게 저장되어 있습니다'
-        : '등록된 API 키가 없습니다',
-      status: hasCredentials ? 'done' : 'pending',
+          : otherModeRegistered
+            ? `API 키가 안전하게 저장되어 있습니다 (${isPaperTrading ? '실전' : '모의'} 키도 등록됨)`
+            : 'API 키가 안전하게 저장되어 있습니다'
+        : otherModeRegistered
+          ? `${isPaperTrading ? '모의' : '실전'} 모드 키가 등록되지 않았습니다 (${isPaperTrading ? '실전' : '모의'} 키만 등록됨)`
+          : '등록된 API 키가 없습니다',
+      status: activeModeRegistered ? 'done' : 'pending',
     },
     {
       id: 'token',
@@ -189,11 +215,11 @@ export default function SettingsPage() {
     {
       id: 'connection',
       title:
-        hasCredentials && kisTokenStatus === 'VALID'
+        activeModeRegistered && kisTokenStatus === 'VALID'
           ? '서버 연결 정상'
           : '서버 연결 대기',
       sub:
-        hasCredentials && kisTokenStatus === 'VALID'
+        activeModeRegistered && kisTokenStatus === 'VALID'
           ? SHOW_DEV_KIS_META
             ? (
                 <>
@@ -204,11 +230,11 @@ export default function SettingsPage() {
             : '정상 연결됨'
           : 'API 키와 토큰 등록 후 연결됩니다',
       status:
-        hasCredentials && kisTokenStatus === 'VALID' ? 'done' : 'pending',
+        activeModeRegistered && kisTokenStatus === 'VALID' ? 'done' : 'pending',
     },
   ]
 
-  const isKisHealthy = hasCredentials && kisTokenStatus === 'VALID'
+  const isKisHealthy = activeModeRegistered && kisTokenStatus === 'VALID'
 
   return (
     <div className="max-w-2xl mx-auto py-8 flex flex-col gap-6">
@@ -494,7 +520,12 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={handleDeleteCredentials}
-            disabled={!hasCredentials}
+            disabled={!activeModeRegistered}
+            title={
+              !activeModeRegistered
+                ? `현재 활성 모드(${isPaperTrading ? '모의' : '실전'}) 키가 등록되어 있지 않습니다`
+                : undefined
+            }
             className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent text-sell hover:bg-sell/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             style={{ border: '1px solid #3f1d1d' }}
           >

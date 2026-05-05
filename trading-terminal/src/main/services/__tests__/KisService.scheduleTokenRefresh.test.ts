@@ -11,12 +11,13 @@ import { tokenIssueSuccessResponse } from '../../../test/fixtures/kisResponses'
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 async function seedApiKeys(): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey-paper', 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret-paper', 'app-secret')
 }
 
 beforeEach(() => {
   mainState.clear()
+  mainState.setPaperTrading(true) // leak 방지
   kisHttpMock.get.mockReset()
   kisHttpMock.post.mockReset()
 })

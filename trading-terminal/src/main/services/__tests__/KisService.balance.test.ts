@@ -18,9 +18,10 @@ import {
 const KEYTAR_SERVICE = 'EarningWhisperer'
 
 async function seedCredentials(): Promise<void> {
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appKey', 'app-key')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-appSecret', 'app-secret')
-  await keytar.setPassword(KEYTAR_SERVICE, 'kis-accountNo', '1234567801')
+  const mode = mainState.isPaperTrading ? 'paper' : 'real'
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appKey-${mode}`, 'app-key')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-appSecret-${mode}`, 'app-secret')
+  await keytar.setPassword(KEYTAR_SERVICE, `kis-accountNo-${mode}`, '1234567801')
 }
 
 beforeEach(() => {

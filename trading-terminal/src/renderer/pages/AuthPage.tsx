@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
@@ -9,6 +9,12 @@ import OAuthButton from '../components/auth/OAuthButton'
 import { showIpcErrorToast } from '../components/common/Toast'
 
 type Step = 'login' | 'vault'
+
+/**
+ * VAULT_HAS 응답: A2 부터 모드별 객체로 변경.
+ * A3 에서 paper/real 카드 분리 시까지는 "둘 중 하나라도 등록되어 있으면" 진입 가능 — 기존 흐름과 호환.
+ */
+type VaultHasResponse = { paper: boolean; real: boolean }
 
 export default function AuthPage() {
   const [step, setStep] = useState<Step>('login')
@@ -27,9 +33,10 @@ export default function AuthPage() {
       })
     }
     setAuthenticated(true)
-    const hasCredentials = await ipc.invoke<boolean>(IPC_CHANNELS.VAULT_HAS)
-    if (hasCredentials) {
-      setHasCredentials(true)
+    const hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
+    const anyRegistered = hasCredentials.paper || hasCredentials.real
+    setHasCredentials(hasCredentials)
+    if (anyRegistered) {
       navigate('/dashboard')
     } else {
       setStep('vault')
@@ -37,7 +44,14 @@ export default function AuthPage() {
   }
 
   async function handleVaultSaved() {
-    setHasCredentials(true)
+    // 저장 직후 양쪽 모드 등록 상태 재조회 — 이번 저장이 어느 모드였는지에 따라 paper/real 갱신.
+    try {
+      const has = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
+      setHasCredentials(has)
+    } catch {
+      // 조회 실패 시 최소한 현재 저장한 흐름이 있다는 사실을 반영해 양쪽 true 처리는 하지 않음.
+      // 다음 SettingsPage 마운트 시 재조회로 보정.
+    }
     navigate('/dashboard')
   }
 
@@ -374,13 +388,38 @@ function KisVaultForm({ onSuccess }: { onSuccess: () => void }) {
   const [accountNo, setAccountNo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 현재 main 활성 모드를 묻고, 입력된 키를 그 모드 slot 에 저장.
+  // A3 에서 카드 분리 후엔 사용자가 직접 paper/real 을 선택하지만,
+  // A2 단계에서는 단일 폼이므로 활성 모드 기준 — 디폴트 true(paper) 가드.
+  const [isPaperTrading, setIsPaperTrading] = useState<boolean>(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ipc
+      .invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
+      .then((v) => {
+        if (!cancelled && typeof v === 'boolean') setIsPaperTrading(v)
+      })
+      .catch(() => {
+        // 디폴트 true(모의) 유지 — 실전 모드인데 조회 실패 시 사용자가 모의로 오인할 수 있으므로
+        // 안전한 쪽(모의)으로 디폴트.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, { appKey, appSecret, accountNo })
+      await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, {
+        appKey,
+        appSecret,
+        accountNo,
+        isPaperTrading,
+      })
       onSuccess()
     } catch (err: any) {
       setError(err?.message ?? 'API 키 저장에 실패했습니다.')
