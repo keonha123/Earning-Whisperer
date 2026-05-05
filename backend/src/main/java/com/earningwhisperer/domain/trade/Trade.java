@@ -18,7 +18,8 @@ import java.util.Objects;
 @Table(name = "trades",
         indexes = {
                 @Index(name = "idx_trade_user_ticker", columnList = "user_id, ticker"),
-                @Index(name = "idx_trade_created_at", columnList = "created_at")
+                @Index(name = "idx_trade_created_at", columnList = "created_at"),
+                @Index(name = "idx_trade_broker_account", columnList = "broker_account_id")
         },
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_trade_broker_order_id", columnNames = "broker_order_id")
@@ -32,6 +33,13 @@ public class Trade {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    /**
+     * 거래가 일어난 BrokerAccount (모의/실전 또는 다중 계정 분리).
+     * SignalService 가 활성 BrokerAccount 만 사용하므로 PENDING 단계에서 박힌 후 변하지 않는다.
+     */
+    @Column(name = "broker_account_id", nullable = false)
+    private Long brokerAccountId;
 
     /**
      * 이 거래를 유발한 AI 시그널 (HOLD이면 null)
@@ -110,10 +118,11 @@ public class Trade {
     }
 
     @Builder
-    public Trade(User user, SignalHistory signal, String ticker, TradeAction side,
+    public Trade(User user, Long brokerAccountId, SignalHistory signal, String ticker, TradeAction side,
                  OrderType orderType, Integer orderQty, Double price,
                  Double orderRatio, Double aiScore) {
         this.user = user;
+        this.brokerAccountId = brokerAccountId;
         this.signal = signal;
         this.ticker = ticker;
         this.side = side;

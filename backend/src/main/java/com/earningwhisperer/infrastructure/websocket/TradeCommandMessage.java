@@ -29,6 +29,14 @@ public class TradeCommandMessage {
     @JsonSerialize(using = ToStringSerializer.class)
     private final Long tradeId;
 
+    /**
+     * 거래 대상 BrokerAccount 식별자. Terminal 이 어느 환경(모의/실전, 어느 증권사)에서 실행할지 명시.
+     * tradeId 와 동일하게 string 직렬화 (Terminal 내 안정적 매칭용).
+     */
+    @JsonProperty("broker_account_id")
+    @JsonSerialize(using = ToStringSerializer.class)
+    private final Long brokerAccountId;
+
     /** BUY | SELL */
     private final String action;
 

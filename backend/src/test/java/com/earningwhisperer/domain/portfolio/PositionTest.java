@@ -16,7 +16,7 @@ class PositionTest {
     @DisplayName("Builder 로 생성 시 quantity/avgPrice 보존, syncedAt 자동 설정")
     void builder_정상_생성() {
         Position p = Position.builder()
-                .user(user).ticker("NVDA").quantity(10).avgPrice(125.5)
+                .user(user).brokerAccountId(100L).ticker("NVDA").quantity(10).avgPrice(125.5)
                 .build();
 
         assertThat(p.getTicker()).isEqualTo("NVDA");
@@ -29,7 +29,7 @@ class PositionTest {
     @DisplayName("update() 호출 시 quantity/avgPrice/syncedAt 갱신")
     void update_quantity_avgPrice_갱신() {
         Position p = Position.builder()
-                .user(user).ticker("NVDA").quantity(10).avgPrice(125.5).build();
+                .user(user).brokerAccountId(100L).ticker("NVDA").quantity(10).avgPrice(125.5).build();
         java.time.LocalDateTime before = p.getSyncedAt();
 
         // 작은 시간 차이를 보장하기 위해 1ms sleep — 불안정하면 그냥 동일이어도 통과 가능하게 isBeforeOrEqualTo
@@ -45,7 +45,7 @@ class PositionTest {
     @DisplayName("bookValue() = quantity × avgPrice")
     void bookValue_매수기준_평가금액() {
         Position p = Position.builder()
-                .user(user).ticker("NVDA").quantity(10).avgPrice(125.0).build();
+                .user(user).brokerAccountId(100L).ticker("NVDA").quantity(10).avgPrice(125.0).build();
 
         assertThat(p.bookValue()).isEqualTo(1250.0);
     }

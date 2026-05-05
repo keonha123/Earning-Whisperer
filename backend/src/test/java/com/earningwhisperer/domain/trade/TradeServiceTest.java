@@ -51,7 +51,7 @@ class TradeServiceTest {
 
         // Act
         PendingTradeResult result = tradeService.createPendingTrade(
-                mockUser, "NVDA", TradeAction.BUY, TradingMode.AUTO_PILOT, 0.1, 0.8);
+                mockUser, 100L, "NVDA", TradeAction.BUY, TradingMode.AUTO_PILOT, 0.1, 0.8);
 
         // Assert
         assertThat(result).isNotNull();
@@ -70,7 +70,7 @@ class TradeServiceTest {
 
         // Act
         PendingTradeResult result = tradeService.createPendingTrade(
-                mockUser, "NVDA", TradeAction.BUY, TradingMode.SEMI_AUTO, 0.1, 0.8);
+                mockUser, 100L, "NVDA", TradeAction.BUY, TradingMode.SEMI_AUTO, 0.1, 0.8);
 
         // Assert
         assertThat(result).isNotNull();
@@ -83,7 +83,7 @@ class TradeServiceTest {
     void HOLD이면_Trade가_생성되지_않는다() {
         // Act
         PendingTradeResult result = tradeService.createPendingTrade(
-                mockUser, "NVDA", TradeAction.HOLD, TradingMode.AUTO_PILOT, 0.1, 0.8);
+                mockUser, 100L, "NVDA", TradeAction.HOLD, TradingMode.AUTO_PILOT, 0.1, 0.8);
 
         // Assert
         assertThat(result).isNull();
@@ -95,7 +95,7 @@ class TradeServiceTest {
     void MANUAL_모드이면_Trade가_생성되지_않는다() {
         // Act
         PendingTradeResult result = tradeService.createPendingTrade(
-                mockUser, "NVDA", TradeAction.BUY, TradingMode.MANUAL, 0.1, 0.8);
+                mockUser, 100L, "NVDA", TradeAction.BUY, TradingMode.MANUAL, 0.1, 0.8);
 
         // Assert
         assertThat(result).isNull();
@@ -165,27 +165,32 @@ class TradeServiceTest {
     }
 
     @Test
-    @DisplayName("getPendingCommandsForUser - 미만료 PENDING 을 TradeCommandMessage 로 변환해 반환")
+    @DisplayName("getPendingCommandsForUser - 활성 broker 의 미만료 PENDING 을 TradeCommandMessage 로 변환")
     void getPendingCommandsForUser_미만료_PENDING_변환() {
         // Arrange
         Trade trade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(trade.getUser()).willReturn(owner);
         given(trade.getId()).willReturn(7L);
         given(trade.getSide()).willReturn(TradeAction.BUY);
+        given(trade.getBrokerAccountId()).willReturn(100L);
         given(trade.getOrderRatio()).willReturn(0.1);
         given(trade.getAiScore()).willReturn(0.85);
         given(trade.getTicker()).willReturn("NVDA");
 
-        given(tradeRepository.findByUserIdAndStatusAndCreatedAtAfter(
-                eq(1L), eq(TradeStatus.PENDING), any(LocalDateTime.class)))
+        given(tradeRepository.findByBrokerAccountIdAndStatusAndCreatedAtAfter(
+                eq(100L), eq(TradeStatus.PENDING), any(LocalDateTime.class)))
                 .willReturn(List.of(trade));
 
         // Act
-        List<TradeCommandMessage> result = tradeService.getPendingCommandsForUser(1L);
+        List<TradeCommandMessage> result = tradeService.getPendingCommandsForUser(1L, 100L);
 
         // Assert
         assertThat(result).hasSize(1);
         TradeCommandMessage cmd = result.get(0);
         assertThat(cmd.getTradeId()).isEqualTo(7L);
+        assertThat(cmd.getBrokerAccountId()).isEqualTo(100L);
         assertThat(cmd.getAction()).isEqualTo("BUY");
         assertThat(cmd.getOrderRatio()).isEqualTo(0.1);
         assertThat(cmd.getTicker()).isEqualTo("NVDA");
@@ -197,14 +202,17 @@ class TradeServiceTest {
     void getPendingCommandsForUser_레거시_행_제외() {
         // Arrange — orderRatio 만 null 이어도 filter 에서 제외 (aiScore 검사 도달 X)
         Trade legacyTrade = mock(Trade.class);
+        User owner = mock(User.class);
+        given(owner.getId()).willReturn(1L);
+        given(legacyTrade.getUser()).willReturn(owner);
         given(legacyTrade.getOrderRatio()).willReturn(null);
 
-        given(tradeRepository.findByUserIdAndStatusAndCreatedAtAfter(
-                eq(1L), eq(TradeStatus.PENDING), any(LocalDateTime.class)))
+        given(tradeRepository.findByBrokerAccountIdAndStatusAndCreatedAtAfter(
+                eq(100L), eq(TradeStatus.PENDING), any(LocalDateTime.class)))
                 .willReturn(List.of(legacyTrade));
 
         // Act
-        List<TradeCommandMessage> result = tradeService.getPendingCommandsForUser(1L);
+        List<TradeCommandMessage> result = tradeService.getPendingCommandsForUser(1L, 100L);
 
         // Assert
         assertThat(result).isEmpty();

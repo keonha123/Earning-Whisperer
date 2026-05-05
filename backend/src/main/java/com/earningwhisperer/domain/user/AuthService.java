@@ -1,5 +1,8 @@
 package com.earningwhisperer.domain.user;
 
+import com.earningwhisperer.domain.portfolio.Broker;
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import com.earningwhisperer.domain.portfolio.TradingMode;
@@ -20,6 +23,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PortfolioSettingsRepository portfolioSettingsRepository;
+    private final BrokerAccountService brokerAccountService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
 
@@ -52,6 +56,11 @@ public class AuthService {
                 .tradingMode(TradingMode.MANUAL)
                 .build();
         portfolioSettingsRepository.save(defaultSettings);
+
+        // KIS 모의 BrokerAccount 자동 생성 + 활성화 — 신규 사용자가 활성 broker 없는 상태로
+        // 영구 fail-safe HOLD 되는 것을 방지. 사용자는 키 등록 후 즉시 정상 흐름 진입.
+        BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), Broker.KIS, true);
+        brokerAccountService.activateIfFirst(saved.getId(), defaultAccount.getId());
 
         return saved.getId();
     }

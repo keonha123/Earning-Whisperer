@@ -52,17 +52,19 @@ public class TradeService {
      * PENDING 상태의 Trade를 생성하고 tradeId + userId를 반환한다.
      * Trading Terminal이 tradeId를 받아 주문을 실행하고 콜백으로 결과를 보고한다.
      *
-     * @param user        대상 사용자 (이미 조회된 엔티티)
-     * @param ticker      종목 심볼
-     * @param action      RuleEngine 결과
-     * @param mode        사용자의 TradingMode
-     * @param orderRatio  주문 비율 — 재접속 시 명령 복원용으로 엔티티에 보존
-     * @param aiScore     시그널 AI 점수 — 재접속 시 명령 복원용
+     * @param user             대상 사용자 (이미 조회된 엔티티)
+     * @param brokerAccountId  거래 대상 BrokerAccount (활성 broker)
+     * @param ticker           종목 심볼
+     * @param action           RuleEngine 결과
+     * @param mode             사용자의 TradingMode
+     * @param orderRatio       주문 비율 — 재접속 시 명령 복원용으로 엔티티에 보존
+     * @param aiScore          시그널 AI 점수 — 재접속 시 명령 복원용
      * @return PendingTradeResult (MANUAL이거나 HOLD이면 null)
      */
     @Transactional
-    public PendingTradeResult createPendingTrade(User user, String ticker, TradeAction action,
-                                                  TradingMode mode, double orderRatio, double aiScore) {
+    public PendingTradeResult createPendingTrade(User user, Long brokerAccountId, String ticker,
+                                                  TradeAction action, TradingMode mode,
+                                                  double orderRatio, double aiScore) {
         if (action == TradeAction.HOLD) {
             return null;
         }
@@ -74,6 +76,7 @@ public class TradeService {
 
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(brokerAccountId)
                 .signal(null)
                 .ticker(ticker)
                 .side(action)
@@ -85,24 +88,26 @@ public class TradeService {
                 .build();
 
         Trade saved = tradeRepository.save(trade);
-        log.info("[TradeService] PENDING 거래 생성 - tradeId={} userId={} ticker={} action={} mode={}",
-                saved.getId(), user.getId(), ticker, action, mode);
+        log.info("[TradeService] PENDING 거래 생성 - tradeId={} userId={} brokerAccountId={} ticker={} action={} mode={}",
+                saved.getId(), user.getId(), brokerAccountId, ticker, action, mode);
         return new PendingTradeResult(saved.getId(), user.getId());
     }
 
     /**
-     * Terminal 재접속 시 호출. TTL 내 미만료 PENDING 명령을 복원한다.
+     * Terminal 재접속 시 호출. 활성 BrokerAccount 의 TTL 내 미만료 PENDING 명령을 복원한다.
      * orderRatio/aiScore 가 null 인 레거시 행은 제외한다 (복원 불가능 — 폐기).
      */
     @Transactional(readOnly = true)
-    public List<TradeCommandMessage> getPendingCommandsForUser(Long userId) {
+    public List<TradeCommandMessage> getPendingCommandsForUser(Long userId, Long brokerAccountId) {
         LocalDateTime threshold = LocalDateTime.now().minusSeconds(pendingTtlSeconds);
         return tradeRepository
-                .findByUserIdAndStatusAndCreatedAtAfter(userId, TradeStatus.PENDING, threshold)
+                .findByBrokerAccountIdAndStatusAndCreatedAtAfter(brokerAccountId, TradeStatus.PENDING, threshold)
                 .stream()
+                .filter(t -> t.getUser().getId().equals(userId)) // 소유권 방어 (이중 가드)
                 .filter(t -> t.getOrderRatio() != null && t.getAiScore() != null)
                 .map(t -> TradeCommandMessage.builder()
                         .tradeId(t.getId())
+                        .brokerAccountId(t.getBrokerAccountId())
                         .action(t.getSide().name())
                         .orderRatio(t.getOrderRatio())
                         .ticker(t.getTicker())

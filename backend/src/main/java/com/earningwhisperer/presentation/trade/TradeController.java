@@ -1,5 +1,7 @@
 package com.earningwhisperer.presentation.trade;
 
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.trade.TradeService;
 import com.earningwhisperer.infrastructure.websocket.TradeCommandMessage;
 import jakarta.validation.Valid;
@@ -25,6 +27,7 @@ import java.util.List;
 public class TradeController {
 
     private final TradeService tradeService;
+    private final BrokerAccountService brokerAccountService;
 
     /**
      * 거래 내역 페이지네이션 조회 (마이페이지용).
@@ -42,14 +45,18 @@ public class TradeController {
     }
 
     /**
-     * Terminal 재접속 시점에 호출. 미만료(TTL 내) PENDING 명령 목록을 반환한다.
+     * Terminal 재접속 시점에 호출. 활성 BrokerAccount 의 미만료(TTL 내) PENDING 명령 목록을 반환한다.
      * STOMP 발행이 미접속 사용자에게 silent drop 되는 경우의 복구 경로.
+     * 활성 BrokerAccount 미설정 시 빈 배열 반환.
      */
     @GetMapping("/pending")
     public ResponseEntity<List<TradeCommandMessage>> getPendingCommands(Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
-        List<TradeCommandMessage> commands = tradeService.getPendingCommandsForUser(userId);
-        return ResponseEntity.ok(commands);
+        return brokerAccountService.getActive(userId)
+                .map(BrokerAccount::getId)
+                .map(brokerAccountId -> ResponseEntity.ok(
+                        tradeService.getPendingCommandsForUser(userId, brokerAccountId)))
+                .orElseGet(() -> ResponseEntity.ok(List.of()));
     }
 
     @PostMapping("/{tradeId}/callback")

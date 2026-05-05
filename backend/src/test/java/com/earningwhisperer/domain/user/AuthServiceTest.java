@@ -1,5 +1,7 @@
 package com.earningwhisperer.domain.user;
 
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -16,7 +18,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +29,7 @@ class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
     @Mock private PortfolioSettingsRepository portfolioSettingsRepository;
+    @Mock private BrokerAccountService brokerAccountService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
 
@@ -36,8 +41,12 @@ class AuthServiceTest {
         // Arrange
         when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
         when(passwordEncoder.encode("password123")).thenReturn("encoded");
-        User savedUser = User.builder().email("test@example.com").password("encoded").nickname("테스터").build();
+        User savedUser = mock(User.class);
+        when(savedUser.getId()).thenReturn(42L);
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
+        BrokerAccount brokerAccount = mock(BrokerAccount.class);
+        when(brokerAccount.getId()).thenReturn(100L);
+        when(brokerAccountService.ensure(any(), any(), anyBoolean())).thenReturn(brokerAccount);
 
         // Act
         authService.signup("test@example.com", "password123", "테스터");
@@ -48,6 +57,9 @@ class AuthServiceTest {
         PortfolioSettings saved = settingsCaptor.getValue();
         assertThat(saved.getBuyAmountRatio()).isEqualTo(0.1);
         assertThat(saved.getCooldownMinutes()).isEqualTo(5);
+        // KIS-paper BrokerAccount 자동 생성 + 활성화 검증
+        verify(brokerAccountService).ensure(eq(42L), any(), eq(true));
+        verify(brokerAccountService).activateIfFirst(eq(42L), eq(100L));
     }
 
     @Test

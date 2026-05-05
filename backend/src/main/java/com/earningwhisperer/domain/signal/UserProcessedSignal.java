@@ -13,6 +13,7 @@ import com.earningwhisperer.domain.user.User;
  */
 public record UserProcessedSignal(
         User user,
+        Long brokerAccountId,
         TradeAction action,
         double aiScore,
         TradingMode mode,

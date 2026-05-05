@@ -50,13 +50,7 @@ public class PortfolioSettings extends BaseEntity {
     @Column(nullable = false, length = 20)
     private TradingMode tradingMode;
 
-    /**
-     * Trading Terminal 동기화 데이터 — 실계좌 예수금 잔고.
-     * 룰 엔진의 매수 수량 계산(buyAmountRatio * cashBalance)에 활용된다.
-     * null = 아직 동기화 미완료
-     */
-    @Column
-    private Double cashBalance;
+    // cashBalance 는 BrokerAccount 로 이전됨 (모드/계좌별 분리). 본 엔티티는 사용자 단위 룰 설정만 유지.
 
     @Builder
     public PortfolioSettings(User user, Double buyAmountRatio, Double maxPositionRatio,
@@ -76,9 +70,5 @@ public class PortfolioSettings extends BaseEntity {
         this.cooldownMinutes = cooldownMinutes;
         this.aiScoreThreshold = aiScoreThreshold;
         this.tradingMode = tradingMode;
-    }
-
-    public void syncCashBalance(Double cashBalance) {
-        this.cashBalance = cashBalance;
     }
 }

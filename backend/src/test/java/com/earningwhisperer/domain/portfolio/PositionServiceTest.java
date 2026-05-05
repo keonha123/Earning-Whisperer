@@ -4,7 +4,6 @@ import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.presentation.portfolio.PortfolioSyncRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +34,8 @@ class PositionServiceTest {
     private PositionService positionService;
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private static final long BROKER = 100L;
+    private static final long USER_ID = 1L;
 
     private List<PortfolioSyncRequest.PositionDto> dtos(String json) throws Exception {
         PortfolioSyncRequest req = mapper.readValue(json, PortfolioSyncRequest.class);
@@ -45,12 +46,14 @@ class PositionServiceTest {
     @DisplayName("computeBookRatio - 보유 ticker 비중을 매수 기준으로 산출")
     void computeBookRatio_매수기준_비중() {
         User user = mock(User.class);
-        Position nvda = Position.builder().user(user).ticker("NVDA").quantity(10).avgPrice(100.0).build(); // 1000
-        Position tsla = Position.builder().user(user).ticker("TSLA").quantity(5).avgPrice(200.0).build();  // 1000
-        given(positionRepository.findByUserId(1L)).willReturn(List.of(nvda, tsla));
+        Position nvda = Position.builder().user(user).brokerAccountId(BROKER)
+                .ticker("NVDA").quantity(10).avgPrice(100.0).build(); // 1000
+        Position tsla = Position.builder().user(user).brokerAccountId(BROKER)
+                .ticker("TSLA").quantity(5).avgPrice(200.0).build(); // 1000
+        given(positionRepository.findByBrokerAccountId(BROKER)).willReturn(List.of(nvda, tsla));
 
         // 총자산 = 8000(cash) + 1000(NVDA) + 1000(TSLA) = 10000. NVDA = 1000/10000 = 0.1
-        double ratio = positionService.computeBookRatio(1L, "NVDA", 8000.0);
+        double ratio = positionService.computeBookRatio(BROKER, "NVDA", 8000.0);
 
         assertThat(ratio).isEqualTo(0.1);
     }
@@ -58,34 +61,34 @@ class PositionServiceTest {
     @Test
     @DisplayName("computeBookRatio - 미보유 ticker 는 0")
     void computeBookRatio_미보유_0() {
-        given(positionRepository.findByUserId(1L)).willReturn(List.of());
+        given(positionRepository.findByBrokerAccountId(BROKER)).willReturn(List.of());
 
-        assertThat(positionService.computeBookRatio(1L, "NVDA", 10000.0)).isZero();
+        assertThat(positionService.computeBookRatio(BROKER, "NVDA", 10000.0)).isZero();
     }
 
     @Test
     @DisplayName("computeBookRatio - cashBalance null 이면 0 (검증 우회)")
     void computeBookRatio_cashBalance_null_은_0() {
-        assertThat(positionService.computeBookRatio(1L, "NVDA", null)).isZero();
+        assertThat(positionService.computeBookRatio(BROKER, "NVDA", null)).isZero();
     }
 
     @Test
     @DisplayName("computeBookRatio - cashBalance 0 이하면 0")
     void computeBookRatio_cashBalance_0_은_0() {
-        assertThat(positionService.computeBookRatio(1L, "NVDA", 0.0)).isZero();
-        assertThat(positionService.computeBookRatio(1L, "NVDA", -100.0)).isZero();
+        assertThat(positionService.computeBookRatio(BROKER, "NVDA", 0.0)).isZero();
+        assertThat(positionService.computeBookRatio(BROKER, "NVDA", -100.0)).isZero();
     }
 
     @Test
     @DisplayName("syncSnapshot - 빈/null positions 는 fail-safe no-op (Terminal 일시 장애 시 데이터 보존)")
     void syncSnapshot_빈_리스트_no_op() {
-        int upsertedEmpty = positionService.syncSnapshot(1L, List.of());
-        int upsertedNull = positionService.syncSnapshot(1L, null);
+        int upsertedEmpty = positionService.syncSnapshot(USER_ID, BROKER, List.of());
+        int upsertedNull = positionService.syncSnapshot(USER_ID, BROKER, null);
 
         assertThat(upsertedEmpty).isZero();
         assertThat(upsertedNull).isZero();
-        verify(positionRepository, never()).deleteByUserId(any());
-        verify(positionRepository, never()).deleteByUserIdAndTickerNotIn(any(), any());
+        verify(positionRepository, never()).deleteByBrokerAccountId(any());
+        verify(positionRepository, never()).deleteByBrokerAccountIdAndTickerNotIn(any(), any());
     }
 
     @Test
@@ -96,13 +99,12 @@ class PositionServiceTest {
                     {"ticker":"NVDA","quantity":10,"avg_price":125.0}
                 ]}
                 """);
-        given(positionRepository.findByUserId(1L)).willReturn(List.of());
-        // 신규 NVDA 저장을 위해 user 조회
-        given(userRepository.findById(1L)).willReturn(Optional.of(mock(User.class)));
+        given(positionRepository.findByBrokerAccountId(BROKER)).willReturn(List.of());
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(mock(User.class)));
 
-        positionService.syncSnapshot(1L, incoming);
+        positionService.syncSnapshot(USER_ID, BROKER, incoming);
 
-        verify(positionRepository).deleteByUserIdAndTickerNotIn(eq(1L),
+        verify(positionRepository).deleteByBrokerAccountIdAndTickerNotIn(eq(BROKER),
                 argThat(set -> set != null && set.contains("NVDA") && set.size() == 1));
     }
 
@@ -117,16 +119,15 @@ class PositionServiceTest {
                 """);
         Position existingNvda = mock(Position.class);
         given(existingNvda.getTicker()).willReturn("NVDA");
-        given(positionRepository.findByUserId(1L)).willReturn(List.of(existingNvda));
+        given(positionRepository.findByBrokerAccountId(BROKER)).willReturn(List.of(existingNvda));
 
         User userRef = mock(User.class);
-        given(userRepository.findById(1L)).willReturn(Optional.of(userRef));
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(userRef));
 
-        int upserted = positionService.syncSnapshot(1L, incoming);
+        int upserted = positionService.syncSnapshot(USER_ID, BROKER, incoming);
 
         assertThat(upserted).isEqualTo(2);
         verify(existingNvda).update(15, 130.0);
-        // TSLA 는 신규 → save 호출
         verify(positionRepository).save(any(Position.class));
     }
 
@@ -141,14 +142,12 @@ class PositionServiceTest {
                     {"ticker":"AAPL","quantity":3,"avg_price":180.0}
                 ]}
                 """);
-        given(positionRepository.findByUserId(1L)).willReturn(List.of());
+        given(positionRepository.findByBrokerAccountId(BROKER)).willReturn(List.of());
         User userRef = mock(User.class);
-        given(userRepository.findById(1L)).willReturn(Optional.of(userRef));
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(userRef));
 
-        int upserted = positionService.syncSnapshot(1L, incoming);
+        int upserted = positionService.syncSnapshot(USER_ID, BROKER, incoming);
 
-        // AAPL 만 정상 (NVDA=0qty / TSLA=0price / "" ticker 모두 skip)
         assertThat(upserted).isEqualTo(1);
     }
-
 }
