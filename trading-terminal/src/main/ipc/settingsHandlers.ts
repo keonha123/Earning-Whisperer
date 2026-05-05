@@ -4,6 +4,7 @@ import { mainState } from '../store/mainState'
 import { BackendClient } from '../services/BackendClient'
 import { KisService } from '../services/KisService'
 import { kisLimiter } from '../services/KisRateLimiter'
+import * as PricePoller from '../services/PricePoller'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { IpcError } from '../../lib/types/ipcError'
 import { registerHandler } from './registerHandler'
@@ -87,8 +88,11 @@ export function registerSettingsHandlers() {
       // rate limit 즉시 전환 (모의 1.5 req/s ↔ 실전 18 req/s)
       kisLimiter.setRate(value ? RATE_PAPER : RATE_REAL)
 
-      // 메모리 토큰 소거 + axios baseURL 갱신 + 자동갱신 timer 취소
+      // 메모리 토큰 소거 + axios baseURL 갱신 + 자동갱신 timer 취소 + keytar 양 모드 토큰 삭제
       KisService.invalidateRuntime()
+
+      // 옛 baseURL 로 폴링한 가격이 새 모드 화면에 잠시라도 노출되지 않도록 캐시 무효화 + 사이클 재시작
+      PricePoller.clearCache()
 
       broadcast(IPC_CHANNELS.SETTINGS_PAPER_TRADING_CHANGED, { value })
       return { ok: true }

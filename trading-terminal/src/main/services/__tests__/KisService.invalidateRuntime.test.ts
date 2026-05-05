@@ -75,4 +75,33 @@ describe('KisService.invalidateRuntime — 환경 전환 시 런타임 무효화
 
     expect(kisHttpMock.post).toHaveBeenCalledTimes(1) // 1차 발급만, 자동갱신 없음
   })
+
+  it('주문 진행 중 호출 시 무시한다 (axios abort 로 인한 콜백 누락 방지)', () => {
+    mainState.setOrderInProgress(true)
+    mainState.setKisAccessToken('valid-token', 86400)
+
+    KisService.invalidateRuntime()
+
+    // 토큰/타이머 그대로 유지되어야 함
+    expect(mainState.kisAccessToken).toBe('valid-token')
+    mainState.setOrderInProgress(false)
+  })
+
+  it('keytar 양 모드 토큰을 모두 삭제한다 (옛 모드 fallback 부활 차단)', async () => {
+    // Arrange — 양 모드 토큰을 vault 에 미리 저장
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'paper-token')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper', String(Date.now() + 86400_000))
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-real', 'real-token')
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real', String(Date.now() + 86400_000))
+
+    // Act
+    KisService.invalidateRuntime()
+    await flushMicrotasks()
+
+    // Assert — 양 모드 토큰/만료시각 모두 삭제
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-paper')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-paper')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-accessToken-real')).toBeNull()
+    expect(await keytar.getPassword(KEYTAR_SERVICE, 'kis-tokenExpiresAt-real')).toBeNull()
+  })
 })

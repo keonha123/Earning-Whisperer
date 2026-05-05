@@ -9,6 +9,7 @@ import {
   setHoldings,
   setWatchlist,
   getCachedPrices,
+  clearCache,
   __resetForTest,
   __getStateForTest,
 } from '../PricePoller'
@@ -136,6 +137,55 @@ describe('PricePoller — stop() 캐시 정리 (H7)', () => {
     // 다른 사용자 로그인 시 이전 ticker 가격 노출 방지 — cache 비어있어야 함
     const afterStop = getCachedPrices()
     expect(afterStop).toEqual({})
+  })
+})
+
+describe('PricePoller — clearCache (모드 전환)', () => {
+  it('clearCache() 후 캐시는 빈 상태이고 running 이면 사이클이 재시작된다', async () => {
+    getCurrentPriceMock.mockResolvedValue(123)
+
+    setHoldings(['A', 'B'])
+    start()
+
+    // 첫 tick: 2건 캐시
+    await vi.advanceTimersByTimeAsync(0)
+    await flushCycle(2)
+    expect(Object.keys(getCachedPrices()).sort()).toEqual(['A', 'B'])
+
+    // 모드 전환 시뮬레이션 — 새 가격 반환하도록 mock 변경
+    getCurrentPriceMock.mockResolvedValue(999)
+    clearCache()
+
+    // clearCache 직후 캐시는 비어있어야 함 (옛 모드 가격 노출 방지)
+    expect(getCachedPrices()).toEqual({})
+
+    // running 유지 + 새 사이클이 즉시 schedule(0) 으로 시작 → 다음 tick 에 새 가격 채워짐
+    await vi.advanceTimersByTimeAsync(0)
+    await flushCycle(2)
+    const after = getCachedPrices()
+    expect(after.A.currentPrice).toBe(999)
+    expect(after.B.currentPrice).toBe(999)
+  })
+
+  it('running=false 상태에서 clearCache() 는 캐시만 비우고 사이클은 시작하지 않는다', async () => {
+    getCurrentPriceMock.mockResolvedValue(123)
+
+    setHoldings(['A'])
+    start()
+    await vi.advanceTimersByTimeAsync(0)
+    await flushCycle(1)
+    expect(getCachedPrices().A?.currentPrice).toBe(123)
+
+    stop()
+    expect(__getStateForTest().running).toBe(false)
+
+    getCurrentPriceMock.mockClear()
+    clearCache()
+
+    expect(getCachedPrices()).toEqual({})
+    // 새 사이클이 시작되지 않으므로 mock 호출 없음
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(getCurrentPriceMock).not.toHaveBeenCalled()
   })
 })
 

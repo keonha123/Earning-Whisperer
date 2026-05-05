@@ -109,6 +109,73 @@ describe('scheduleTokenRefresh — 만료 1시간 전 갱신', () => {
     expect(kisHttpMock.post).toHaveBeenCalledTimes(1)
   })
 
+  it('갱신 연속 실패 시 360→720→1440 백오프 후 최대 재시도 도달 시 IPC 알림 발신', async () => {
+    await seedApiKeys()
+    vi.useFakeTimers()
+
+    // BrowserWindow.getAllWindows 가 mock 으로 [] 인 setup 환경에서는 pushToRenderer 가 no-op
+    // → 콘솔 에러 로그만 발생. 회귀 가드는 .post 호출 횟수로 충분.
+    // 1차 발급 성공
+    kisHttpMock.post.mockResolvedValueOnce({ data: tokenIssueSuccessResponse })
+    await KisService.issueToken()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(1)
+
+    // 자동갱신 1차 (실패) — 백오프 360s 등록
+    kisHttpMock.post.mockRejectedValueOnce(new Error('갱신 실패 1'))
+    await vi.advanceTimersByTimeAsync(82_800_000)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(2)
+
+    // 360s 후 재시도 2차 (실패) — 백오프 720s 등록
+    kisHttpMock.post.mockRejectedValueOnce(new Error('갱신 실패 2'))
+    await vi.advanceTimersByTimeAsync(360_000)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(3)
+
+    // 720s 후 재시도 3차 (실패) — MAX_REFRESH_RETRIES 도달, 재시도 포기
+    kisHttpMock.post.mockRejectedValueOnce(new Error('갱신 실패 3'))
+    await vi.advanceTimersByTimeAsync(720_000)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(4)
+
+    // 추가 1440s 진행해도 더이상 호출 없음 (포기 후)
+    await vi.advanceTimersByTimeAsync(1440_000)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(4)
+  })
+
+  it('갱신 성공 시 재시도 카운터가 0 으로 reset 된다', async () => {
+    await seedApiKeys()
+    vi.useFakeTimers()
+
+    // 1차 발급 성공
+    kisHttpMock.post.mockResolvedValueOnce({ data: tokenIssueSuccessResponse })
+    await KisService.issueToken()
+
+    // 자동갱신 1차 실패 → 360s 후 재시도
+    kisHttpMock.post.mockRejectedValueOnce(new Error('첫 갱신 실패'))
+    await vi.advanceTimersByTimeAsync(82_800_000)
+    await flushMicrotasks()
+
+    // 360s 후 2차 갱신 성공 → 카운터 reset
+    kisHttpMock.post.mockResolvedValueOnce({ data: tokenIssueSuccessResponse })
+    await vi.advanceTimersByTimeAsync(360_000)
+    await flushMicrotasks()
+
+    // 다음 자동갱신이 1차로 동작하는지 — 실패 시 360s (720s 가 아님) 가 등록됨
+    kisHttpMock.post.mockRejectedValueOnce(new Error('두 번째 사이클 1차 실패'))
+    await vi.advanceTimersByTimeAsync(82_800_000)
+    await flushMicrotasks()
+
+    // 720s 가 아닌 360s 후 재시도 — 카운터 reset 검증
+    kisHttpMock.post.mockResolvedValueOnce({ data: tokenIssueSuccessResponse })
+    await vi.advanceTimersByTimeAsync(360_000)
+    await flushMicrotasks()
+
+    // 발급(1) + 1차 갱신 실패(2) + 1차 재시도 성공(3) + 2차 갱신 실패(4) + 2차 재시도 성공(5)
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(5)
+  })
+
   it('issueToken을 두 번 연속 호출하면 자동갱신 timer가 1개만 유지된다 (clearTimeout 동작)', async () => {
     // scheduleTokenRefresh 내부 `if (refreshTimer) clearTimeout(refreshTimer)` 의 회귀 보호.
     // 만약 이전 timer가 안 클리어되면 자동갱신 시점에 .post가 두 번 호출되어 4회가 된다.

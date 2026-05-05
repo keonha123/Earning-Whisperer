@@ -96,6 +96,12 @@ export const IPC_CHANNELS = {
   WS_STATUS_CHANGED: 'terminal:ws:status-changed',
   MODE_FORCED_MANUAL: 'terminal:mode:forced-manual',
   KIS_TOKEN_REFRESHED: 'terminal:kis:token-refreshed',
+  /**
+   * KIS 토큰 자동 갱신이 최대 재시도까지 실패한 경우 발신.
+   * Renderer 는 사용자에게 재로그인/수동 재발급 안내 toast 를 띄운다.
+   * payload: { attempts: number }
+   */
+  KIS_TOKEN_REFRESH_FAILED: 'terminal:kis:token-refresh-failed',
 
   /**
    * 글로벌 시장 지수 1분 단위 push.

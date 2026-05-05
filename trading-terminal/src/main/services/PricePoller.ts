@@ -169,6 +169,20 @@ export function recalcAndRestart(): void {
   schedule(0)
 }
 
+/**
+ * 모드 전환 등으로 옛 baseURL 의 가격이 더이상 유효하지 않을 때 호출.
+ * 캐시를 비우고 진행 중 사이클을 cancel 한다 (running 이면 새 사이클 즉시 시작).
+ * stop() 과 달리 running 자체는 유지하여 모드 전환 흐름 단순화.
+ */
+export function clearCache(): void {
+  cache.clear()
+  if (running) {
+    currentCycleEpoch++
+    clearCycleTimer()
+    schedule(0)
+  }
+}
+
 export function setHoldings(holdings: string[]): void {
   const sorted = [...holdings].sort()
   if (

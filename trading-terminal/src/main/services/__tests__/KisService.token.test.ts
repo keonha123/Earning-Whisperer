@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // 공유 axios mock — setup.ts에서 vi.mock('axios')로 등록되어 있다.
 // 이 import는 vi.hoisted()와 동일한 호이스팅 효과를 가진다 (top-level vi.mock이 setup.ts에 있음).
-import { kisHttpMock } from '../../../test/setup'
+import { kisHttpMock, flushMicrotasks } from '../../../test/setup'
 
 import keytar from 'keytar'
 import { KisService } from '../KisService'
@@ -279,6 +279,83 @@ describe('mainState.isKisTokenValid — 1분 여유 경계', () => {
     mainState.setKisAccessToken('x', 61)
     // Date.now() < (now + 61_000) - 60_000 → now < now + 1_000 → true
     expect(mainState.isKisTokenValid()).toBe(true)
+  })
+})
+
+describe('KisService.issueToken — 모드 전환 race 가드', () => {
+  it('issueToken in-flight 중 invalidateRuntime 으로 모드 전환 시 옛 토큰을 mainState 에 박지 않는다', async () => {
+    // invalidateRuntime 이 kisHttp.defaults.baseURL 을 set 하므로 mock 에 defaults 보강
+    ;(kisHttpMock as any).defaults = { baseURL: '' }
+    await seedApiKeys()
+    mainState.setPaperTrading(true) // paper 로 시작
+
+    // axios resolve 를 사용자 제어 — invalidateRuntime 사이에 끼워넣기 위함.
+    // mockImplementationOnce 로 호출 시점에 promise 생성 → IIFE 의 await 가 즉시 .then 등록.
+    let resolvePost!: (v: unknown) => void
+    kisHttpMock.post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve
+        }),
+    )
+
+    // issueToken 시작 (paper 모드 캡처)
+    const inflight = KisService.issueToken().catch((e) => e)
+
+    // IIFE 가 keytar await 들 통과해 kisHttp.post 호출 단계까지 진행되도록 microtask 흘림
+    await flushMicrotasks()
+
+    // axios 응답 도착 전에 모드 전환 + invalidateRuntime
+    mainState.setPaperTrading(false)
+    KisService.invalidateRuntime()
+
+    // 이제 axios resolve — 옛 paper 모드 응답
+    resolvePost({ data: tokenIssueSuccessResponse })
+    await inflight
+
+    // mainState 에 옛 paper 토큰이 박히지 않아야 함 (invalidateRuntime 이 null 로 둔 그대로)
+    expect(mainState.kisAccessToken).toBeNull()
+  })
+
+  it('EGW00133 fallback 도 모드 전환 후엔 옛 모드 토큰을 부활시키지 않는다', async () => {
+    await seedApiKeys()
+    mainState.setPaperTrading(true)
+
+    // vault 에 paper 토큰을 충분한 잔여시간으로 미리 저장 (fallback 후보)
+    await keytar.setPassword(KEYTAR_SERVICE, 'kis-accessToken-paper', 'old-paper-token')
+    await keytar.setPassword(
+      KEYTAR_SERVICE,
+      'kis-tokenExpiresAt-paper',
+      String(Date.now() + 86400_000),
+    )
+
+    // axios resolve 제어 — EGW00133 거부 응답.
+    // mockImplementationOnce 사용 — mockReturnValueOnce 로 미리 만든 Promise 는 .then 등록 전에 reject 되면 unhandled.
+    let rejectPost!: (e: unknown) => void
+    kisHttpMock.post.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPost = reject
+        }),
+    )
+
+    // unhandled rejection 가드 — capture 변경 후 검증
+    const captured = KisService.issueToken().catch((e) => e)
+
+    // IIFE 가 kisHttp.post 단계까지 진행되도록 microtask 흘림
+    await flushMicrotasks()
+
+    // resolve 전에 모드 전환
+    mainState.setPaperTrading(false)
+
+    // 이제 EGW00133 응답 — fallback 시도하되 모드 전환 감지로 거부 → throw e
+    rejectPost(buildAxiosError({ data: tokenIssueRateLimitErrorResponse }))
+
+    const err = await captured
+    expect(err).toBeTruthy() // throw 됐어야 함
+
+    // fallback 이 옛 paper 토큰을 살리지 않았어야 함
+    expect(mainState.kisAccessToken).not.toBe('old-paper-token')
   })
 })
 

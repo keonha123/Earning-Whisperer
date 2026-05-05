@@ -11,8 +11,16 @@ interface MainState {
   backendToken: string | null
   /** KIS OAuth access_token */
   kisAccessToken: string | null
-  /** KIS 토큰 만료 시각 (Unix ms) */
+  /** KIS 토큰 만료 시각 (Unix ms, UI 표시용) */
   kisTokenExpiresAt: number | null
+  /**
+   * 토큰 발급 시 캡처한 monotonic 시각 (performance.now() 기준 ms).
+   * isKisTokenValid 의 만료 판정은 시계 어긋남(NTP 점프)에 영향받지 않도록
+   * Date.now() 가 아닌 이 값 + 수명으로 계산한다. wall-clock 은 UI 표시 전용.
+   */
+  kisTokenIssuedAtMono: number | null
+  /** 토큰 수명(초). 발급 시점의 expiresIn 을 그대로 보존. */
+  kisTokenLifetimeSec: number | null
   /** 현재 트레이딩 모드 — Renderer store와 동기화 */
   tradingMode: TradingMode
   /** 진행 중인 주문 여부 — 모드 전환 레이스 컨디션 방지 */
@@ -25,10 +33,14 @@ const state: MainState = {
   backendToken: null,
   kisAccessToken: null,
   kisTokenExpiresAt: null,
+  kisTokenIssuedAtMono: null,
+  kisTokenLifetimeSec: null,
   tradingMode: 'MANUAL',
   isOrderInProgress: false,
   isPaperTrading: true,
 }
+
+const TOKEN_VALIDITY_MARGIN_SEC = 60
 
 export const mainState = {
   get backendToken() { return state.backendToken },
@@ -37,15 +49,32 @@ export const mainState = {
   get kisAccessToken() { return state.kisAccessToken },
   setKisAccessToken(token: string | null, expiresIn?: number) {
     state.kisAccessToken = token
-    state.kisTokenExpiresAt = token && expiresIn
-      ? Date.now() + expiresIn * 1000
-      : null
+    if (token && expiresIn) {
+      state.kisTokenExpiresAt = Date.now() + expiresIn * 1000
+      state.kisTokenIssuedAtMono = performance.now()
+      state.kisTokenLifetimeSec = expiresIn
+    } else {
+      state.kisTokenExpiresAt = null
+      state.kisTokenIssuedAtMono = null
+      state.kisTokenLifetimeSec = null
+    }
   },
 
   get kisTokenExpiresAt() { return state.kisTokenExpiresAt },
+  /**
+   * monotonic 시계 기반 만료 판정 — Date.now() 가 NTP 동기화로 점프해도 안전.
+   * 발급 시점의 수명에서 elapsed (performance.now diff) 를 빼 만료 여부를 본다.
+   */
   isKisTokenValid(): boolean {
-    if (!state.kisAccessToken || !state.kisTokenExpiresAt) return false
-    return Date.now() < state.kisTokenExpiresAt - 60_000 // 1분 여유
+    if (
+      !state.kisAccessToken ||
+      state.kisTokenIssuedAtMono === null ||
+      state.kisTokenLifetimeSec === null
+    ) {
+      return false
+    }
+    const elapsedSec = (performance.now() - state.kisTokenIssuedAtMono) / 1000
+    return elapsedSec < state.kisTokenLifetimeSec - TOKEN_VALIDITY_MARGIN_SEC
   },
 
   get tradingMode() { return state.tradingMode },
@@ -65,6 +94,8 @@ export const mainState = {
     state.backendToken = null
     state.kisAccessToken = null
     state.kisTokenExpiresAt = null
+    state.kisTokenIssuedAtMono = null
+    state.kisTokenLifetimeSec = null
     state.tradingMode = 'MANUAL'
     state.isOrderInProgress = false
   },
