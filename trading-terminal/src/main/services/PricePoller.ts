@@ -214,10 +214,10 @@ export function setWatchlist(watchlist: string[]): void {
   recalcAndRestart()
 }
 
-export function getCachedPrices(): Record<string, { currentPrice: number; lastUpdated: number }> {
-  const result: Record<string, { currentPrice: number; lastUpdated: number }> = {}
+export function getCachedPrices(): Record<string, { currentPrice: number; previousClose: number; lastUpdated: number }> {
+  const result: Record<string, { currentPrice: number; previousClose: number; lastUpdated: number }> = {}
   for (const [ticker, entry] of cache.entries()) {
-    result[ticker] = { currentPrice: entry.currentPrice, lastUpdated: entry.lastUpdated }
+    result[ticker] = { currentPrice: entry.currentPrice, previousClose: entry.previousClose, lastUpdated: entry.lastUpdated }
   }
   return result
 }
