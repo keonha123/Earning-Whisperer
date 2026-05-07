@@ -171,14 +171,15 @@ export default function DashboardPage() {
       const meta = holdingsDevMock.find((m) => m.ticker === h.ticker)
       // 폴러 가격 우선, 없으면 KIS_GET_BALANCE 응답에 포함된 currentPrice fallback.
       const livePrice = prices[h.ticker]?.currentPrice ?? h.currentPrice
+      const prevClose = prices[h.ticker]?.previousClose ?? 0
+      const dailyChangePct = prevClose > 0 ? ((livePrice - prevClose) / prevClose) * 100 : 0
       const pnlPct =
         h.avgPrice > 0 ? ((livePrice - h.avgPrice) / h.avgPrice) * 100 : 0
       return {
         ticker: h.ticker,
         name: meta?.name ?? h.ticker,
         currentPrice: livePrice,
-        // TODO(별도 PR): 전일 종가 + dailyChangePercent 추가
-        dailyChangePercent: meta?.dailyChangePercent ?? 0,
+        dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
         earningsBadge: meta?.earningsBadge ?? null,
         logoBg: meta?.logoBg,
@@ -189,18 +190,21 @@ export default function DashboardPage() {
   }, [storeHoldings, prices])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
-  // currentPrice 는 PricePoller 가 push 한 가격 사용. 없으면 0 placeholder
-  // (HoldingsTable 의 `$0.00` 표시 자체가 "조회 중" 시그널).
-  // TODO(별도 PR): 전일 종가 + dailyChangePercent 추가
+  // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
   const { items: watchlistItems } = useWatchlist()
   const watchRows: HoldingsTableRow[] = useMemo(() => {
-    return watchlistItems.map((w) => ({
-      ticker: w.ticker,
-      name: w.companyName,
-      currentPrice: prices[w.ticker]?.currentPrice ?? 0,
-      dailyChangePercent: 0,
-      earningsBadge: null,
-    }))
+    return watchlistItems.map((w) => {
+      const entry = prices[w.ticker]
+      const cur = entry?.currentPrice ?? 0
+      const prev = entry?.previousClose ?? 0
+      return {
+        ticker: w.ticker,
+        name: w.companyName,
+        currentPrice: cur,
+        dailyChangePercent: prev > 0 ? ((cur - prev) / prev) * 100 : 0,
+        earningsBadge: null,
+      }
+    })
   }, [watchlistItems, prices])
 
   // MarketStrip 데이터:
