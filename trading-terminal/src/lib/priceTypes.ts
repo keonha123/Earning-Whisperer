@@ -11,6 +11,7 @@
 
 export interface PriceEntry {
   currentPrice: number
+  previousClose: number
   lastUpdated: number
 }
 

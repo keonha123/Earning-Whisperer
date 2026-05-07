@@ -54,6 +54,7 @@ export const usePricesStore = create<PricesState>((set) => ({
         if (
           !prev ||
           prev.currentPrice !== entry.currentPrice ||
+          prev.previousClose !== entry.previousClose ||
           prev.lastUpdated !== entry.lastUpdated
         ) {
           if (!changed) {
@@ -63,6 +64,7 @@ export const usePricesStore = create<PricesState>((set) => ({
           }
           working[entry.ticker] = {
             currentPrice: entry.currentPrice,
+            previousClose: entry.previousClose,
             lastUpdated: entry.lastUpdated,
           }
         }
