@@ -105,9 +105,14 @@ async function tick(): Promise<void> {
     // batch push / pause 판정 / schedule 모두 skip → 새 사이클이 깨끗하게 시작되도록 함.
     if (myEpoch !== currentCycleEpoch || !running) return
     try {
-      const price = await KisService.getCurrentPrice(ticker)
-      if (price > 0) {
-        const entry: PriceEntry = { ticker, currentPrice: price, lastUpdated: Date.now() }
+      const result = await KisService.getCurrentPrice(ticker)
+      if (result.currentPrice > 0) {
+        const entry: PriceEntry = {
+          ticker,
+          currentPrice: result.currentPrice,
+          previousClose: result.previousClose,
+          lastUpdated: Date.now(),
+        }
         batch.push(entry)
         cache.set(ticker, entry)
       } else {

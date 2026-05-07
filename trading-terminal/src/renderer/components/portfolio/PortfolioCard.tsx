@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Holding } from '../../store/usePortfolioStore'
+import { usePricesStore } from '../../store/usePricesStore'
 import type { IpcError } from '../../../lib/types/ipcError'
 import StaleDataOverlay from '../common/StaleDataOverlay'
 
@@ -115,11 +116,49 @@ function DonutPage({ holdings, totalCash }: { holdings: Holding[]; totalCash: nu
   )
 }
 
-// ── 페이지 3: 일일 손익 (PR 3 예약) ──────────────────────────────
+// ── 페이지 3: 일일 손익 ────────────────────────────────────────
 
-function DailyPnlPage() {
+function DailyPnlPage({ holdings }: { holdings: Holding[] }) {
+  const prices = usePricesStore((s) => s.prices)
+
+  if (holdings.length === 0) {
+    return <p className="text-text-disabled text-xs py-4 text-center">보유 종목 없음</p>
+  }
+
+  const rows = holdings.map((h) => {
+    const entry = prices[h.ticker]
+    const cur = entry?.currentPrice ?? h.currentPrice
+    const prev = entry?.previousClose ?? 0
+    const pnl = prev > 0 ? (cur - prev) * h.qty : 0
+    const pct = prev > 0 ? ((cur - prev) / prev) * 100 : null
+    return { ticker: h.ticker, pnl, pct, hasData: prev > 0 }
+  })
+  const totalPnl = rows.reduce((s, r) => s + r.pnl, 0)
+  const isPos = totalPnl >= 0
+
   return (
-    <p className="text-text-disabled text-xs py-4 text-center">일일 손익 — 다음 업데이트</p>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-text-disabled uppercase tracking-wide">일간 손익</span>
+        <span className={`num text-sm font-semibold ${isPos ? 'text-buy' : 'text-sell'}`}>
+          {isPos ? '+' : ''}${totalPnl.toFixed(2)}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {rows.map((r) => (
+          <div key={r.ticker} className="flex items-center justify-between">
+            <span className="num text-[10px] text-text-secondary">{r.ticker}</span>
+            {r.hasData ? (
+              <span className={`num text-[10px] ${r.pnl >= 0 ? 'text-buy' : 'text-sell'}`}>
+                {r.pnl >= 0 ? '+' : ''}${r.pnl.toFixed(2)}{r.pct !== null ? ` (${r.pct >= 0 ? '+' : ''}${r.pct.toFixed(1)}%)` : ''}
+              </span>
+            ) : (
+              <span className="num text-[10px] text-text-disabled">—</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -233,7 +272,7 @@ export default function PortfolioCard({
             />
           )}
           {page === 1 && <DonutPage holdings={holdings} totalCash={totalCash} />}
-          {page === 2 && <DailyPnlPage />}
+          {page === 2 && <DailyPnlPage holdings={holdings} />}
           {page === 3 && <CumulativePnlPage holdings={holdings} />}
         </div>
       </div>

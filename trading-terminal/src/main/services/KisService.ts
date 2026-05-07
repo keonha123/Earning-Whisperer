@@ -473,7 +473,7 @@ export const KisService = {
    * 해외주식 현재가 조회 (HHDFS00000300). 수량 계산에 사용.
    * 실패 시 0을 반환 — 호출 측이 0 가드로 주문 진입을 막는다.
    */
-  async getCurrentPrice(ticker: string): Promise<number> {
+  async getCurrentPrice(ticker: string): Promise<{ currentPrice: number; previousClose: number }> {
     await KisService.ensureToken()
 
     const paper = mainState.isPaperTrading
@@ -495,18 +495,21 @@ export const KisService = {
       // rt_cd 실패 시 0 반환 (호출자의 0 가드와 일관)
       if (data.rt_cd !== '0') {
         console.error('[KisService] HHDFS00000300 rt_cd 실패:', data.msg1 || data.msg_cd)
-        return 0
+        return { currentPrice: 0, previousClose: 0 }
       }
       const last = Number(data.output?.last ?? 0)
-      return Number.isFinite(last) && last > 0 ? last : 0
+      const base = Number(data.output?.base ?? 0)
+      const currentPrice = Number.isFinite(last) && last > 0 ? last : 0
+      const previousClose = Number.isFinite(base) && base > 0 ? base : 0
+      return { currentPrice, previousClose }
     } catch (e: any) {
       // 모드 전환 abort는 0 반환 (PricePoller 0 가드와 일관)
       if (isAbortError(e)) {
         console.info('[KisService] HHDFS00000300 abort (모드 전환)')
-        return 0
+        return { currentPrice: 0, previousClose: 0 }
       }
       console.error('[KisService] HHDFS00000300 현재가 조회 실패:', e?.response?.data?.message ?? e?.message)
-      return 0
+      return { currentPrice: 0, previousClose: 0 }
     }
   },
 

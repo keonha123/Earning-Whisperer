@@ -9,19 +9,20 @@ import { showIpcErrorToast } from '../components/common/Toast'
  */
 function isValidBatchItem(
   p: unknown,
-): p is { ticker: string; currentPrice: number; lastUpdated: number } {
+): p is { ticker: string; currentPrice: number; previousClose: number; lastUpdated: number } {
   if (!p || typeof p !== 'object') return false
   const o = p as Record<string, unknown>
   return (
     typeof o.ticker === 'string' &&
     typeof o.currentPrice === 'number' &&
+    typeof o.previousClose === 'number' &&
     typeof o.lastUpdated === 'number'
   )
 }
 
 function filterBatch(
   payload: unknown,
-): Array<{ ticker: string; currentPrice: number; lastUpdated: number }> {
+): Array<{ ticker: string; currentPrice: number; previousClose: number; lastUpdated: number }> {
   return Array.isArray(payload) ? payload.filter(isValidBatchItem) : []
 }
 
@@ -40,6 +41,7 @@ function filterSnapshot(payload: unknown): Record<string, PriceEntry> {
     if (typeof o.currentPrice === 'number' && typeof o.lastUpdated === 'number') {
       out[ticker] = {
         currentPrice: o.currentPrice,
+        previousClose: typeof o.previousClose === 'number' ? o.previousClose : 0,
         lastUpdated: o.lastUpdated,
       }
     }
