@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { IpcError } from '../../lib/types/ipcError'
 import { start as startWatchlist, stop as stopWatchlist } from './watchlistHandlers'
 import { clearCache as clearStockDetailCache } from './stockDetailHandlers'
+import { start as startEarnings, stop as stopEarnings } from './earningsHandlers'
 import { start as startPricePoller, stop as stopPricePoller } from '../services/PricePoller'
 import { registerHandler } from './registerHandler'
 
@@ -40,6 +41,8 @@ export function registerAuthHandlers() {
 
       // 관심종목 5분 폴링 시작 (이미 동작 중이면 no-op).
       startWatchlist()
+      // 어닝콜 타임라인 5분 폴링 시작.
+      startEarnings()
       // 시세 폴링 시작 — ticker 들은 watchlist 동기화/Renderer holdings 통보로 채워진다.
       startPricePoller()
 
@@ -50,6 +53,7 @@ export function registerAuthHandlers() {
   registerHandler<undefined, void>(IPC_CHANNELS.AUTH_LOGOUT, () => {
     StompService.disconnect()
     stopWatchlist()
+    stopEarnings()
     stopPricePoller()
     // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
     clearStockDetailCache()

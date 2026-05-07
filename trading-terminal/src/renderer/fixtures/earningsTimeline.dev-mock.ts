@@ -2,46 +2,19 @@
  * DEV ONLY — do not use in production.
  *
  * EarningsTimeline 컴포넌트가 표시하는 어닝콜 일정 더미값.
+ * 타입 정의는 src/lib/types/earningsTimeline.ts 에서 관리한다.
  *
  * 사용 규칙:
  *   - import.meta.env.DEV === true 인 경로에서만 참조할 것.
- *   - prod 빌드에서는 컴포넌트가 빈 placeholder ("일정 동기화 중") 표시.
- *
- * 추후 백엔드 PR:
- *   - 어닝 일정 IPC 채널 (`EARNINGS_GET_UPCOMING` 등) 추가 예정.
  * ========================================================================== */
 
-export type EarningsGroupKind = 'live' | 'today' | 'tomorrow' | 'week'
-
-export interface EarningsEvent {
-  ticker: string
-  name: string
-  /** 표시용 시간 라벨 (예: "오후 5:00 PM", "금 오전 6:00 AM"). KST 기준. */
-  timeLabel: string
-  /** 시간대 prefix (예: "오후", "금 오전"). 디자인 캔버스의 `.tl-right .when` 매칭. */
-  whenLabel?: string
-  /** 정확한 시각 (예: "5:00 PM"). `.tl-right .cd` 매칭. */
-  clockLabel?: string
-}
-
-export interface EarningsLiveEvent extends EarningsEvent {
-  /** 진행 경과 (예: "25:14"). */
-  elapsed: string
-  /** 회차/콜 라벨 (예: "Q3 FY25 Earnings Call"). */
-  callLabel: string
-}
-
-export interface EarningsGroup {
-  kind: Exclude<EarningsGroupKind, 'live'>
-  /** 그룹 라벨 ("오늘", "내일", "이번 주"). */
-  label: string
-  events: EarningsEvent[]
-}
-
-export interface EarningsTimelineFixture {
-  live: EarningsLiveEvent | null
-  groups: EarningsGroup[]
-}
+export type {
+  EarningsGroupKind,
+  EarningsEvent,
+  EarningsLiveEvent,
+  EarningsGroup,
+} from '../../lib/types/earningsTimeline'
+export type { EarningsTimelineData as EarningsTimelineFixture } from '../../lib/types/earningsTimeline'
 
 export const earningsTimelineDevMock: EarningsTimelineFixture = {
   live: {

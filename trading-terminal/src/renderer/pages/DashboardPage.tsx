@@ -22,6 +22,7 @@ import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
 import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
+import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
 // step=100 (수십만~수백만 단위 자산 차트) 으로 호출.
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
@@ -215,10 +216,27 @@ export default function DashboardPage() {
   //         실제 데이터 수신 시 자동 전환.
   const { indices, isLoaded } = useMarketIndices()
   const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
-  // EarningsTimeline 데이터: DEV 만 fixture, prod 빈 그룹 + null live.
-  const earningsData = import.meta.env.DEV
-    ? earningsTimelineDevMock
-    : { live: null, groups: [] }
+  // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
+    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    ipc.invoke<EarningsTimelineData>(IPC_CHANNELS.EARNINGS_TIMELINE_GET)
+      .then((data) => { if (!cancelled) setEarningsData(data) })
+      .catch(() => { /* DEV: fixture 유지, prod: 빈 상태 유지 */ })
+
+    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data: EarningsTimelineData) => {
+      setEarningsData(data)
+    })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
+  }, [])
 
   // Asset chart: 현재 IPC 미존재 — NVDA fixture 차트를 시각화 더미로 사용 (DEV).
   //  TODO(impl): KIS_GET_ASSET_TIMESERIES 도입 후 실제 시계열 사용.

@@ -65,11 +65,11 @@ public class FinnhubEarningsSyncService {
     public UpsertResult upsertRow(String ticker,
                                   Instant scheduledAt,
                                   boolean confirmed,
+                                  String marketSession,
                                   BigDecimal epsEstimate,
                                   BigDecimal revenueEstimate) {
         Stock stock = stockRepository.findByTicker(ticker).orElse(null);
         if (stock == null) {
-            // S&P 500 외 종목은 무시 — 운영상 정상 케이스.
             return UpsertResult.SKIPPED;
         }
 
@@ -77,13 +77,14 @@ public class FinnhubEarningsSyncService {
                 .findByStockTickerAndScheduledAt(ticker, scheduledAt);
 
         if (existing.isPresent()) {
-            existing.get().updateAll(scheduledAt, confirmed, epsEstimate, revenueEstimate);
+            existing.get().updateAll(scheduledAt, confirmed, marketSession, epsEstimate, revenueEstimate);
             return UpsertResult.UPDATED;
         }
         earningsCalendarRepository.save(EarningsCalendar.builder()
                 .stock(stock)
                 .scheduledAt(scheduledAt)
                 .confirmed(confirmed)
+                .marketSession(marketSession)
                 .epsEstimate(epsEstimate)
                 .revenueEstimate(revenueEstimate)
                 .build());

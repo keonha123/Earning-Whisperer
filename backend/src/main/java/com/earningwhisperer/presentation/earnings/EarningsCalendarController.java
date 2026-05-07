@@ -46,6 +46,23 @@ public class EarningsCalendarController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Trading Terminal용 어닝콜 타임라인 — S&P 500 전체 종목 대상.
+     * 관심종목 필터 없이 향후 N일 일정을 flat list로 반환한다.
+     * 그룹핑(live/today/tomorrow/week)은 Terminal main process에서 수행한다.
+     *
+     * @param days 조회 기간 (기본 7일, 최대 14일)
+     */
+    @GetMapping("/terminal-timeline")
+    public ResponseEntity<List<TerminalEarningsItem>> getTerminalTimeline(
+            @RequestParam(defaultValue = "7") int days) {
+        int safeDays = Math.min(days, 30);
+        List<TerminalEarningsItem> result = earningsCalendarService.getCalendar(safeDays).stream()
+                .map(TerminalEarningsItem::from)
+                .toList();
+        return ResponseEntity.ok(result);
+    }
+
     /** 개발/테스트용 수동 갱신. Finnhub 키 미설정 시 409 반환. */
     @PostMapping("/sync")
     public ResponseEntity<String> syncNow() {
@@ -68,6 +85,23 @@ public class EarningsCalendarController {
                     e.getStock().getCompanyName(),
                     e.getScheduledAt().getEpochSecond(),
                     e.isConfirmed());
+        }
+    }
+
+    record TerminalEarningsItem(
+            String ticker,
+            String companyName,
+            long scheduledAt,
+            boolean confirmed,
+            String marketSession) {
+
+        static TerminalEarningsItem from(EarningsCalendar e) {
+            return new TerminalEarningsItem(
+                    e.getStock().getTicker(),
+                    e.getStock().getCompanyName(),
+                    e.getScheduledAt().getEpochSecond(),
+                    e.isConfirmed(),
+                    e.getMarketSession());
         }
     }
 }

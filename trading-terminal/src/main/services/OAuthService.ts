@@ -26,6 +26,7 @@ import { mainState, TradingMode } from '../store/mainState'
 import { BackendClient } from './BackendClient'
 import { KisService } from './KisService'
 import { start as startWatchlist } from '../ipc/watchlistHandlers'
+import { start as startEarnings } from '../ipc/earningsHandlers'
 import { start as startPricePoller } from './PricePoller'
 
 export type OAuthProvider = 'google' | 'kakao'
@@ -314,6 +315,8 @@ class OAuthServiceImpl {
 
       // 관심종목 5분 폴링 시작 (이미 동작 중이면 no-op).
       startWatchlist()
+      // 어닝콜 타임라인 5분 폴링 시작.
+      startEarnings()
       // 시세 폴링 시작 — ticker 들은 watchlist/holdings 통보로 채워진다.
       startPricePoller()
 

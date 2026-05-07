@@ -65,6 +65,7 @@ public class FinnhubEarningsScheduler {
                         row.symbol(),
                         scheduledAt,
                         true,
+                        row.hour(),
                         row.epsEstimate(),
                         row.revenueEstimate());
                 switch (result) {

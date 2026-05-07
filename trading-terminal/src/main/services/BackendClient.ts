@@ -191,4 +191,27 @@ export const BackendClient = {
     )
     return data
   },
+
+  /**
+   * Trading Terminal용 어닝콜 타임라인 — S&P 500 전체 종목 flat list.
+   * GET /api/v1/earnings-calendar/terminal-timeline?days={days}
+   * 그룹핑은 호출 측(earningsHandlers)에서 수행한다.
+   */
+  async getEarningsTimeline(days = 7): Promise<EarningsTimelineItem[]> {
+    const { data } = await http.get<EarningsTimelineItem[]>(
+      '/api/v1/earnings-calendar/terminal-timeline',
+      { params: { days } },
+    )
+    return Array.isArray(data) ? data : []
+  },
+}
+
+export interface EarningsTimelineItem {
+  ticker: string
+  companyName: string
+  /** epoch seconds UTC */
+  scheduledAt: number
+  confirmed: boolean
+  /** Finnhub hour 필드: "bmo"(장전) | "amc"(장후) | "dmh"(장중) | null */
+  marketSession: string | null
 }

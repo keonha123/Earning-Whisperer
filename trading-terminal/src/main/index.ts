@@ -22,6 +22,7 @@ import { registerMarketHandlers } from './ipc/marketHandlers'
 import { registerWatchlistHandlers, stop as stopWatchlist } from './ipc/watchlistHandlers'
 import { registerPricesHandlers } from './ipc/pricesHandlers'
 import { registerStockDetailHandlers } from './ipc/stockDetailHandlers'
+import { registerEarningsHandlers, stop as stopEarnings } from './ipc/earningsHandlers'
 import { stop as stopPricePoller } from './services/PricePoller'
 import { OAuthService } from './services/OAuthService'
 import { kisLimiter } from './services/KisRateLimiter'
@@ -127,6 +128,7 @@ function registerAllHandlers() {
   registerWatchlistHandlers()
   registerPricesHandlers()
   registerStockDetailHandlers()
+  registerEarningsHandlers()
 }
 
 app.whenReady().then(async () => {
@@ -151,6 +153,7 @@ app.on('will-quit', () => {
   // OAuth 임시 서버가 살아있다면 강제 종료 (포트 누수 방지)
   OAuthService.shutdown()
   stopWatchlist()
+  stopEarnings()
   stopPricePoller()
   mainState.clear()
 })

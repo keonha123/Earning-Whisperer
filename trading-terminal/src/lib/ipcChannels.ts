@@ -147,6 +147,20 @@ export const IPC_CHANNELS = {
    * snake_case → camelCase 변환은 store 의 upsertSegment 에서 수행.
    */
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
+
+  /**
+   * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
+   * S&P 500 전체 종목 대상. main process 에서 그룹핑 후 EarningsTimelineData 반환.
+   * 응답: EarningsTimelineData { live, groups }
+   */
+  EARNINGS_TIMELINE_GET: 'terminal:earnings:timeline-get',
+
+  /**
+   * 어닝콜 타임라인 5분 폴링 push (Main → Renderer).
+   * 로그인 후 5분 간격으로 갱신된 EarningsTimelineData 를 전송한다.
+   * payload: EarningsTimelineData
+   */
+  EARNINGS_TIMELINE_UPDATE: 'terminal:earnings:timeline-update',
 } as const
 
 /**
