@@ -6,6 +6,7 @@ import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { TradeExecutor, type TradeSignal } from './TradeExecutor'
 import { BackendClient } from './BackendClient'
 import { NotificationService } from './NotificationService'
+import { markStompCovered, clearStompCovered } from './PricePoller'
 
 const WS_URL = (process.env.BACKEND_URL ?? 'http://localhost:8082')
   .replace(/^http/, 'ws') + '/ws-native'
@@ -152,6 +153,37 @@ export const StompService = {
         )
 
         /*
+         * Finnhub 실시간 주가 relay 구독 — 1초 배치.
+         * 백엔드 StockPricePublisher 가 변경된 티커만 배열로 발행.
+         * STOMP 커버 종목은 KIS REST 폴링 skip, 끊김 시 KIS fallback.
+         */
+        client!.subscribe(
+          `/topic/prices`,
+          (message: IMessage) => {
+            try {
+              const updates = JSON.parse(message.body) as Array<{
+                ticker: string
+                currentPrice: number
+                previousClose: number
+                changePercent: number
+                updatedAt: number
+              }>
+              if (!Array.isArray(updates) || updates.length === 0) return
+              const batch = updates.map((u) => ({
+                ticker: u.ticker,
+                currentPrice: u.currentPrice,
+                previousClose: u.previousClose,
+                lastUpdated: u.updatedAt,
+              }))
+              markStompCovered(batch.map((u) => u.ticker))
+              pushToRenderer(IPC_CHANNELS.PRICES_UPDATE, batch)
+            } catch (e) {
+              console.error('[StompService] 주가 업데이트 파싱 실패:', e)
+            }
+          },
+        )
+
+        /*
          * 재연결 시 활성 트랜스크립트 ticker 자동 재구독 (Contract 4.5).
          * Renderer 가 보고 있던 ticker 의 segment 가 끊김 없이 이어지도록 한다.
          * 새로 발급되는 subscription handle 로 Map 값을 갱신한다.
@@ -166,12 +198,14 @@ export const StompService = {
       },
 
       onDisconnect: () => {
+        clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()
       },
 
       onStompError: (frame) => {
         console.error('[StompService] STOMP 에러:', frame)
+        clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()
       },

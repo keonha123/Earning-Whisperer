@@ -161,6 +161,20 @@ export const IPC_CHANNELS = {
    * payload: EarningsTimelineData
    */
   EARNINGS_TIMELINE_UPDATE: 'terminal:earnings:timeline-update',
+
+  /**
+   * S&P 500 종목 리스트 조회 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/sp500 — JWT 불필요, 시가총액순 정렬.
+   * 응답: Sp500Stock[]
+   */
+  STOCKS_SP500_GET: 'terminal:stocks:sp500-get',
+
+  /**
+   * 전체 주가 스냅샷 초기 로딩 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/prices — JWT 불필요.
+   * 응답: StockPriceEntry[] (ticker, currentPrice, previousClose, changePercent, updatedAt)
+   */
+  STOCK_PRICES_SNAPSHOT_GET: 'terminal:stocks:prices-snapshot-get',
 } as const
 
 /**
