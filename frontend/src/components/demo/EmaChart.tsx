@@ -26,7 +26,7 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
   return (
     <div className="bg-gray-900 rounded-xl p-4 space-y-2">
       <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-        EMA Score 추이
+        AI Score 추이
       </h3>
 
       {data.length === 0 ? (
@@ -51,9 +51,9 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
             <Tooltip
               contentStyle={{ background: "#1F2937", border: "none", borderRadius: 8, fontSize: 12 }}
               labelFormatter={(v) => formatTime(v as number)}
-              formatter={(value, name) => [
+              formatter={(value) => [
                 typeof value === "number" ? value.toFixed(3) : value,
-                name === "ema" ? "EMA" : "Raw",
+                "AI Score",
               ]}
             />
             {/* BUY 임계선 */}
@@ -65,15 +65,7 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
 
             <Line
               type="monotone"
-              dataKey="raw"
-              stroke="#60A5FA"
-              strokeWidth={1}
-              dot={false}
-              opacity={0.5}
-            />
-            <Line
-              type="monotone"
-              dataKey="ema"
+              dataKey="score"
               stroke="#A78BFA"
               strokeWidth={2}
               dot={false}
@@ -84,10 +76,7 @@ export default function EmaChart({ data, threshold = 0.6 }: EmaChartProps) {
 
       <div className="flex flex-wrap gap-3 text-xs text-gray-500">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-4 h-0.5 bg-purple-400"></span> EMA
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-4 h-0.5 bg-blue-400 opacity-50"></span> Raw
+          <span className="inline-block w-4 h-0.5 bg-purple-400"></span> AI Score
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-0.5 bg-green-500"></span> BUY({threshold})

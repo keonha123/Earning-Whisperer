@@ -68,6 +68,24 @@ def get_all_tickers() -> List[str]:
         result = conn.execute(query)
         # 리스트 형태로 변환하여 반환
         return [row[0] for row in result]
+
+def get_all_stocks() -> List[Dict]:
+    """stocks 테이블에서 discovery에 필요한 최소 종목 정보를 가져옴"""
+    query = text("SELECT ticker, company_name FROM stocks")
+    with engine.connect() as conn:
+        result = conn.execute(query)
+        return [dict(row._mapping) for row in result]
+
+def update_stock_ir_url(ticker: str, ir_url: str):
+    """발견한 IR 페이지 URL을 stocks 테이블에 저장"""
+    query = text("""
+        UPDATE stocks
+        SET ir_url = :ir_url
+        WHERE ticker = :ticker
+    """)
+
+    with engine.begin() as conn:
+        conn.execute(query, {"ticker": ticker, "ir_url": ir_url})
     
 def save_prices(price_list: List[Dict]):
     if not price_list: return

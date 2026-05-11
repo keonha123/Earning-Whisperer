@@ -18,7 +18,7 @@ public class TradeResponse {
     private final TradeAction side;
     private final Integer orderQty;
     private final Integer executedQty;
-    private final Double price;
+    private final Double executedPrice;
     private final TradeStatus status;
     private final String brokerOrderId;
     private final LocalDateTime createdAt;
@@ -29,7 +29,7 @@ public class TradeResponse {
         this.side = trade.getSide();
         this.orderQty = trade.getOrderQty();
         this.executedQty = trade.getExecutedQty();
-        this.price = trade.getPrice();
+        this.executedPrice = trade.getExecutedPrice();
         this.status = trade.getStatus();
         this.brokerOrderId = trade.getBrokerOrderId();
         this.createdAt = trade.getCreatedAt();

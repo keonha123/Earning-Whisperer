@@ -14,11 +14,8 @@ public record DemoReplayEvent(
         @JsonProperty("text_chunk")
         String textChunk,
 
-        @JsonProperty("raw_score")
-        double rawScore,
-
-        @JsonProperty("ema_score")
-        double emaScore,
+        @JsonProperty("ai_score")
+        double aiScore,
 
         String rationale,
         String action,

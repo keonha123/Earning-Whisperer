@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import AuthTabSwitcher from "./AuthTabSwitcher";
 import LoginForm from "./LoginForm";
 import SignupForm from "./SignupForm";
+import GoogleLoginButton from "./GoogleLoginButton";
+import KakaoLoginButton from "./KakaoLoginButton";
 
 type Tab = "login" | "signup";
 
@@ -54,6 +56,19 @@ export default function AuthCard({ activeTab, onTabChange }: AuthCardProps) {
         onChange={handleTabChange}
         disabled={isLoading}
       />
+
+      {/* 소셜 로그인 */}
+      <div className="space-y-2">
+        <GoogleLoginButton />
+        <KakaoLoginButton />
+      </div>
+
+      {/* 구분선 */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-700" />
+        <span className="text-xs text-gray-500">또는</span>
+        <div className="flex-1 h-px bg-gray-700" />
+      </div>
 
       {/* 폼 */}
       {activeTab === "login" ? (

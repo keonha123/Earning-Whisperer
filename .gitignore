@@ -1,6 +1,7 @@
 # Java (Gradle)
 .gradle/
 build/
+**/bin/
 !gradle/wrapper/gradle-wrapper.jar
 
 # 로컬 설정 파일 (API 키 등 민감 정보)
@@ -32,6 +33,16 @@ htmlcov/
 node_modules/
 .next/
 out/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Electron / Vite 빌드 부산물 (tsc -b emit)
+trading-terminal/src/**/*.js
+trading-terminal/src/**/*.jsx
+trading-terminal/src/**/*.d.ts
+trading-terminal/electron.vite.config.js
+trading-terminal/electron.vite.config.d.ts
 
 # 기타
 *.log
@@ -46,7 +57,9 @@ Thumbs.db
 
 # Personal
 learning/
+**/.scratch/
 
 # Claude
 CLAUDE.md
 **/CLAUDE.md
+.claude/settings.local.json

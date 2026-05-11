@@ -1,9 +1,11 @@
 package com.earningwhisperer.domain.signal;
 
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.user.User;
-import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.infrastructure.redis.TradingSignalMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,70 +13,138 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 /**
- * 수신된 AI 신호를 종합 처리하는 서비스.
+ * 수신된 AI 신호를 전체 사용자에게 팬아웃 처리하는 서비스.
  *
  * 처리 흐름:
- * 1. 포트폴리오 설정 조회 (emaThreshold, cooldownMinutes, tradingMode)
- * 2. 쿨다운 체크 — 동일 종목의 직전 신호가 cooldownMinutes 이내이면 HOLD
- * 3. EmaService로 EMA 계산
- * 4. RuleEngine으로 BUY/SELL/HOLD 결정
- * 5. SignalHistory DB 저장
+ * 1. 전체 사용자 PortfolioSettings 일괄 조회
+ * 2. 사용자별: 활성 BrokerAccount 확인 → 쿨다운 체크 → RuleEngine 평가 → SignalHistory 생성
+ * 3. SignalHistory batch 저장
+ *
+ * 활성 BrokerAccount 가 없으면 fail-safe HOLD — 사용자가 모드를 활성화하기 전까지는 거래가 일어나지 않음.
+ * AI 엔진이 시계열 맥락까지 반영한 최종 점수(aiScore)를 보내주므로 백엔드는 평활화 없이 직접 평가한다.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SignalService {
 
-    // Phase 4: 인증 미구현 — 시스템 기본 사용자 ID 고정
-    static final Long SYSTEM_USER_ID = 1L;
-
-    private final EmaService emaService;
     private final PortfolioSettingsService portfolioSettingsService;
+    private final PositionService positionService;
+    private final BrokerAccountService brokerAccountService;
     private final SignalHistoryRepository signalHistoryRepository;
-    private final UserRepository userRepository;
 
     @Transactional
-    public ProcessedSignal processSignal(TradingSignalMessage signal) {
-        PortfolioSettings settings = portfolioSettingsService.getSettings(SYSTEM_USER_ID);
+    public List<UserProcessedSignal> processSignalForAllUsers(TradingSignalMessage signal) {
+        double aiScore = signal.getAiScore();
 
-        boolean inCooldown = isInCooldown(signal.getTicker(), settings.getCooldownMinutes());
+        List<PortfolioSettings> allSettings = portfolioSettingsService.getAllSettings();
 
-        double emaScore = emaService.process(signal.getTicker(), signal.getRawScore());
+        List<UserProcessedSignal> results = new ArrayList<>();
+        List<SignalHistory> histories = new ArrayList<>();
 
-        TradeAction action = RuleEngine.evaluate(
-                emaScore, settings.getEmaThreshold(), settings.getTradingMode(), inCooldown);
+        for (PortfolioSettings settings : allSettings) {
+            try {
+                User user = settings.getUser();
 
-        saveSignalHistory(signal, emaScore, action);
+                boolean inCooldown = isInCooldown(
+                        user.getId(), signal.getTicker(), settings.getCooldownMinutes());
 
-        log.info("[SignalService] ticker={} emaScore={} action={}", signal.getTicker(), emaScore, action);
-        return new ProcessedSignal(emaScore, action);
+                Double ratio = settings.getBuyAmountRatio();
+                if (ratio == null || ratio <= 0 || ratio > 1) {
+                    log.warn("[SignalService] buyAmountRatio 이상 — userId={} ratio={}, 건너뜀",
+                            user.getId(), ratio);
+                    continue;
+                }
+
+                Double maxPositionRatio = settings.getMaxPositionRatio();
+                if (maxPositionRatio == null || maxPositionRatio <= 0) {
+                    maxPositionRatio = 1.0;
+                }
+
+                // 활성 BrokerAccount 확인. 없으면 사용자 자체가 활성화 안 된 상태 — SignalHistory 도
+                // 기록하지 않고 result 만 HOLD/null 로 반환 (DB 노이즈 + 쿨다운 영향 방지).
+                Optional<BrokerAccount> activeOpt = brokerAccountService.getActive(user.getId());
+                if (activeOpt.isEmpty()) {
+                    log.debug("[SignalService] 활성 BrokerAccount 미설정 — skip userId={}", user.getId());
+                    results.add(new UserProcessedSignal(
+                            user, null, TradeAction.HOLD, aiScore, settings.getTradingMode(), ratio));
+                    continue;
+                }
+
+                BrokerAccount active = activeOpt.get();
+                Double cashBalance = active.getCashBalance();
+
+                TradeAction action;
+                boolean degradedFromSell = false;
+                if (cashBalance == null || cashBalance <= 0) {
+                    log.info("[SignalService] cashBalance 미동기화/0 — fail-safe HOLD userId={} brokerAccountId={}",
+                            user.getId(), active.getId());
+                    action = TradeAction.HOLD;
+                } else {
+                    double currentPositionRatio = positionService.computePositionRatio(
+                            active.getId(), signal.getTicker(), cashBalance);
+
+                    action = RuleEngine.evaluate(
+                            aiScore, settings.getAiScoreThreshold(), settings.getTradingMode(), inCooldown,
+                            currentPositionRatio, ratio, maxPositionRatio);
+
+                    // SELL 미보유 가드 — RuleEngine 은 순수 계산만 담당, 정합성 가드는 SignalService 책임.
+                    // 활성 broker 의 ticker 보유 0 인데 SELL 이면 HOLD 로 강등 → 무의미한 PENDING/FAILED
+                    // Trade 라운드트립 + 사용자 거래내역 노이즈 차단. 강등된 HOLD 는 SignalHistory 저장도 skip
+                    // → 사용자가 거래하지 않은 신호가 다음 BUY 의 쿨다운을 트리거하지 않도록 한다
+                    // (cooldown 은 최신 SignalHistory 기준이므로). 활성 broker 미설정 시 SignalHistory skip 정책과 동일한 결.
+                    if (action == TradeAction.SELL) {
+                        int holding = positionService.getHoldingQuantity(active.getId(), signal.getTicker());
+                        if (holding <= 0) {
+                            log.info("[SignalService] SELL 시그널이지만 미보유 — HOLD 강등 + 기록 skip userId={} ticker={}",
+                                    user.getId(), signal.getTicker());
+                            action = TradeAction.HOLD;
+                            degradedFromSell = true;
+                        }
+                    }
+                }
+
+                if (!degradedFromSell) {
+                    SignalHistory history = SignalHistory.builder()
+                            .user(user)
+                            .ticker(signal.getTicker())
+                            .aiScore(aiScore)
+                            .rationale(signal.getRationale())
+                            .textChunk(signal.getTextChunk())
+                            .action(action)
+                            .signalTimestamp(signal.getTimestamp())
+                            .build();
+                    histories.add(history);
+                }
+
+                results.add(new UserProcessedSignal(
+                        user, active.getId(), action, aiScore, settings.getTradingMode(), ratio));
+            } catch (Exception e) {
+                Long userId = settings.getUser() != null ? settings.getUser().getId() : null;
+                log.error("[SignalService] 사용자별 처리 실패 - userId={} ticker={}",
+                        userId, signal.getTicker(), e);
+            }
+        }
+
+        if (!histories.isEmpty()) {
+            signalHistoryRepository.saveAll(histories);
+        }
+
+        log.info("[SignalService] ticker={} aiScore={} 처리 사용자 수={}",
+                signal.getTicker(), aiScore, results.size());
+        return results;
     }
 
-    private boolean isInCooldown(String ticker, int cooldownMinutes) {
+    private boolean isInCooldown(Long userId, String ticker, int cooldownMinutes) {
         return signalHistoryRepository
-                .findTop1ByUserIdAndTickerOrderByCreatedAtDesc(SYSTEM_USER_ID, ticker)
+                .findTop1ByUserIdAndTickerOrderByCreatedAtDesc(userId, ticker)
                 .map(last -> last.getCreatedAt().isAfter(
                         LocalDateTime.now().minusMinutes(cooldownMinutes)))
                 .orElse(false);
-    }
-
-    private void saveSignalHistory(TradingSignalMessage signal, double emaScore, TradeAction action) {
-        User user = userRepository.findById(SYSTEM_USER_ID)
-                .orElseThrow(() -> new IllegalStateException("시스템 사용자(id=1)가 존재하지 않습니다."));
-
-        SignalHistory history = SignalHistory.builder()
-                .user(user)
-                .ticker(signal.getTicker())
-                .rawScore(signal.getRawScore())
-                .emaScore(emaScore)
-                .rationale(signal.getRationale())
-                .textChunk(signal.getTextChunk())
-                .action(action)
-                .signalTimestamp(signal.getTimestamp())
-                .build();
-
-        signalHistoryRepository.save(history);
     }
 }

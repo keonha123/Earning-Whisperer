@@ -30,16 +30,10 @@ public class SignalHistory {
     private String ticker;
 
     /**
-     * AI(FinBERT)가 도출한 원시 감성 점수 (-1.0 ~ +1.0)
+     * AI 엔진이 시계열 맥락까지 반영해 도출한 최종 점수 (-1.0 ~ +1.0)
      */
     @Column(nullable = false)
-    private Double rawScore;
-
-    /**
-     * 백엔드가 계산한 EMA 누적 점수
-     */
-    @Column(nullable = false)
-    private Double emaScore;
+    private Double aiScore;
 
     /**
      * LLM이 생성한 매매 근거 해설
@@ -75,12 +69,11 @@ public class SignalHistory {
     }
 
     @Builder
-    public SignalHistory(User user, String ticker, Double rawScore, Double emaScore,
+    public SignalHistory(User user, String ticker, Double aiScore,
                          String rationale, String textChunk, TradeAction action, Long signalTimestamp) {
         this.user = user;
         this.ticker = ticker;
-        this.rawScore = rawScore;
-        this.emaScore = emaScore;
+        this.aiScore = aiScore;
         this.rationale = rationale;
         this.textChunk = textChunk;
         this.action = action;
