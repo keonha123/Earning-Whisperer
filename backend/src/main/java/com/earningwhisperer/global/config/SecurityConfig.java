@@ -56,6 +56,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/market/indices", "/api/v1/market/indices/**").permitAll()
+                .requestMatchers("/api/v1/stocks/sp500", "/api/v1/stocks/prices").permitAll()
                 .requestMatchers("/ws/**", "/ws-native/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 // /api/v1/internal/** 는 InternalSecretFilter 가 X-Internal-Secret 으로 검증한다.

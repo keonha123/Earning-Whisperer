@@ -10,6 +10,7 @@ import { isIpcError } from '../lib/types/ipcError'
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
 import TradingRoomPage from './pages/TradingRoomPage'
+import MarketPage from './pages/MarketPage'
 import HistoryPage from './pages/HistoryPage'
 import SettingsPage from './pages/SettingsPage'
 import AppLayout from './components/layout/AppLayout'
@@ -107,6 +108,7 @@ function AppRoutes() {
                 <Routes>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/market" element={<MarketPage />} />
                   <Route path="/trading-room" element={<TradingRoomPage />} />
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/settings" element={<SettingsPage />} />

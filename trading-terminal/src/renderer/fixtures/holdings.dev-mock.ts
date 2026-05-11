@@ -24,8 +24,8 @@ export interface HoldingMockRow {
   dailyChangePercent: number
   /** 평가 손익률 (%). */
   pnlPercent: number
-  /** 어닝 상태 라벨: "LIVE" / "D-1" / "D-2" / null (미정). */
-  earningsBadge: 'LIVE' | 'D-1' | 'D-2' | 'D-3' | null
+  /** 어닝 배지: "LIVE" / epoch seconds / null */
+  earningsBadge: 'LIVE' | number | null
   /** 회사 로고 색 — 디자인 캔버스 `.lg-*` 에서 가져옴. */
   logoBg: string
   logoFg: string
@@ -44,7 +44,7 @@ export const holdingsDevMock: readonly HoldingMockRow[] = [
     currentPrice: 125.5,
     dailyChangePercent: 1.32,
     pnlPercent: 4.21,
-    earningsBadge: 'LIVE',
+    earningsBadge: 'LIVE' as const,
     logoBg: '#103a2b',
     logoFg: '#6ee7b7',
     logoLabel: 'NV',
@@ -66,7 +66,7 @@ export const holdingsDevMock: readonly HoldingMockRow[] = [
     currentPrice: 245.8,
     dailyChangePercent: 3.21,
     pnlPercent: -1.48,
-    earningsBadge: 'D-1',
+    earningsBadge: Math.floor(Date.now() / 1000) + 86400,
     logoBg: '#3b1d1d',
     logoFg: '#fca5a5',
     logoLabel: 'TS',
@@ -77,7 +77,7 @@ export const holdingsDevMock: readonly HoldingMockRow[] = [
     currentPrice: 420.1,
     dailyChangePercent: 0.82,
     pnlPercent: 8.32,
-    earningsBadge: 'D-2',
+    earningsBadge: Math.floor(Date.now() / 1000) + 86400 * 5,
     logoBg: '#1e293b',
     logoFg: '#93c5fd',
     logoLabel: 'MS',
@@ -90,7 +90,7 @@ export const watchlistDevMock: readonly WatchlistMockRow[] = [
     name: 'Amazon.com Inc.',
     currentPrice: 178.25,
     dailyChangePercent: 0.41,
-    earningsBadge: 'D-3',
+    earningsBadge: Math.floor(Date.now() / 1000) + 86400 * 30,
     logoBg: '#332617',
     logoFg: '#fcd34d',
     logoLabel: 'AM',

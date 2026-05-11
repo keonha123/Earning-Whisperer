@@ -30,6 +30,24 @@ const PAUSE_MS = 30_000
 const MAX_CONSECUTIVE_FAILURES = 5
 const IDLE_CYCLE_MS = 30_000
 const MIN_CYCLE_MS = 5_000
+const OFF_HOURS_CYCLE_MS = 180_000
+
+function isUsMarketOpen(): boolean {
+  const now = new Date()
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(now)
+  const weekday = parts.find((p) => p.type === 'weekday')?.value
+  if (weekday === 'Sat' || weekday === 'Sun') return false
+  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0')
+  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0')
+  const total = hour * 60 + minute
+  return total >= 9 * 60 + 30 && total < 16 * 60
+}
 
 let currentHoldings: string[] = []
 let currentWatchlist: string[] = []
@@ -47,6 +65,7 @@ let pausedUntil = 0
  *  - 한 사이클 내 await 직후마다 재확인 → KIS rate limit 사이클 중첩 방지.
  */
 let currentCycleEpoch = 0
+const stompCoveredTickers = new Set<string>()
 
 function pushToRenderer(channel: string, payload: unknown): void {
   BrowserWindow.getAllWindows().forEach((win) => {
@@ -64,6 +83,7 @@ function recomputeTickers(): void {
 function computeCycleMs(): number {
   const n = tickers.size
   if (n === 0) return IDLE_CYCLE_MS
+  if (!isUsMarketOpen()) return OFF_HOURS_CYCLE_MS
   const safeRate = mainState.isPaperTrading ? 1.5 : 18
   const lowBudget = safeRate * 0.6
   return Math.max(MIN_CYCLE_MS, Math.ceil((n / lowBudget) * 1000))
@@ -95,7 +115,6 @@ async function tick(): Promise<void> {
     schedule(IDLE_CYCLE_MS)
     return
   }
-
   const batch: PriceEntry[] = []
   let cycleFailures = 0
   const snapshot = Array.from(tickers)
@@ -104,6 +123,7 @@ async function tick(): Promise<void> {
     // 매 iteration 직전 epoch / running 재확인 — 사이클이 외부에서 무효화됐으면 즉시 종료.
     // batch push / pause 판정 / schedule 모두 skip → 새 사이클이 깨끗하게 시작되도록 함.
     if (myEpoch !== currentCycleEpoch || !running) return
+    if (stompCoveredTickers.has(ticker)) continue
     try {
       const result = await KisService.getCurrentPrice(ticker)
       if (result.currentPrice > 0) {
@@ -220,6 +240,17 @@ export function getCachedPrices(): Record<string, { currentPrice: number; previo
     result[ticker] = { currentPrice: entry.currentPrice, previousClose: entry.previousClose, lastUpdated: entry.lastUpdated }
   }
   return result
+}
+
+/** STOMP로 수신된 ticker를 covered로 등록 — KIS 폴링 스킵 대상. */
+export function markStompCovered(tickers: string[]): void {
+  for (const t of tickers) stompCoveredTickers.add(t)
+}
+
+/** STOMP 끊김 시 호출 — KIS fallback 재개. */
+export function clearStompCovered(): void {
+  stompCoveredTickers.clear()
+  if (running) recalcAndRestart()
 }
 
 /** 테스트 전용 — 내부 상태 초기화. */

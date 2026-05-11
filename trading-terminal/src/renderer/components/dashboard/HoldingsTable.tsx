@@ -12,7 +12,8 @@ export interface HoldingsTableRow {
   dailyChangePercent: number
   /** 보유 탭에서만 의미. 관심종목은 undefined. */
   pnlPercent?: number
-  earningsBadge?: 'LIVE' | 'D-1' | 'D-2' | 'D-3' | null
+  /** 어닝 배지: 'LIVE' / epoch seconds / null */
+  earningsBadge?: 'LIVE' | number | null
   logoBg?: string
   logoFg?: string
   logoLabel?: string
@@ -238,29 +239,35 @@ function Row({
   )
 }
 
-function EarningsBadge({ value }: { value: HoldingMockRow['earningsBadge'] | WatchlistMockRow['earningsBadge'] }) {
-  if (!value) return <span className="text-text-disabled text-[10px]">—</span>
+function EarningsBadge({ value }: { value: 'LIVE' | number | null | undefined }) {
+  if (!value && value !== 0) return <span className="text-text-disabled text-[10px]">—</span>
 
-  // D-1/D-2 의 텍스트 색은 디자인 캔버스 (DashboardPage.html `.eb`) 의 의도적
-  // 톤 다운 라이트 셰이드. 토큰 (text-warning/80 등) 으로 대체 시 hue 가 어긋남.
-  //   - #fca5a5: light red (≈ tailwind red-300). D-1 강한 임박감 + 가독성.
-  //   - #fdba74: light orange (≈ tailwind orange-300). D-2 톤 다운.
-  //   - DashboardPage 한정 사용 — tailwind.config 토큰 미승격.
+  if (value === 'LIVE') {
+    return (
+      <span className="num text-[10px] px-1.5 py-0.5 rounded-[3px] font-semibold tracking-[0.06em] inline-flex items-center gap-1 bg-sell/10 text-sell border border-sell/30">
+        <span className="w-1 h-1 rounded-full bg-sell" />
+        LIVE
+      </span>
+    )
+  }
+
+  // epoch seconds → KST 날짜 라벨 (M/D)
+  const kstMs = value * 1000 + 9 * 3600 * 1000
+  const d = new Date(kstMs)
+  const label = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`
+
+  // 긴급도: 오늘 기준 남은 일수
+  const daysLeft = Math.ceil((value - Date.now() / 1000) / 86400)
   const cls =
-    value === 'LIVE'
-      ? 'bg-sell/10 text-sell border border-sell/30'
-      : value === 'D-1'
-        ? 'bg-sell/10 text-[#fca5a5] border border-sell/30' /* light red — 캔버스 .eb-d1 */
-        : value === 'D-2'
-          ? 'bg-warning/10 text-[#fdba74] border border-warning/30' /* light orange — 캔버스 .eb-d2 */
-          : 'bg-warning/10 text-warning border border-warning/30'
+    daysLeft <= 3
+      ? 'bg-sell/10 text-[#fca5a5] border border-sell/30'
+      : daysLeft <= 14
+        ? 'bg-warning/10 text-[#fdba74] border border-warning/30'
+        : 'bg-surface-3 text-text-tertiary border border-border-subtle'
 
   return (
-    <span
-      className={`num text-[10px] px-1.5 py-0.5 rounded-[3px] font-semibold tracking-[0.06em] inline-flex items-center gap-1 ${cls}`}
-    >
-      {value === 'LIVE' && <span className="w-1 h-1 rounded-full bg-sell" />}
-      {value}
+    <span className={`num text-[10px] px-1.5 py-0.5 rounded-[3px] font-semibold tracking-[0.06em] inline-flex items-center gap-1 ${cls}`}>
+      {label}
     </span>
   )
 }

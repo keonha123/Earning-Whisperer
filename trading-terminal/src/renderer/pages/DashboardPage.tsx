@@ -22,6 +22,7 @@ import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
 import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
+import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
 // step=100 (수십만~수백만 단위 자산 차트) 으로 호출.
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
@@ -139,6 +140,11 @@ export default function DashboardPage() {
   // useEffect 로 PRICES_GET 1회 + PRICES_UPDATE 구독 시작.
   const { prices } = usePrices()
 
+  // 어닝콜 타임라인 — holdingRows/watchRows useMemo 보다 먼저 선언해야 TDZ 오류 없음.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
+    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
+  )
+
   // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
     totalCash +
@@ -154,6 +160,15 @@ export default function DashboardPage() {
   //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
+      }
+      return null
+    }
+
     if (storeHoldings.length === 0 && import.meta.env.DEV) {
       return holdingsDevMock.map((h) => ({
         ticker: h.ticker,
@@ -161,7 +176,7 @@ export default function DashboardPage() {
         currentPrice: h.currentPrice,
         dailyChangePercent: h.dailyChangePercent,
         pnlPercent: h.pnlPercent,
-        earningsBadge: h.earningsBadge,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: h.logoBg,
         logoFg: h.logoFg,
         logoLabel: h.logoLabel,
@@ -181,18 +196,27 @@ export default function DashboardPage() {
         currentPrice: livePrice,
         dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
-        earningsBadge: meta?.earningsBadge ?? null,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: meta?.logoBg,
         logoFg: meta?.logoFg,
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings, prices])
+  }, [storeHoldings, prices, earningsData])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
   // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
   const { items: watchlistItems } = useWatchlist()
   const watchRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
+      }
+      return null
+    }
+
     return watchlistItems.map((w) => {
       const entry = prices[w.ticker]
       const cur = entry?.currentPrice ?? 0
@@ -202,10 +226,10 @@ export default function DashboardPage() {
         name: w.companyName,
         currentPrice: cur,
         dailyChangePercent: prev > 0 ? ((cur - prev) / prev) * 100 : 0,
-        earningsBadge: null,
+        earningsBadge: getEarningsBadge(w.ticker),
       }
     })
-  }, [watchlistItems, prices])
+  }, [watchlistItems, prices, earningsData])
 
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고
@@ -215,10 +239,23 @@ export default function DashboardPage() {
   //         실제 데이터 수신 시 자동 전환.
   const { indices, isLoaded } = useMarketIndices()
   const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
-  // EarningsTimeline 데이터: DEV 만 fixture, prod 빈 그룹 + null live.
-  const earningsData = import.meta.env.DEV
-    ? earningsTimelineDevMock
-    : { live: null, groups: [] }
+  // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
+  useEffect(() => {
+    let cancelled = false
+
+    ipc.invoke<EarningsTimelineData>(IPC_CHANNELS.EARNINGS_TIMELINE_GET)
+      .then((data) => { if (!cancelled) setEarningsData(data) })
+      .catch(() => { /* DEV: fixture 유지, prod: 빈 상태 유지 */ })
+
+    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data: EarningsTimelineData) => {
+      setEarningsData(data)
+    })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
+  }, [])
 
   // Asset chart: 현재 IPC 미존재 — NVDA fixture 차트를 시각화 더미로 사용 (DEV).
   //  TODO(impl): KIS_GET_ASSET_TIMESERIES 도입 후 실제 시계열 사용.

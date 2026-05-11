@@ -147,6 +147,34 @@ export const IPC_CHANNELS = {
    * snake_case → camelCase 변환은 store 의 upsertSegment 에서 수행.
    */
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
+
+  /**
+   * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
+   * S&P 500 전체 종목 대상. main process 에서 그룹핑 후 EarningsTimelineData 반환.
+   * 응답: EarningsTimelineData { live, groups }
+   */
+  EARNINGS_TIMELINE_GET: 'terminal:earnings:timeline-get',
+
+  /**
+   * 어닝콜 타임라인 5분 폴링 push (Main → Renderer).
+   * 로그인 후 5분 간격으로 갱신된 EarningsTimelineData 를 전송한다.
+   * payload: EarningsTimelineData
+   */
+  EARNINGS_TIMELINE_UPDATE: 'terminal:earnings:timeline-update',
+
+  /**
+   * S&P 500 종목 리스트 조회 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/sp500 — JWT 불필요, 시가총액순 정렬.
+   * 응답: Sp500Stock[]
+   */
+  STOCKS_SP500_GET: 'terminal:stocks:sp500-get',
+
+  /**
+   * 전체 주가 스냅샷 초기 로딩 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/prices — JWT 불필요.
+   * 응답: StockPriceEntry[] (ticker, currentPrice, previousClose, changePercent, updatedAt)
+   */
+  STOCK_PRICES_SNAPSHOT_GET: 'terminal:stocks:prices-snapshot-get',
 } as const
 
 /**

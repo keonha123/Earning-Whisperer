@@ -50,6 +50,8 @@ oauth:
 finnhub:
   base-url: https://finnhub.io/api/v1
   api-key: ${FINNHUB_API_KEY:}   # 미설정 시 어닝 일정 스케줄러 비활성화
+  ws-keys:                        # 키당 50심볼 구독. 추가 키 = 다음 50개 자동 커버
+    - ${FINNHUB_API_KEY:}         # WS 1번 키 (기본: REST 키와 동일)
 
 fmp:
   base-url: https://financialmodelingprep.com

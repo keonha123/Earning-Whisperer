@@ -10,6 +10,8 @@ interface TradingRoomHeaderProps {
   elapsedLabel?: string | null
   wpm?: number
   isLive: boolean
+  /** Market Screen 복귀 콜백. */
+  onExit?: () => void
 }
 
 /**
@@ -37,11 +39,25 @@ export default function TradingRoomHeader({
   elapsedLabel,
   wpm,
   isLive,
+  onExit,
 }: TradingRoomHeaderProps) {
   const openDrawer = useDrawerStore((s) => s.open)
 
   return (
     <div className="h-12 shrink-0 flex items-center gap-3 min-w-0">
+      {onExit && (
+        <button
+          type="button"
+          onClick={onExit}
+          className="inline-flex items-center gap-1 h-6 px-2 rounded text-text-tertiary hover:text-text-primary hover:bg-surface-2 transition-colors duration-100 text-[11px]"
+          title="종목 목록으로"
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M7.5 2L3 6l4.5 4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          목록
+        </button>
+      )}
       <LiveIndicator active={isLive} />
 
       {ticker ? (

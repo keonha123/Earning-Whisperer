@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { useTradingStore, type SignalFeedItem } from '../store/useTradingStore'
 import { useUserStore } from '../store/useUserStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
@@ -37,16 +38,20 @@ export default function TradingRoomPage() {
   const { mode, setMode, signalHistory, activeSignal } = useTradingStore()
   const { plan, settings, setSettings } = useUserStore()
   const orderableCash = usePortfolioStore((s) => s.orderableCash)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // ── DEV-only fixtures (prod 빌드에서는 빈 배열/null) ─────────────────────────
   const priceSeries = import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
 
-  // ticker / 회사명 / 현재가 / WPM 우선순위:
-  //  1) activeSignal (실데이터)
-  //  2) liveMeta (DEV fixture)
-  //  3) null
-  const ticker = activeSignal?.ticker ?? liveMeta?.ticker ?? null
+  // ticker 우선순위:
+  //  1) activeSignal (실시간 어닝콜 신호)
+  //  2) ?ticker= 쿼리 파라미터 (Market Screen 또는 EarningsTimeline 진입)
+  //  3) liveMeta (DEV fixture)
+  //  4) null → /market 리다이렉트
+  const paramTicker = searchParams.get('ticker') || null
+  const ticker = activeSignal?.ticker ?? paramTicker ?? liveMeta?.ticker ?? null
 
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
@@ -102,6 +107,13 @@ export default function TradingRoomPage() {
   // ── 타임프레임 (UI only — fixture 단일 시계열만 표시) ──────────────────────────
   const [timeframe, setTimeframe] = useState<Timeframe>('1D')
 
+  // ticker 없으면 Market Screen으로 — 모든 hooks 이후에 체크
+  if (!ticker) return <Navigate to="/market" replace />
+
+  function handleExit() {
+    navigate('/market')
+  }
+
   async function handleModeChange(newMode: typeof mode) {
     try {
       await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
@@ -151,6 +163,7 @@ export default function TradingRoomPage() {
           elapsedLabel={elapsedLabel}
           wpm={liveMeta?.wpm}
           isLive={isLive}
+          onExit={handleExit}
         />
         <div className="w-72 shrink-0">
           <ModeSelector

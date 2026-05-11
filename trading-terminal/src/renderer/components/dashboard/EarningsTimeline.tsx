@@ -1,10 +1,10 @@
 import type {
-  EarningsTimelineFixture,
+  EarningsTimelineData as EarningsTimelineFixture,
   EarningsGroup,
   EarningsGroupKind,
   EarningsLiveEvent,
   EarningsEvent,
-} from '../../fixtures/earningsTimeline.dev-mock'
+} from '../../../lib/types/earningsTimeline'
 
 /**
  * 그룹 헤더 좌측 닷의 색/그림자. exhaustive Record 로 정의해 향후 새 kind 추가 시
@@ -15,6 +15,8 @@ const DOT_BY_KIND: Record<EarningsGroupBlockKind, string> = {
   today: 'bg-warning shadow-[0_0_0_3px_rgba(245,158,11,0.15)]',
   tomorrow: 'bg-info shadow-[0_0_0_3px_rgba(59,130,246,0.15)]',
   week: 'bg-neutral',
+  nextWeek: 'bg-neutral',
+  later: 'bg-border-strong',
 }
 
 interface EarningsTimelineProps {

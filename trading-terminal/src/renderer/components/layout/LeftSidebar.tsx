@@ -1,6 +1,6 @@
 const NAV_ITEMS = [
   { path: '/dashboard', label: '대시보드' },
-  { path: '/trading-room', label: 'Trading Room' },
+  { path: '/market', label: 'Market' },
   { path: '/history', label: '체결 내역' },
   { path: '/settings', label: '설정' },
 ] as const
@@ -21,7 +21,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
       <rect x="9" y="9" width="5" height="5" rx="1" />
     </svg>
   ),
-  '/trading-room': (
+  '/market': (
     <svg
       width="14"
       height="14"
