@@ -70,12 +70,13 @@ def get_all_tickers() -> List[str]:
         return [row[0] for row in result]
 
 def get_all_stocks() -> List[Dict]:
-    """stocks 테이블에서 discovery에 필요한 최소 종목 정보를 가져옴"""
-    query = text("SELECT ticker, company_name FROM stocks")
+    # 🔍 여기 SELECT 문에 ir_url이 반드시 포함되어야 합니다!
+    query = text("SELECT ticker, company_name, ir_url FROM stocks") 
     with engine.connect() as conn:
         result = conn.execute(query)
+        # _mapping을 통해 컬럼명을 키값으로 변환합니다.
         return [dict(row._mapping) for row in result]
-
+    
 def update_stock_ir_url(ticker: str, ir_url: str):
     """발견한 IR 페이지 URL을 stocks 테이블에 저장"""
     query = text("""

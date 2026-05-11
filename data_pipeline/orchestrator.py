@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collectors import CollectorChain
 from collectors.stocks import WikipediaStrategy
@@ -7,14 +9,16 @@ from collectors.schedules import YFinanceScheduleStrategy
 from collectors.prices import YFinancePriceStrategy
 from collectors.indicators import YFinanceIndicatorStrategy
 import database
-
+import pytz  # 시간대 변환을 위한 필수 라이브러리
+from datetime import datetime
+from collectors.schedules import FinnhubScheduleStrategy  # 새 전략 임포트
 load_dotenv()
 
 class EarningsOrchestrator:
     def __init__(self):
         # 각 단계별 "체인" 정의 (합성함수 구조)
         self.stock_chain = CollectorChain([WikipediaStrategy()])
-        self.schedule_chain = CollectorChain([YFinanceScheduleStrategy()])
+        self.schedule_chain = CollectorChain([FinnhubScheduleStrategy()])
         self.price_chain = CollectorChain([YFinancePriceStrategy()])
         self.indicator_chain = CollectorChain([YFinanceIndicatorStrategy()])
 
@@ -57,21 +61,66 @@ class EarningsOrchestrator:
             return None
 
     def update_all_schedules(self, max_workers=10):
-        """[Phase 2] 전 종목의 어닝 일정 병렬 수집"""
-        print(f"\n[Step 2] 전 종목 어닝 일정 병렬 수집 시작 (쓰레드: {max_workers}개)...")
+        """[Phase 2] 전 종목의 어닝 일정 수집 및 KST 변환 저장"""
+        print(f"\n[Step 2] Finnhub 기반 정밀 일정 수집 시작...")
         tickers = database.get_all_tickers()
         if not tickers: return
 
-        all_results = []
+        raw_results = []
+        # 1. 병렬 수집 (Finnhub에서 날짜와 raw_hour를 가져옴)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_ticker = {executor.submit(self._fetch_single_schedule, t): t for t in tickers}
             for future in as_completed(future_to_ticker):
-                result = future.result()
-                if result: all_results.extend(result)
+                res = future.result()
+                if res: raw_results.extend(res)
         
-        if all_results:
-            database.save_earnings_schedules(all_results)
-            print(f"✅ 총 {len(all_results)}개의 일정을 DB에 동기화했습니다.")
+        # 2. 시간 보정 (미국 시간 -> 한국 시간 변환)
+        final_schedules = self._process_and_localize_time(raw_results)
+
+        # 3. DB 저장
+        if final_schedules:
+            database.save_earnings_schedules(final_schedules)
+            print(f"✅ 총 {len(final_schedules)}개의 정밀 일정을 KST로 저장 완료.")
+
+    def _process_and_localize_time(self, raw_data_list):
+        """
+        Finnhub의 raw_hour를 기반으로 실제 한국 시각(KST)을 계산합니다.
+        """
+        processed = []
+        et_tz = pytz.timezone('America/New_York')
+        kst_tz = pytz.timezone('Asia/Seoul')
+
+        for item in raw_data_list:
+            date_str = item['earning_date']    # 예: "2026-05-22"
+            raw_hour = item['raw_hour'].lower() # 예: "amc"
+
+            # [규칙 1] amc/bmo 텍스트를 숫자로 변환
+            if raw_hour == 'bmo':
+                target_time = "08:30"  # 개장 전: 현지 08:30
+            elif raw_hour == 'amc':
+                target_time = "16:30"  # 장 마감 후: 현지 16:30
+            elif ":" in raw_hour:
+                target_time = raw_hour # 이미 숫자인 경우 그대로 사용
+            else:
+                target_time = "09:00"  # 예외 상황 기본값
+
+            try:
+                # [규칙 2] 미국 동부 시각(ET) 객체 생성
+                et_naive = datetime.strptime(f"{date_str} {target_time}", "%Y-%m-%d %H:%M")
+                et_dt = et_tz.localize(et_naive)
+
+                # [규칙 3] 한국 시각(KST)으로 변환
+                # (날짜가 다음 날로 넘어가는 것까지 자동으로 계산됨)
+                kst_dt = et_dt.astimezone(kst_tz)
+
+                # DB에 저장할 최종 필드 추가
+                item['start_time'] = kst_dt.strftime('%Y-%m-%d %H:%M:%S')
+                processed.append(item)
+
+            except Exception as e:
+                print(f"⚠️ {item['ticker']} 시간 변환 실패: {e}")
+                
+        return processed
 
     def sync_stock_prices(self, days_back=5):
         """[Phase 3] 주가 데이터 수집 (어닝콜 분석용 Ground Truth)"""
