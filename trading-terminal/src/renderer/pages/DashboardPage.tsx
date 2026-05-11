@@ -155,6 +155,17 @@ export default function DashboardPage() {
   //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        if (!group.events.some((e) => e.ticker === ticker)) continue
+        if (group.kind === 'today') return 'D-1'
+        if (group.kind === 'tomorrow') return 'D-2'
+        if (group.kind === 'week') return 'D-3'
+      }
+      return null
+    }
+
     if (storeHoldings.length === 0 && import.meta.env.DEV) {
       return holdingsDevMock.map((h) => ({
         ticker: h.ticker,
@@ -162,7 +173,7 @@ export default function DashboardPage() {
         currentPrice: h.currentPrice,
         dailyChangePercent: h.dailyChangePercent,
         pnlPercent: h.pnlPercent,
-        earningsBadge: h.earningsBadge,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: h.logoBg,
         logoFg: h.logoFg,
         logoLabel: h.logoLabel,
@@ -182,18 +193,29 @@ export default function DashboardPage() {
         currentPrice: livePrice,
         dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
-        earningsBadge: meta?.earningsBadge ?? null,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: meta?.logoBg,
         logoFg: meta?.logoFg,
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings, prices])
+  }, [storeHoldings, prices, earningsData])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
   // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
   const { items: watchlistItems } = useWatchlist()
   const watchRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        if (!group.events.some((e) => e.ticker === ticker)) continue
+        if (group.kind === 'today') return 'D-1'
+        if (group.kind === 'tomorrow') return 'D-2'
+        if (group.kind === 'week') return 'D-3'
+      }
+      return null
+    }
+
     return watchlistItems.map((w) => {
       const entry = prices[w.ticker]
       const cur = entry?.currentPrice ?? 0
@@ -203,10 +225,10 @@ export default function DashboardPage() {
         name: w.companyName,
         currentPrice: cur,
         dailyChangePercent: prev > 0 ? ((cur - prev) / prev) * 100 : 0,
-        earningsBadge: null,
+        earningsBadge: getEarningsBadge(w.ticker),
       }
     })
-  }, [watchlistItems, prices])
+  }, [watchlistItems, prices, earningsData])
 
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고

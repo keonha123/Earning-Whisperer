@@ -3,9 +3,10 @@ import type { PriceEntry } from '../../store/usePricesStore'
 
 interface Props {
   stocks: Sp500Stock[]
-  searchQuery: string
+  rankOffset: number
   prices: Record<string, PriceEntry>
   onEnter: (ticker: string) => void
+  emptyMessage?: string
 }
 
 function formatMarketCap(usd: number | null): string {
@@ -27,17 +28,7 @@ function formatChange(pct: number | null): { text: string; positive: boolean | n
   return { text: `${sign}${pct.toFixed(2)}%`, positive: pct >= 0 }
 }
 
-export default function StockMarketTable({ stocks, searchQuery, prices, onEnter }: Props) {
-  const q = searchQuery.trim().toLowerCase()
-
-  const filtered = q
-    ? stocks.filter(
-        (s) =>
-          s.ticker.toLowerCase().includes(q) ||
-          s.companyName.toLowerCase().includes(q),
-      )
-    : stocks
-
+export default function StockMarketTable({ stocks, rankOffset, prices, onEnter, emptyMessage }: Props) {
   return (
     <div className="flex-1 min-h-0 overflow-auto">
       <table className="w-full text-[12px] border-separate border-spacing-0">
@@ -57,7 +48,7 @@ export default function StockMarketTable({ stocks, searchQuery, prices, onEnter 
           </tr>
         </thead>
         <tbody>
-          {filtered.map((stock, idx) => {
+          {stocks.map((stock, idx) => {
             const livePrice = prices[stock.ticker]
             const currentPrice = livePrice?.currentPrice ?? stock.currentPrice
             const changePercent =
@@ -75,7 +66,7 @@ export default function StockMarketTable({ stocks, searchQuery, prices, onEnter 
                 key={stock.ticker}
                 className="group border-b border-border-subtle/50 hover:bg-surface-2 transition-colors duration-75"
               >
-                <td className="num text-right text-text-disabled px-3.5 py-2.5">{idx + 1}</td>
+                <td className="num text-right text-text-disabled px-3.5 py-2.5">{rankOffset + idx + 1}</td>
                 <td className="px-3 py-2.5">
                   <span className="num font-semibold text-text-primary tracking-wide">
                     {stock.ticker}
@@ -115,10 +106,10 @@ export default function StockMarketTable({ stocks, searchQuery, prices, onEnter 
               </tr>
             )
           })}
-          {filtered.length === 0 && (
+          {stocks.length === 0 && (
             <tr>
               <td colSpan={8} className="text-center text-text-disabled py-16 text-[13px]">
-                {q ? `"${q}" 검색 결과가 없습니다.` : '데이터를 불러오는 중...'}
+                {emptyMessage ?? '데이터를 불러오는 중...'}
               </td>
             </tr>
           )}

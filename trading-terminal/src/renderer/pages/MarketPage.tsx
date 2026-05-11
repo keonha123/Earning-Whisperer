@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStockMarketStore } from '../store/useStockMarketStore'
 import { usePrices } from '../hooks/usePrices'
 import StockMarketTable from '../components/market/StockMarketTable'
 
+const PAGE_SIZE = 50
+
 export default function MarketPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(0)
   const { list, isLoaded, loadList } = useStockMarketStore()
   const { prices } = usePrices()
   const navigate = useNavigate()
@@ -13,6 +16,26 @@ export default function MarketPage() {
   useEffect(() => {
     loadList()
   }, [loadList])
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return list
+    return list.filter(
+      (s) =>
+        s.ticker.toLowerCase().includes(q) ||
+        s.companyName.toLowerCase().includes(q),
+    )
+  }, [list, searchQuery])
+
+  // 검색어 바뀌면 첫 페이지로
+  useEffect(() => {
+    setPage(0)
+  }, [searchQuery])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const pageStocks = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+  const rankOffset = safePage * PAGE_SIZE
 
   function handleEnter(ticker: string) {
     navigate(`/trading-room?ticker=${encodeURIComponent(ticker)}`)
@@ -62,17 +85,57 @@ export default function MarketPage() {
 
         {/* 종목 수 */}
         <div className="num text-[11px] text-text-tertiary shrink-0">
-          {isLoaded ? `${list.length}개 종목` : '로딩 중...'}
+          {isLoaded ? `${filtered.length}개 종목` : '로딩 중...'}
         </div>
       </div>
 
       {/* 테이블 */}
       <StockMarketTable
-        stocks={list}
-        searchQuery={searchQuery}
+        stocks={pageStocks}
+        rankOffset={rankOffset}
         prices={prices}
         onEnter={handleEnter}
+        emptyMessage={
+          searchQuery.trim()
+            ? `"${searchQuery.trim()}" 검색 결과가 없습니다.`
+            : '데이터를 불러오는 중...'
+        }
       />
+
+      {/* 페이지네이션 */}
+      {totalPages > 1 && (
+        <div className="shrink-0 border-t border-border-subtle px-5 py-2.5 flex items-center justify-center gap-1">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={safePage === 0}
+            className="px-2 py-1 rounded text-[11px] text-text-tertiary hover:text-text-primary hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            ‹
+          </button>
+
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => setPage(i)}
+              className={`num w-7 h-6 rounded text-[11px] font-medium transition-colors ${
+                i === safePage
+                  ? 'bg-accent-500/15 text-accent-400 border border-accent-500/30'
+                  : 'text-text-tertiary hover:text-text-primary hover:bg-surface-2'
+              }`}
+            >
+              {i + 1}
+            </button>
+          ))}
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={safePage === totalPages - 1}
+            className="px-2 py-1 rounded text-[11px] text-text-tertiary hover:text-text-primary hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            ›
+          </button>
+        </div>
+      )}
     </div>
   )
 }
