@@ -3,12 +3,12 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 # 폴더 내부 실행 환경에 맞춘 임포트
+from orchestrator import EarningsOrchestrator
+
 from collectors.news.finnhub_news_job import (
     get_finnhub_news_interval_minutes,
     run_finnhub_news_once,
 )
-from orchestrator import EarningsOrchestrator
-
 
 async def start_scheduling():
     scheduler = AsyncIOScheduler()
@@ -32,6 +32,7 @@ async def start_scheduling():
     
     # 매 10분마다 - Finnhub 뉴스 수집 및 ai-engine 전달
     scheduler.add_job(run_finnhub_news_once, "interval", minutes=get_finnhub_news_interval_minutes(), id="finnhub_company_news", name="Collect Finnhub company news", max_instances=1, coalesce=True, replace_existing=True)
+
 
     # ==========================================================
     # [PART 2] 실시간 어닝콜 대응 (미래 확장 구간)
