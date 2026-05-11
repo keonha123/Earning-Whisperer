@@ -163,10 +163,8 @@ export default function DashboardPage() {
     const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
       if (earningsData.live?.ticker === ticker) return 'LIVE'
       for (const group of earningsData.groups) {
-        if (!group.events.some((e) => e.ticker === ticker)) continue
-        if (group.kind === 'today') return 'D-1'
-        if (group.kind === 'tomorrow') return 'D-2'
-        if (group.kind === 'week') return 'D-3'
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
       }
       return null
     }
@@ -213,10 +211,8 @@ export default function DashboardPage() {
     const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
       if (earningsData.live?.ticker === ticker) return 'LIVE'
       for (const group of earningsData.groups) {
-        if (!group.events.some((e) => e.ticker === ticker)) continue
-        if (group.kind === 'today') return 'D-1'
-        if (group.kind === 'tomorrow') return 'D-2'
-        if (group.kind === 'week') return 'D-3'
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
       }
       return null
     }

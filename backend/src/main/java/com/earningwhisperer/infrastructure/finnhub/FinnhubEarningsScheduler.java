@@ -39,7 +39,7 @@ public class FinnhubEarningsScheduler {
     @Scheduled(cron = "0 0 6 * * *", zone = "UTC")
     public void syncEarningsCalendar() {
         LocalDate from = LocalDate.now(ZoneOffset.UTC);
-        LocalDate to = from.plusDays(30);
+        LocalDate to = from.plusDays(90);
 
         List<FinnhubCalendarRow> rows = finnhubClient.fetchCalendar(
                 from, to, FinnhubRateLimiter.Priority.LOW);

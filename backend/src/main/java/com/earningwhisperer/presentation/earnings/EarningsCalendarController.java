@@ -51,12 +51,12 @@ public class EarningsCalendarController {
      * 관심종목 필터 없이 향후 N일 일정을 flat list로 반환한다.
      * 그룹핑(live/today/tomorrow/week)은 Terminal main process에서 수행한다.
      *
-     * @param days 조회 기간 (기본 7일, 최대 14일)
+     * @param days 조회 기간 (기본 90일, 최대 90일)
      */
     @GetMapping("/terminal-timeline")
     public ResponseEntity<List<TerminalEarningsItem>> getTerminalTimeline(
-            @RequestParam(defaultValue = "7") int days) {
-        int safeDays = Math.min(days, 30);
+            @RequestParam(defaultValue = "90") int days) {
+        int safeDays = Math.min(days, 90);
         List<TerminalEarningsItem> result = earningsCalendarService.getCalendar(safeDays).stream()
                 .map(TerminalEarningsItem::from)
                 .toList();

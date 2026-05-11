@@ -61,6 +61,7 @@ function toEarningsEvent(item: EarningsTimelineItem): EarningsEvent {
   return {
     ticker: item.ticker,
     name: item.companyName,
+    scheduledAt: item.scheduledAt,
     timeLabel: `${dayLabel} ${dateLabel} ${sessionLabel}`,
     whenLabel: `${dayLabel} ${dateLabel}`,
     clockLabel: sessionLabel,
@@ -97,7 +98,7 @@ export function groupEarnings(items: EarningsTimelineItem[]): EarningsTimelineDa
   const daysToNextMon = kstDow === 0 ? 1 : 8 - kstDow
   const thisWeekEndUtc = kstTodayMidnight + daysToNextMon * 86400 - KST_OFFSET_SEC
   const nextWeekEndUtc = thisWeekEndUtc + 7 * 86400
-  const monthEndUtc = todayStartUtc + 30 * 86400
+  const monthEndUtc = todayStartUtc + 90 * 86400
 
   let live: EarningsLiveEvent | null = null
   const todayEvents: EarningsEvent[] = []
@@ -151,7 +152,7 @@ export function groupEarnings(items: EarningsTimelineItem[]): EarningsTimelineDa
 // ─── fetch + 그룹핑 ─────────────────────────────────────────────────────────
 
 async function fetchAndGroup(): Promise<EarningsTimelineData> {
-  const raw = await BackendClient.getEarningsTimeline(30)
+  const raw = await BackendClient.getEarningsTimeline(90)
   return groupEarnings(raw)
 }
 

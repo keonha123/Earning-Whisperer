@@ -3,6 +3,8 @@ export type EarningsGroupKind = 'live' | 'today' | 'tomorrow' | 'week' | 'nextWe
 export interface EarningsEvent {
   ticker: string
   name: string
+  /** epoch seconds (UTC). 배지 날짜 표시용. */
+  scheduledAt: number
   /** 표시용 전체 시간 라벨 (예: "오후 5:00 PM", "금 오전 6:00 AM"). KST 기준. */
   timeLabel: string
   /** 시간대 prefix (예: "오후", "금 오전"). */
