@@ -113,6 +113,7 @@ async def _run_pipeline(request: AnalyzeRequest) -> None:
                 context_chunks=context_chunks[:-1],
                 market_data=md,
                 section_type=request.section_type,
+                chunk_timestamp=request.timestamp,
                 request_priority=request.request_priority,
                 is_final=request.is_final,
                 phase1_result=phase1_result,

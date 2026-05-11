@@ -28,6 +28,8 @@ async def build_prompt_node(state: AgentState) -> AgentState:
         prompt_profile=state["route_profile"],
         context_policy=state["context_policy"],
         phase1_score=state.get("phase1_raw_score"),
+        external_docs=state.get("external_docs", []),
+        external_query=state.get("external_query"),
     )
     prompt = _compact_prompt(prompt)
 

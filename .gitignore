@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 *$py.class
+.state/
 .venv/
 venv/
 env/

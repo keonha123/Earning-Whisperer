@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from typing import Sequence
 
+from config import get_settings
 from models.request_models import MarketData
 from models.signal_models import GeminiAnalysisResult
 from .context_manager import ChunkRecord
+from .external_retriever import ExternalRetrievedDocument
 from .llm_router import trim_transcript_overlap
 
 SYSTEM_PROMPT = """You are the earnings-call analysis engine for EarningWhisperer.
@@ -44,6 +46,8 @@ def build_prompt(
     phase1_score: float | None = None,
     previous_result: GeminiAnalysisResult | None = None,
     review_reason: str | None = None,
+    external_docs: Sequence[ExternalRetrievedDocument] | None = None,
+    external_query: str | None = None,
 ) -> str:
     """Build a prompt for the selected route profile and context policy."""
 
@@ -65,6 +69,13 @@ def build_prompt(
     market_block = _build_market_block(market_data, prompt_profile)
     if market_block:
         sections.append(market_block)
+
+    retrieval_block = _build_external_evidence_block(
+        external_docs=external_docs or [],
+        external_query=external_query,
+    )
+    if retrieval_block:
+        sections.append(retrieval_block)
 
     if context_policy == "adjudication":
         sections.append(
@@ -154,6 +165,34 @@ def _build_review_block(
             "First-pass result: "
             + json.dumps(result_payload, ensure_ascii=False, separators=(",", ":"))
         )
+    return "\n".join(lines)
+
+
+def _build_external_evidence_block(
+    *,
+    external_docs: Sequence[ExternalRetrievedDocument],
+    external_query: str | None,
+) -> str:
+    if not external_docs:
+        return ""
+
+    settings = get_settings()
+    lines = ["## External evidence"]
+    if external_query:
+        lines.append(f"External query: {external_query}")
+    for doc in external_docs:
+        text = doc.text.strip()
+        if len(text) > settings.rag_context_chars_per_doc:
+            text = text[: settings.rag_context_chars_per_doc - 3].rstrip() + "..."
+        header = f"[{doc.source_type} | {doc.published_at} | score={doc.score:.2f}]"
+        if doc.form_type:
+            header = f"{header} {doc.form_type}"
+        if doc.title:
+            header = f"{header} {doc.title}"
+        lines.append(header)
+        lines.append(text)
+        if doc.url:
+            lines.append(f"URL: {doc.url}")
     return "\n".join(lines)
 
 

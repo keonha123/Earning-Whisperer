@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -83,6 +83,32 @@ class IndicatorSnapshotItem(BaseModel):
 
 class IndicatorSnapshotBatchRequest(BaseModel):
     items: List[IndicatorSnapshotItem] = Field(..., min_length=1)
+
+
+class NewsItem(BaseModel):
+    provider: str = Field(default="finnhub", min_length=1)
+    provider_id: str = Field(..., min_length=1)
+    ticker: str = Field(..., min_length=1, max_length=10)
+    headline: str = Field(..., min_length=1)
+    summary: str = Field(default="")
+    url: Optional[str] = Field(default="")
+    source: Optional[str] = Field(default="")
+    published_at: int = Field(..., gt=0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("ticker")
+    @classmethod
+    def _normalize_ticker(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("provider", "provider_id", "headline", "summary", "url", "source", mode="before")
+    @classmethod
+    def _normalize_text(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class NewsBatchRequest(BaseModel):
+    items: List[NewsItem] = Field(..., min_length=1)
 
 
 class MarketContextSnapshot(BaseModel):
