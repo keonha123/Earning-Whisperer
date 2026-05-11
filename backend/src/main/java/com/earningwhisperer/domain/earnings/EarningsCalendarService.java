@@ -37,7 +37,7 @@ public class EarningsCalendarService {
      * Finnhub 스케줄러에서 호출. 수신한 어닝콜 데이터를 upsert 처리.
      *
      * <p>Phase 2-B 에서 컨센서스(epsEstimate / revenueEstimate) 영속화를 위해 시그니처 확장.
-     * 호출자가 1곳(FinnhubEarningsScheduler)뿐이라 별도 메서드 추가 대신 시그니처 변경.
+     * 호출자: FmpEarningsScheduler (FMP /stable/earnings-calendar 응답 upsert).
      * estimate 는 nullable — Finnhub 응답에 필드 없으면 null 그대로 영속화한다.
      */
     @Transactional

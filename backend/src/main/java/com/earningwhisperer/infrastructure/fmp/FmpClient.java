@@ -1,5 +1,6 @@
 package com.earningwhisperer.infrastructure.fmp;
 
+import com.earningwhisperer.infrastructure.fmp.dto.FmpEarningsCalendarItem;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpHistoricalBar;
 import com.earningwhisperer.infrastructure.fmp.dto.FmpProfile;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -85,6 +87,45 @@ public class FmpClient {
         } catch (RestClientException e) {
             log.warn("[FmpClient] profile 호출 실패 ticker={} reason={}", ticker, e.getMessage());
             return Optional.empty();
+        }
+    }
+
+    /**
+     * `/stable/earnings-calendar?from=&to=` 호출. 날짜 범위 내 전 종목 어닝 일정 반환.
+     */
+    public List<FmpEarningsCalendarItem> fetchEarningsCalendar(LocalDate from, LocalDate to,
+                                                               FmpRateLimiter.Priority priority) {
+        try {
+            rateLimiter.acquire(priority);
+        } catch (RateLimitExceededException e) {
+            log.warn("[FmpClient] earningsCalendar rate limited from={} to={} reason={}", from, to, e.getMessage());
+            return Collections.emptyList();
+        }
+
+        try {
+            FmpEarningsCalendarItem[] body = restClient.get()
+                    .uri(b -> b.path("/stable/earnings-calendar")
+                            .queryParam("from", from)
+                            .queryParam("to", to)
+                            .queryParam("apikey", properties.apiKey())
+                            .build())
+                    .retrieve()
+                    .body(FmpEarningsCalendarItem[].class);
+
+            if (body == null || body.length == 0) {
+                log.warn("[FmpClient] earningsCalendar empty response from={} to={}", from, to);
+                return Collections.emptyList();
+            }
+            return List.of(body);
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FmpClient] earningsCalendar 인증 실패 — API 키 확인 필요 status={}", e.getStatusCode());
+            return Collections.emptyList();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FmpClient] earningsCalendar rate limit (429) from={} to={}", from, to);
+            return Collections.emptyList();
+        } catch (RestClientException e) {
+            log.warn("[FmpClient] earningsCalendar 호출 실패 from={} to={} reason={}", from, to, e.getMessage());
+            return Collections.emptyList();
         }
     }
 
