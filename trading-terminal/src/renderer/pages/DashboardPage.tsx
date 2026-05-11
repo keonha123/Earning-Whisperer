@@ -140,6 +140,11 @@ export default function DashboardPage() {
   // useEffect 로 PRICES_GET 1회 + PRICES_UPDATE 구독 시작.
   const { prices } = usePrices()
 
+  // 어닝콜 타임라인 — holdingRows/watchRows useMemo 보다 먼저 선언해야 TDZ 오류 없음.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
+    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
+  )
+
   // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
     totalCash +
@@ -239,10 +244,6 @@ export default function DashboardPage() {
   const { indices, isLoaded } = useMarketIndices()
   const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
   // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
-  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
-    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
-  )
-
   useEffect(() => {
     let cancelled = false
 
