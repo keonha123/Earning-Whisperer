@@ -4,6 +4,9 @@ import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubCalendarRow;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +38,13 @@ public class FinnhubEarningsScheduler {
     private final FinnhubClient finnhubClient;
     private final FinnhubEarningsSyncService finnhubEarningsSyncService;
 
-    /** 매일 오전 6시 UTC, 향후 30일 어닝 일정 갱신 */
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
+    public void syncOnStartup() {
+        syncEarningsCalendar();
+    }
+
+    /** 매일 오전 6시 UTC, 향후 90일 어닝 일정 갱신 */
     @Scheduled(cron = "0 0 6 * * *", zone = "UTC")
     public void syncEarningsCalendar() {
         LocalDate from = LocalDate.now(ZoneOffset.UTC);
