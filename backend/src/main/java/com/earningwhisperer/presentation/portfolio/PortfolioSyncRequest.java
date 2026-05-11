@@ -27,6 +27,13 @@ public class PortfolioSyncRequest {
     @JsonProperty("synced_at")
     private Long syncedAt; // UTC Unix Epoch Second
 
+    /**
+     * 동기화 대상 BrokerAccount. Terminal 이 활성 broker 식별자를 명시.
+     * null 이면 백엔드가 활성 BrokerAccount 로 폴백 (편의).
+     */
+    @JsonProperty("broker_account_id")
+    private Long brokerAccountId;
+
     @Getter
     @NoArgsConstructor
     public static class PositionDto {

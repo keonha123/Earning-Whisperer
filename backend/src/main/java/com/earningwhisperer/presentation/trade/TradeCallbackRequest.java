@@ -1,7 +1,9 @@
 package com.earningwhisperer.presentation.trade;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -15,7 +17,8 @@ import lombok.NoArgsConstructor;
 public class TradeCallbackRequest {
 
     @NotBlank
-    private String status; // EXECUTED | FAILED
+    @Pattern(regexp = "EXECUTED|FAILED", message = "status 는 EXECUTED 또는 FAILED 여야 합니다.")
+    private String status;
 
     @JsonProperty("broker_order_id")
     private String brokerOrderId;
@@ -28,4 +31,16 @@ public class TradeCallbackRequest {
 
     @JsonProperty("error_message")
     private String errorMessage;
+
+    /**
+     * EXECUTED 콜백은 멱등 dedup 키로 brokerOrderId 가 반드시 필요하다.
+     * UNIQUE(broker_order_id) 가 NULL 다중 허용이라 누락 시 dedup 무력화되므로 DTO 단계에서 거부.
+     */
+    @AssertTrue(message = "EXECUTED 콜백에는 broker_order_id 가 필수입니다.")
+    public boolean isBrokerOrderIdPresentWhenExecuted() {
+        if (!"EXECUTED".equals(status)) {
+            return true;
+        }
+        return brokerOrderId != null && !brokerOrderId.isBlank();
+    }
 }

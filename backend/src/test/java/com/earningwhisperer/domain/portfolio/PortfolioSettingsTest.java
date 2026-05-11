@@ -24,7 +24,7 @@ class PortfolioSettingsTest {
                 .buyAmountRatio(0.1)
                 .maxPositionRatio(0.3)
                 .cooldownMinutes(5)
-                .emaThreshold(0.6)
+                .aiScoreThreshold(0.6)
                 .tradingMode(TradingMode.MANUAL)
                 .build();
 
@@ -35,7 +35,7 @@ class PortfolioSettingsTest {
         assertThat(settings.getBuyAmountRatio()).isEqualTo(0.2);
         assertThat(settings.getMaxPositionRatio()).isEqualTo(0.5);
         assertThat(settings.getCooldownMinutes()).isEqualTo(10);
-        assertThat(settings.getEmaThreshold()).isEqualTo(0.7);
+        assertThat(settings.getAiScoreThreshold()).isEqualTo(0.7);
         assertThat(settings.getTradingMode()).isEqualTo(TradingMode.AUTO_PILOT);
     }
 
@@ -54,7 +54,7 @@ class PortfolioSettingsTest {
                 .buyAmountRatio(0.1)
                 .maxPositionRatio(0.3)
                 .cooldownMinutes(5)
-                .emaThreshold(0.6)
+                .aiScoreThreshold(0.6)
                 .tradingMode(TradingMode.SEMI_AUTO)
                 .build();
 
@@ -62,7 +62,7 @@ class PortfolioSettingsTest {
         assertThat(settings.getBuyAmountRatio()).isEqualTo(0.1);
         assertThat(settings.getMaxPositionRatio()).isEqualTo(0.3);
         assertThat(settings.getCooldownMinutes()).isEqualTo(5);
-        assertThat(settings.getEmaThreshold()).isEqualTo(0.6);
+        assertThat(settings.getAiScoreThreshold()).isEqualTo(0.6);
         assertThat(settings.getTradingMode()).isEqualTo(TradingMode.SEMI_AUTO);
     }
 }

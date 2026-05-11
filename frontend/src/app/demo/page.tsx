@@ -48,8 +48,7 @@ export default function DemoPage() {
     ticker,
     currentText,
     textHistory,
-    rawScore,
-    emaScore,
+    aiScore,
     emaHistory,
     signals,
     isSessionEnd,
@@ -88,7 +87,7 @@ export default function DemoPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="space-y-4">
-            <TensionGauge rawScore={rawScore} emaScore={emaScore} />
+            <TensionGauge aiScore={aiScore} />
             <EmaChart data={emaHistory} />
           </div>
           <div className="space-y-4">

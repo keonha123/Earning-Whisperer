@@ -82,7 +82,7 @@ function UserDropdown({ onLogout }: { onLogout: () => void }) {
 export default function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const clearToken = useAuthStore((s) => s.clearToken);
+  const clearTokens = useAuthStore((s) => s.clearTokens);
   const router = useRouter();
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function LandingNav() {
   }, []);
 
   function handleLogout() {
-    clearToken();
+    clearTokens();
     router.push("/");
   }
 

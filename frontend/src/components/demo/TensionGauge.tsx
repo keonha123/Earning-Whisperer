@@ -1,8 +1,7 @@
 "use client";
 
 interface TensionGaugeProps {
-  rawScore: number; // -1.0 ~ 1.0
-  emaScore: number; // -1.0 ~ 1.0
+  aiScore: number; // -1.0 ~ 1.0
 }
 
 function scoreToPercent(score: number): number {
@@ -25,10 +24,9 @@ function scoreToLabel(score: number): string {
   return "강한 매도 신호";
 }
 
-export default function TensionGauge({ rawScore, emaScore }: TensionGaugeProps) {
-  const rawPercent = scoreToPercent(rawScore);
-  const emaPercent = scoreToPercent(emaScore);
-  const emaColor = scoreToColor(emaScore);
+export default function TensionGauge({ aiScore }: TensionGaugeProps) {
+  const percent = scoreToPercent(aiScore);
+  const color = scoreToColor(aiScore);
 
   return (
     <div className="bg-gray-900 rounded-xl p-4 space-y-4">
@@ -36,33 +34,19 @@ export default function TensionGauge({ rawScore, emaScore }: TensionGaugeProps) 
         AI 감성 지수
       </h3>
 
-      {/* EMA Score — 메인 게이지 */}
+      {/* AI Score 메인 게이지 */}
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-gray-400">
-          <span>EMA Score</span>
-          <span className="font-mono text-white">{emaScore.toFixed(3)}</span>
+          <span>AI Score</span>
+          <span className="font-mono text-white">{aiScore.toFixed(3)}</span>
         </div>
         <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-700 ${emaColor}`}
-            style={{ width: `${emaPercent}%` }}
+            className={`h-full rounded-full transition-all duration-700 ${color}`}
+            style={{ width: `${percent}%` }}
           />
         </div>
-        <p className="text-xs text-gray-300">{scoreToLabel(emaScore)}</p>
-      </div>
-
-      {/* Raw Score — 서브 게이지 */}
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs text-gray-400">
-          <span>Raw Score</span>
-          <span className="font-mono text-white">{rawScore.toFixed(3)}</span>
-        </div>
-        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-blue-400 rounded-full transition-all duration-300"
-            style={{ width: `${rawPercent}%` }}
-          />
-        </div>
+        <p className="text-xs text-gray-300">{scoreToLabel(aiScore)}</p>
       </div>
 
       {/* 스케일 표시 */}
@@ -74,4 +58,3 @@ export default function TensionGauge({ rawScore, emaScore }: TensionGaugeProps) 
     </div>
   );
 }
-

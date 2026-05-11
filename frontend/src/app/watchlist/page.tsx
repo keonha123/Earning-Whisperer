@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import LandingNav from "@/components/landing/LandingNav";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -26,10 +27,8 @@ function useDebounce<T>(value: T, delay: number): T {
 
 function SearchBar({
   onAdd,
-  headers,
 }: {
   onAdd: (ticker: string) => void;
-  headers: Record<string, string>;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Stock[]>([]);
@@ -39,7 +38,7 @@ function SearchBar({
 
   useEffect(() => {
     if (!debouncedQuery.trim()) { setResults([]); return; }
-    fetch(`${API_URL}/api/v1/watchlist/search?q=${encodeURIComponent(debouncedQuery)}`, { headers })
+    fetchWithAuth(`${API_URL}/api/v1/watchlist/search?q=${encodeURIComponent(debouncedQuery)}`)
       .then((r) => r.json())
       .then(setResults)
       .catch(() => setResults([]));
@@ -131,27 +130,25 @@ function WatchlistRow({
 
 export default function WatchlistPage() {
   const router = useRouter();
-  const { accessToken, isAuthenticated } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const headers = { Authorization: `Bearer ${accessToken}` };
-
   useEffect(() => {
-    if (!isAuthenticated || !accessToken) { router.replace("/auth"); return; }
+    if (!isAuthenticated) { router.replace("/auth"); return; }
 
-    fetch(`${API_URL}/api/v1/watchlist`, { headers })
+    fetchWithAuth(`${API_URL}/api/v1/watchlist`)
       .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
       .then(setItems)
       .catch(() => setError("관심종목을 불러올 수 없습니다."))
       .finally(() => setLoading(false));
-  }, [isAuthenticated, accessToken]);
+  }, [isAuthenticated]);
 
   async function handleAdd(ticker: string) {
-    const r = await fetch(`${API_URL}/api/v1/watchlist`, {
+    const r = await fetchWithAuth(`${API_URL}/api/v1/watchlist`, {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker }),
     });
     if (!r.ok) {
@@ -165,9 +162,8 @@ export default function WatchlistPage() {
   }
 
   async function handleRemove(ticker: string) {
-    const r = await fetch(`${API_URL}/api/v1/watchlist/${ticker}`, {
+    const r = await fetchWithAuth(`${API_URL}/api/v1/watchlist/${ticker}`, {
       method: "DELETE",
-      headers,
     });
     if (r.ok) setItems((prev) => prev.filter((i) => i.ticker !== ticker));
   }
@@ -190,7 +186,7 @@ export default function WatchlistPage() {
           </div>
 
           <div className="mb-4">
-            <SearchBar onAdd={handleAdd} headers={headers} />
+            <SearchBar onAdd={handleAdd} />
           </div>
 
           {error && (
