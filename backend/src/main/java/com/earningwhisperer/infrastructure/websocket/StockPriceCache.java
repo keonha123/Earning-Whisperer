@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -30,13 +31,19 @@ public class StockPriceCache {
                 .stream().map(s -> s.getTicker()).toList();
         if (tickers.isEmpty()) return;
 
-        List<TickerLatestClose> closes = dailyBarRepository.findLatestClosesByTickers(tickers);
+        Map<String, Double> closeMap = dailyBarRepository.findLatestClosesByTickers(tickers)
+                .stream()
+                .collect(Collectors.toMap(
+                        TickerLatestClose::ticker,
+                        c -> c.close() != null ? c.close() : 0.0));
+
         long now = System.currentTimeMillis();
-        for (TickerLatestClose c : closes) {
-            double prev = c.close() != null ? c.close() : 0.0;
-            cache.put(c.ticker(), new StockPriceSnapshot(c.ticker(), prev, prev, 0.0, now));
+        for (String ticker : tickers) {
+            double prev = closeMap.getOrDefault(ticker, 0.0);
+            cache.put(ticker, new StockPriceSnapshot(ticker, prev, prev, 0.0, now));
         }
-        log.info("[StockPriceCache] previousClose 로딩 완료 — {}개 종목", closes.size());
+        log.info("[StockPriceCache] 초기화 완료 — {}개 종목 (DailyBar 있음: {}개)",
+                tickers.size(), closeMap.size());
     }
 
     public void update(String ticker, double price) {
