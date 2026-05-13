@@ -3,7 +3,9 @@ package com.earningwhisperer.domain.trade;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
+import com.earningwhisperer.domain.user.UserRepository;
 import com.earningwhisperer.infrastructure.websocket.TradeCommandMessage;
+import com.earningwhisperer.presentation.trade.ManualTradeRequest;
 import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
 import com.earningwhisperer.presentation.trade.TradeResponse;
 import jakarta.persistence.EntityNotFoundException;
@@ -38,6 +40,7 @@ public class TradeService {
     private static final int PENDING_ORDER_QTY_SENTINEL = 0;
 
     private final TradeRepository tradeRepository;
+    private final UserRepository userRepository;
 
     @Value("${app.trade.pending-ttl-seconds:30}")
     private long pendingTtlSeconds;
@@ -114,6 +117,40 @@ public class TradeService {
                         .aiScore(t.getAiScore())
                         .build())
                 .toList();
+    }
+
+    /**
+     * 사용자가 OrderBar 에서 직접 입력한 수동 주문을 기록한다.
+     * AI 시그널 없이 생성되므로 signal/orderRatio/aiScore 는 null.
+     * 주문은 Terminal 에서 이미 실행된 상태이므로 PENDING 단계 없이 EXECUTED/FAILED 로 직접 저장.
+     */
+    @Transactional
+    public void createManualTrade(Long userId, Long brokerAccountId, ManualTradeRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+
+        Trade trade = Trade.builder()
+                .user(user)
+                .brokerAccountId(brokerAccountId)
+                .signal(null)
+                .ticker(req.getTicker())
+                .side(req.getSide())
+                .orderType(req.getOrderType())
+                .orderQty(req.getOrderQty())
+                .price(req.getPrice())
+                .orderRatio(null)
+                .aiScore(null)
+                .build();
+
+        if ("EXECUTED".equals(req.getStatus())) {
+            trade.executed(req.getExecutedQty(), req.getExecutedPrice(), req.getBrokerOrderId());
+        } else {
+            trade.failed();
+        }
+
+        tradeRepository.save(trade);
+        log.info("[TradeService] 수동 주문 기록 - userId={} ticker={} side={} status={}",
+                userId, req.getTicker(), req.getSide(), req.getStatus());
     }
 
     /**

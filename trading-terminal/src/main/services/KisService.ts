@@ -519,6 +519,7 @@ export const KisService = {
     action: 'BUY' | 'SELL',
     ticker: string,
     qty: number,
+    price?: number,
   ): Promise<KisOrderResult> {
     await KisService.ensureToken()
 
@@ -539,9 +540,9 @@ export const KisService = {
         ACNT_PRDT_CD: accountNo.slice(8) || '01',
         OVRS_EXCG_CD: 'NASD',
         PDNO: ticker,
-        ORD_DVSN: '00', // 시장가
+        ORD_DVSN: '00',
         ORD_QTY: String(qty),
-        OVRS_ORD_UNPR: '0',
+        OVRS_ORD_UNPR: price != null ? String(price) : '0',
         ORD_SVR_DVSN_CD: '0',
       },
       {
