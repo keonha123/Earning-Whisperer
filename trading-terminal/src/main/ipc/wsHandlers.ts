@@ -1,5 +1,6 @@
 import { StompService } from '../services/StompService'
 import { BackendClient } from '../services/BackendClient'
+import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { registerHandler } from './registerHandler'
 
@@ -39,6 +40,19 @@ export function registerWsHandlers() {
    *
    * payload 가 falsy 하거나 ticker 가 비문자열인 경우는 silent ignore (방어).
    */
+  registerHandler<{ ticker: string }, void>(
+    IPC_CHANNELS.TRADE_SESSION_START,
+    (_e, payload) => {
+      if (!payload || typeof payload.ticker !== 'string' || !payload.ticker) return
+      mainState.setTradeSession(true, payload.ticker)
+    },
+  )
+
+  registerHandler<undefined, void>(
+    IPC_CHANNELS.TRADE_SESSION_END,
+    () => { mainState.setTradeSession(false) },
+  )
+
   registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_SUBSCRIBE, (_e, payload) => {
     if (!payload || typeof payload.ticker !== 'string') return
     StompService.subscribeTranscript(payload.ticker)

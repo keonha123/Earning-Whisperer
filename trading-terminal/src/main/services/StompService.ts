@@ -41,6 +41,8 @@ function pushToRenderer(channel: string, payload: unknown) {
  * 콜백 멱등성(PR1)에 의해 STOMP+fetch 중복 도착도 안전.
  */
 function dispatchTradeSignal(signal: TradeSignal) {
+  if (!mainState.isTradeSessionActive) return
+  if (signal.ticker !== mainState.activeSessionTicker) return
   pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
   if (mainState.tradingMode === 'AUTO_PILOT') {
     TradeExecutor.execute(signal).catch((e) => {
@@ -56,6 +58,8 @@ function dispatchTradeSignal(signal: TradeSignal) {
  */
 async function dispatchPendingBatch(signals: TradeSignal[]): Promise<void> {
   for (const signal of signals) {
+    if (!mainState.isTradeSessionActive) continue
+    if (signal.ticker !== mainState.activeSessionTicker) continue
     pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
     if (mainState.tradingMode === 'AUTO_PILOT') {
       try {
