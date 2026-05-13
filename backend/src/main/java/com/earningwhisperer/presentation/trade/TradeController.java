@@ -9,9 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -57,6 +59,22 @@ public class TradeController {
                 .map(brokerAccountId -> ResponseEntity.ok(
                         tradeService.getPendingCommandsForUser(userId, brokerAccountId)))
                 .orElseGet(() -> ResponseEntity.ok(List.of()));
+    }
+
+    /**
+     * 수동 주문 기록 — Terminal 이 KIS 직접 주문 실행 후 결과를 기록한다.
+     * 활성 BrokerAccount 가 없으면 422 반환.
+     */
+    @PostMapping("/manual")
+    public ResponseEntity<Void> recordManualTrade(
+            Authentication auth,
+            @Valid @RequestBody ManualTradeRequest request) {
+        Long userId = (Long) auth.getPrincipal();
+        BrokerAccount account = brokerAccountService.getActive(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY, "활성 BrokerAccount 가 없습니다."));
+        tradeService.createManualTrade(userId, account.getId(), request);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @PostMapping("/{tradeId}/callback")

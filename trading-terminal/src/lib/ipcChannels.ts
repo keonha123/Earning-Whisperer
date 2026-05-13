@@ -21,6 +21,8 @@ export const IPC_CHANNELS = {
 
   KIS_GET_BALANCE: 'terminal:kis:get-balance',
   KIS_PLACE_ORDER: 'terminal:kis:place-order',
+  /** 사용자가 OrderBar 에서 직접 입력한 수동 주문. payload: ManualOrderRequest */
+  KIS_PLACE_MANUAL_ORDER: 'terminal:kis:place-manual-order',
   KIS_GET_TOKEN_STATUS: 'terminal:kis:get-token-status',
   KIS_ISSUE_TOKEN: 'terminal:kis:issue-token',
 

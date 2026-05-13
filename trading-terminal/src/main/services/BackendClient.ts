@@ -47,6 +47,19 @@ export interface CallbackPayload {
   error_message: string | null
 }
 
+export interface ManualTradePayload {
+  ticker: string
+  side: 'BUY' | 'SELL'
+  order_type: 'MARKET' | 'LIMIT'
+  order_qty: number
+  price: number
+  executed_qty: number
+  executed_price: number | null
+  broker_order_id: string | null
+  status: 'EXECUTED' | 'FAILED'
+  error_message: string | null
+}
+
 export interface PortfolioSyncPayload {
   total_cash: number
   holdings: { ticker: string; qty: number; avg_price: number }[]
@@ -106,6 +119,10 @@ export const BackendClient = {
 
   async sendCallback(tradeId: string, payload: CallbackPayload): Promise<void> {
     await http.post(`/api/v1/trades/${tradeId}/callback`, payload)
+  },
+
+  async recordManualTrade(payload: ManualTradePayload): Promise<void> {
+    await http.post('/api/v1/trades/manual', payload)
   },
 
   /**
