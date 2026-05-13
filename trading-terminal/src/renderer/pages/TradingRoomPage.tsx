@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { useTradingStore, type SignalFeedItem } from '../store/useTradingStore'
 import { useUserStore } from '../store/useUserStore'
@@ -107,10 +107,23 @@ export default function TradingRoomPage() {
   // ── 타임프레임 (UI only — fixture 단일 시계열만 표시) ──────────────────────────
   const [timeframe, setTimeframe] = useState<Timeframe>('1D')
 
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
+
+  // ticker 결정 시 세션 시작 — cleanup 없음 (비명시적 이동 시 세션 유지가 의도된 동작)
+  useEffect(() => {
+    if (!ticker) return
+    ipc.invoke(IPC_CHANNELS.TRADE_SESSION_START, { ticker }).catch(console.error)
+  }, [ticker])
+
   // ticker 없으면 Market Screen으로 — 모든 hooks 이후에 체크
   if (!ticker) return <Navigate to="/market" replace />
 
-  function handleExit() {
+  async function handleExit() {
+    if (mode !== 'MANUAL') {
+      setShowExitConfirm(true)
+      return
+    }
+    await ipc.invoke(IPC_CHANNELS.TRADE_SESSION_END).catch(console.error)
     navigate('/market')
   }
 
@@ -314,6 +327,31 @@ export default function TradingRoomPage() {
         onSubmit={handleOrderSubmit}
         isLoading={isOrderLoading}
       />
+
+      {showExitConfirm && (
+        <div className="confirm-dialog-overlay">
+          <div className="confirm-dialog-card">
+            <p className="text-text-primary font-semibold mb-2">거래 세션 종료</p>
+            <p className="text-text-tertiary text-sm mb-5">
+              TradingRoom을 나가면 {mode === 'AUTO_PILOT' ? '자동' : '반자동'} 거래가 중단됩니다.
+            </p>
+            <div className="flex gap-3">
+              <button className="btn-reject flex-1" onClick={() => setShowExitConfirm(false)}>
+                취소
+              </button>
+              <button
+                className="btn-buy flex-1"
+                onClick={async () => {
+                  await ipc.invoke(IPC_CHANNELS.TRADE_SESSION_END).catch(console.error)
+                  navigate('/market')
+                }}
+              >
+                나가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

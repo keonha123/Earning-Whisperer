@@ -49,6 +49,10 @@ export const IPC_CHANNELS = {
 
   TRADES_GET: 'terminal:trades:get',
   TRADE_CANCEL: 'terminal:trade:cancel',
+  /** TradingRoom 진입 시 세션 시작. payload: { ticker: string } */
+  TRADE_SESSION_START: 'terminal:trade-session:start',
+  /** TradingRoom 명시적 나가기 시 세션 종료. */
+  TRADE_SESSION_END: 'terminal:trade-session:end',
 
   /**
    * 글로벌 시장 지수 5종 (SPX/NDX/VIX/DXY/10Y) 초기 스냅샷 조회.
