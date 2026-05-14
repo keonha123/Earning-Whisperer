@@ -80,6 +80,8 @@ const MIN_REMAINING_SEC_FOR_RESTORE = 600
 // 동시 호출 방지용 in-flight promise
 let issueTokenInFlight: Promise<void> | null = null
 let getBalanceInFlight: Promise<KisBalance> | null = null
+// psamount(VTTS3007R) 실패 시 0 대신 유지할 이전 성공값
+let lastKnownOrderableCash = 0
 
 /**
  * 모드 전환 시 in-flight axios 요청을 취소하기 위한 AbortController.
@@ -443,18 +445,20 @@ export const KisService = {
         },
       })
       if (psData.rt_cd === '0') {
-        orderableCash = Number(psData.output?.ord_psbl_frcr_amt ?? 0)
+        lastKnownOrderableCash = Number(psData.output?.ord_psbl_frcr_amt ?? 0)
+        orderableCash = lastKnownOrderableCash
       } else {
         console.error('[KisService] VTTS3007R rt_cd 실패:', psData.msg1 || psData.msg_cd)
-        // orderableCash는 0 유지
+        orderableCash = lastKnownOrderableCash
       }
     } catch (e: any) {
-      // 모드 전환 abort는 graceful 처리 (orderableCash=0 유지)
+      // 모드 전환 abort는 graceful 처리
       if (isAbortError(e)) {
         console.info('[KisService] VTTS3007R abort (모드 전환)')
       } else {
         console.error('[KisService] VTTS3007R 오류:', e?.response?.data?.message ?? e?.message)
       }
+      orderableCash = lastKnownOrderableCash
     }
 
     const holdings = (data.output1 ?? []).map((item: Record<string, string>) => ({
@@ -617,6 +621,7 @@ export const KisService = {
     tokenRefreshAttempts = 0
     issueTokenInFlight = null
     getBalanceInFlight = null
+    lastKnownOrderableCash = 0
     kisHttp.defaults.baseURL = getKisBaseUrl(mainState.isPaperTrading)
   },
 }

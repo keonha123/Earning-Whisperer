@@ -44,7 +44,7 @@ async function restorePaperTradingFlag(): Promise<void> {
   } catch (e) {
     console.warn('[main] paper-trading 플래그 복원 실패 (디폴트 true 유지):', e)
   }
-  kisLimiter.setRate(mainState.isPaperTrading ? 1.5 : 18)
+  kisLimiter.setRate(mainState.isPaperTrading ? 1.0 : 18)
 }
 
 let mainWindow: BrowserWindow | null = null

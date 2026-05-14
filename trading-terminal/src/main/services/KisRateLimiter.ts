@@ -89,5 +89,5 @@ export class KisRateLimiter {
   }
 }
 
-// 싱글톤 — 모의투자 디폴트 1.5 req/s. Step 2에서 KisService가 구간별로 setRate 호출.
-export const kisLimiter = new KisRateLimiter(1.5)
+// 싱글톤 — 모의투자 디폴트 1.0 req/s. 앱 시작 시 restorePaperTradingFlag가 setRate로 동기화.
+export const kisLimiter = new KisRateLimiter(1.0)
