@@ -25,6 +25,8 @@ export const IPC_CHANNELS = {
   KIS_PLACE_MANUAL_ORDER: 'terminal:kis:place-manual-order',
   KIS_GET_TOKEN_STATUS: 'terminal:kis:get-token-status',
   KIS_ISSUE_TOKEN: 'terminal:kis:issue-token',
+  /** invoke({ days: 7|30|90 }) → AssetHistoryPoint[] — 백엔드 GET /api/v1/portfolio/asset-history */
+  KIS_GET_ASSET_TIMESERIES: 'terminal:portfolio:get-asset-timeseries',
 
   SETTINGS_UPDATE: 'terminal:settings:update',
 

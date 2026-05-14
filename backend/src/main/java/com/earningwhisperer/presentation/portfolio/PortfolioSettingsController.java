@@ -1,5 +1,6 @@
 package com.earningwhisperer.presentation.portfolio;
 
+import com.earningwhisperer.domain.portfolio.AssetSnapshotService;
 import com.earningwhisperer.domain.portfolio.Broker;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
@@ -10,10 +11,12 @@ import com.earningwhisperer.domain.portfolio.TradingMode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Slf4j
@@ -25,6 +28,7 @@ public class PortfolioSettingsController {
     private final PortfolioSettingsService portfolioSettingsService;
     private final PositionService positionService;
     private final BrokerAccountService brokerAccountService;
+    private final AssetSnapshotService assetSnapshotService;
 
     @GetMapping("/settings")
     public ResponseEntity<PortfolioSettingsResponse> getSettings(Authentication auth) {
@@ -129,6 +133,19 @@ public class PortfolioSettingsController {
                 .map(acc -> BrokerAccountResponse.of(acc, acc.getId().equals(activeId)))
                 .toList();
         return ResponseEntity.ok(body);
+    }
+
+    @GetMapping("/asset-history")
+    public ResponseEntity<List<AssetSnapshotService.AssetHistoryPoint>> getAssetHistory(
+            Authentication auth,
+            @RequestParam(defaultValue = "30") int days) {
+        if (days != 7 && days != 30 && days != 90) {
+            return ResponseEntity.badRequest().build();
+        }
+        Long userId = (Long) auth.getPrincipal();
+        LocalDate to = LocalDate.now();
+        LocalDate from = to.minusDays(days - 1);
+        return ResponseEntity.ok(assetSnapshotService.getHistory(userId, from, to));
     }
 
     /**

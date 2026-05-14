@@ -18,7 +18,6 @@ import { usePrices } from '../hooks/usePrices'
 import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 // watchlistDevMock 은 이번 PR 에서 제거 (실 IPC 사용). holdings.dev-mock 파일 자체는 보존.
 import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
-import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
 import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
@@ -238,17 +237,17 @@ export default function DashboardPage() {
     }
   }, [])
 
-  // Asset chart: 현재 IPC 미존재 — NVDA fixture 차트를 시각화 더미로 사용 (DEV).
-  //  TODO(impl): KIS_GET_ASSET_TIMESERIES 도입 후 실제 시계열 사용.
-  //  (보안: 시계열은 사용자별이므로 IPC payload 에 userId 필요 + main 측 인증 검증).
-  const assetChartPoints = useMemo(() => {
-    if (!import.meta.env.DEV) return []
-    return companyDetailDevMock.NVDA.chart30d.map((p) => ({
-      date: p.date,
-      // 가격 → 가공된 자산 추정치 (실제 수치는 실제 데이터로 교체 필요)
-      price: 11900 + (p.price - 110) * 25,
-    }))
-  }, [])
+  const [assetRange, setAssetRange] = useState<7 | 30 | 90>(30)
+  const [assetChartPoints, setAssetChartPoints] = useState<{ date: string; price: number }[]>([])
+
+  useEffect(() => {
+    ipc
+      .invoke(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, { days: assetRange })
+      .then((points: { date: string; totalAssetUsd: number }[]) =>
+        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd }))),
+      )
+      .catch(() => setAssetChartPoints([]))
+  }, [assetRange])
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
@@ -325,7 +324,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <AssetChartCard points={assetChartPoints} />
+        <AssetChartCard points={assetChartPoints} range={assetRange} onRangeChange={setAssetRange} />
       </div>
 
       {/* Row 3: Holdings + Earnings timeline */}
@@ -363,7 +362,21 @@ export default function DashboardPage() {
  * Row 2 의 자산 추이 카드. 30D 라인 차트 + Y/X 축 라벨 + 범위 버튼 (UI 전용).
  * 별도 컴포넌트로 분리하지 않고 페이지 내부 헬퍼로 (재사용 없음).
  */
-function AssetChartCard({ points }: { points: { date: string; price: number }[] }) {
+const ASSET_RANGES = [
+  { label: '7D', days: 7 as const },
+  { label: '30D', days: 30 as const },
+  { label: '90D', days: 90 as const },
+]
+
+function AssetChartCard({
+  points,
+  range,
+  onRangeChange,
+}: {
+  points: { date: string; price: number }[]
+  range: 7 | 30 | 90
+  onRangeChange: (r: 7 | 30 | 90) => void
+}) {
   if (points.length === 0) {
     return (
       <section className="rounded-lg bg-surface-1 border border-border-subtle flex items-center justify-center text-[11px] text-text-disabled">
@@ -388,15 +401,15 @@ function AssetChartCard({ points }: { points: { date: string; price: number }[] 
           자산 추이
         </div>
         <div className="inline-flex bg-surface-2 border border-border-subtle rounded-md p-0.5">
-          {(['7D', '30D', '90D'] as const).map((r) => (
+          {ASSET_RANGES.map(({ label, days }) => (
             <button
-              key={r}
+              key={label}
               type="button"
+              onClick={() => onRangeChange(days)}
               className={`num px-2.5 py-0.5 rounded text-[10px] font-semibold tracking-[0.08em]
-                          ${r === '30D' ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}`}
-              // TODO(impl): 범위 변경 → IPC fetch (KIS_GET_ASSET_TIMESERIES)
+                          ${days === range ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}`}
             >
-              {r}
+              {label}
             </button>
           ))}
         </div>

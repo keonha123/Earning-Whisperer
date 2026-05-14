@@ -232,6 +232,18 @@ export const BackendClient = {
     )
     return Array.isArray(data) ? data : []
   },
+
+  async getAssetHistory(days: number): Promise<AssetHistoryPoint[]> {
+    const { data } = await http.get<AssetHistoryPoint[]>('/api/v1/portfolio/asset-history', {
+      params: { days },
+    })
+    return Array.isArray(data) ? data : []
+  },
+}
+
+export interface AssetHistoryPoint {
+  date: string
+  totalAssetUsd: number
 }
 
 export interface EarningsTimelineItem {

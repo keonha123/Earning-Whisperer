@@ -62,6 +62,7 @@ public class SecurityConfig {
                 // /api/v1/internal/** 는 InternalSecretFilter 가 X-Internal-Secret 으로 검증한다.
                 // Spring Security 단계에서는 인증 객체 없이 통과시키고, 시크릿 검증은 필터가 책임진다.
                 .requestMatchers("/api/v1/internal/**").permitAll()
+                .requestMatchers("/api/v1/dev/**").permitAll()
                 .anyRequest().authenticated())
             .addFilterBefore(
                 internalSecretFilter,
