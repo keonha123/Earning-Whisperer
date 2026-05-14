@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { KisService } from '../services/KisService'
 import { TradeExecutor } from '../services/TradeExecutor'
-import { BackendClient } from '../services/BackendClient'
+import { BackendClient, type AssetHistoryPoint } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { IpcError, sanitizeAxiosErrorDetails } from '../../lib/types/ipcError'
@@ -141,4 +141,12 @@ export function registerKisHandlers() {
       mainState.setOrderInProgress(false)
     }
   })
+
+  registerHandler<{ days: number }, AssetHistoryPoint[]>(
+    IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES,
+    async (_e, payload) => {
+      const days = [7, 30, 90].includes(payload?.days) ? payload.days : 30
+      return BackendClient.getAssetHistory(days)
+    },
+  )
 }
