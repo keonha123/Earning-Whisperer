@@ -1,3 +1,5 @@
+import SessionBadge from './SessionBadge'
+
 const NAV_ITEMS = [
   { path: '/dashboard', label: '대시보드' },
   { path: '/market', label: 'Market' },
@@ -105,6 +107,9 @@ export default function LeftSidebar({ activePath, onNavigate }: Props) {
           />
         ))}
       </div>
+
+      {/* 세션 배지 — 활성 세션 시에만 표시 */}
+      <SessionBadge />
 
       {/* 하단 — PRO 뱃지 + 버전 */}
       <div className="mt-auto px-3 py-2.5 border-t border-border-subtle flex flex-col gap-1.5 shrink-0">

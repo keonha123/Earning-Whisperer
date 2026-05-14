@@ -38,13 +38,17 @@ export function registerSettingsHandlers() {
         mainState.setTradingMode(settings.tradingMode)
       }
     }
-    // 백엔드에 설정 저장
-    await BackendClient.updateSettings({
-      trading_mode: settings.tradingMode,
-      max_buy_ratio: settings.maxBuyRatio,
-      max_holding_ratio: settings.maxHoldingRatio,
-      cooldown_minutes: settings.cooldownMinutes,
-    })
+    // 백엔드 동기화 — 토큰 만료/네트워크 오류 시에도 로컬 모드 변경은 유지
+    try {
+      await BackendClient.updateSettings({
+        trading_mode: settings.tradingMode,
+        max_buy_ratio: settings.maxBuyRatio,
+        max_holding_ratio: settings.maxHoldingRatio,
+        cooldown_minutes: settings.cooldownMinutes,
+      })
+    } catch (e) {
+      console.warn('[settingsHandlers] 백엔드 모드 동기화 실패 (로컬 적용 유지):', e)
+    }
   })
 
   registerHandler<undefined, boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING, () => {

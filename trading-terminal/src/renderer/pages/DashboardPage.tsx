@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
-import { useTradingStore } from '../store/useTradingStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
 import { useUserStore } from '../store/useUserStore'
 import { useDrawerStore } from '../store/useDrawerStore'
 
-import ModeSelector from '../components/common/ModeSelector'
 import PortfolioCard from '../components/portfolio/PortfolioCard'
 
 import MarketStrip from '../components/dashboard/MarketStrip'
@@ -48,7 +46,6 @@ import { isIpcError } from '../../lib/types/ipcError'
  *  - SignalFeed 는 import 제거 — PR #4 TradingRoom 에서 사용 예정.
  */
 export default function DashboardPage() {
-  const { mode, setMode } = useTradingStore()
   const {
     orderableCash,
     totalCash,
@@ -63,7 +60,7 @@ export default function DashboardPage() {
     setError,
     setBalanceFetchError,
   } = usePortfolioStore()
-  const { plan, settings, setSettings, clear: clearUser } = useUserStore()
+  const { clear: clearUser } = useUserStore()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
 
   const openDrawer = useDrawerStore((s) => s.open)
@@ -117,22 +114,6 @@ export default function DashboardPage() {
       })
     } finally {
       setSyncing(false)
-    }
-  }
-
-  async function handleModeChange(newMode: typeof mode) {
-    try {
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-        tradingMode: newMode,
-        maxBuyRatio: settings.maxBuyRatio,
-        maxHoldingRatio: settings.maxHoldingRatio,
-        cooldownMinutes: settings.cooldownMinutes,
-      })
-      setMode(newMode)
-      setSettings({ tradingMode: newMode })
-    } catch (e) {
-      console.error('모드 변경 실패:', e)
-      showIpcErrorToast(e)
     }
   }
 
@@ -287,7 +268,6 @@ export default function DashboardPage() {
             · KIS 모의투자
           </p>
         </div>
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={syncBalance}
@@ -309,13 +289,6 @@ export default function DashboardPage() {
             </svg>
             {isSyncing ? '동기화 중' : '동기화'}
           </button>
-          <ModeSelector
-            currentMode={mode}
-            userPlan={plan}
-            onChange={handleModeChange}
-            size="compact"
-          />
-        </div>
       </div>
 
       {error && (
