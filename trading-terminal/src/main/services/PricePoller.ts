@@ -84,7 +84,7 @@ function computeCycleMs(): number {
   const n = tickers.size
   if (n === 0) return IDLE_CYCLE_MS
   if (!isUsMarketOpen()) return OFF_HOURS_CYCLE_MS
-  const safeRate = mainState.isPaperTrading ? 1.5 : 18
+  const safeRate = mainState.isPaperTrading ? 1.0 : 18
   const lowBudget = safeRate * 0.6
   return Math.max(MIN_CYCLE_MS, Math.ceil((n / lowBudget) * 1000))
 }

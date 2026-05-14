@@ -12,8 +12,8 @@ import { registerHandler } from './registerHandler'
 const KEYTAR_SERVICE = 'EarningWhisperer'
 const PAPER_TRADING_KEY = 'kis-isPaperTrading'
 
-// 모의 1.5 req/s, 실전 18 req/s — KIS 공식 제한 대비 보수적 마진.
-const RATE_PAPER = 1.5
+// 모의 1.0 req/s, 실전 18 req/s — KIS 모의투자 실제 제한 1 req/s 기준.
+const RATE_PAPER = 1.0
 const RATE_REAL = 18
 
 function broadcast(channel: string, payload: unknown) {

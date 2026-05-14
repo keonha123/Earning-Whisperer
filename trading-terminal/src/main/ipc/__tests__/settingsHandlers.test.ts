@@ -63,7 +63,7 @@ describe('settingsHandlers — paper-trading 토글', () => {
     invalidateSpy.mockRestore()
   })
 
-  it('SET value=true → kisLimiter.setRate(1.5) + keytar에 \'1\' 저장', async () => {
+  it('SET value=true → kisLimiter.setRate(1.0) + keytar에 \'1\' 저장', async () => {
     mainState.setPaperTrading(false)
     const invalidateSpy = vi.spyOn(KisService, 'invalidateRuntime').mockImplementation(() => undefined)
     registerSettingsHandlers()
@@ -72,7 +72,7 @@ describe('settingsHandlers — paper-trading 토글', () => {
     await handler({} as never, { value: true })
 
     expect(mainState.isPaperTrading).toBe(true)
-    expect(vi.mocked(kisLimiter.setRate)).toHaveBeenCalledWith(1.5)
+    expect(vi.mocked(kisLimiter.setRate)).toHaveBeenCalledWith(1.0)
     expect(invalidateSpy).toHaveBeenCalledTimes(1)
 
     const saved = await keytar.getPassword(KEYTAR_SERVICE, 'kis-isPaperTrading')
