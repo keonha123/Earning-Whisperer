@@ -34,7 +34,7 @@ class EarningsAgent:
                 print(f"🕵️ [{self.ticker}] 모든 구역(Frame) 정밀 수색 중...")
                 
                 found_el = None
-                for attempt in range(10): # 10번 재시도 (약 30~40초)
+                for attempt in range(2): # 2번 재시도 (약 30~40초)
                     # 메인 페이지를 포함한 모든 프레임 리스트업
                     all_frames = page.frames
                     
@@ -81,6 +81,6 @@ class EarningsAgent:
                 await browser.close()
 
 if __name__ == "__main__":
-    XYL_URL = "https://www.xylem.com/en-us/investors/events/"
-    agent = EarningsAgent("XYL", XYL_URL)
+    XYL_URL = "https://investor.wdc.com/investor-events/presentations"
+    agent = EarningsAgent("WDC", XYL_URL)
     asyncio.run(agent.monitor())
