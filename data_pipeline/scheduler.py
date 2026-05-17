@@ -27,6 +27,9 @@ async def start_scheduling():
     # [Step 2] 매일 새벽 04:30 - 어닝 일정 병렬 수집 (병렬 쓰레드 10개)
     scheduler.add_job(orch.update_all_schedules, 'cron', hour=4, minute=30, args=[10])
 
+    # [Step 4] Daily 05:00 - quarterly financial statements
+    scheduler.add_job(orch.sync_financial_statements, 'cron', hour=5, minute=0, args=['m7', 5])
+
     # [Step 3] 매 1시간마다 - 최근 7일간의 주가 데이터 동기화
     scheduler.add_job(orch.sync_stock_prices, 'interval', hours=1, args=[7])
     

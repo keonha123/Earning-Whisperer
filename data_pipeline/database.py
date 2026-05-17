@@ -86,6 +86,79 @@ def save_prices(price_list: List[Dict]):
     except Exception as e:
         print(f"❌ [DB] 주가 저장 에러: {e}")
 
+def ensure_financial_statement_items_table():
+    query = text("""
+        CREATE TABLE IF NOT EXISTS financial_statement_items (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(20) NOT NULL,
+            statement_type VARCHAR(32) NOT NULL,
+            fiscal_period_end DATE NOT NULL,
+            frequency VARCHAR(16) NOT NULL,
+            line_item VARCHAR(128) NOT NULL,
+            value DECIMAL(28, 4) NOT NULL,
+            source VARCHAR(32) NOT NULL,
+            collected_at DATETIME NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_financial_statement_items (
+                ticker,
+                statement_type,
+                fiscal_period_end,
+                frequency,
+                line_item
+            ),
+            INDEX idx_fsi_ticker_period (ticker, fiscal_period_end),
+            INDEX idx_fsi_statement_type (statement_type)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    with engine.begin() as conn:
+        conn.execute(query)
+
+
+def save_financial_statement_items(statement_items: List[Dict]):
+    if not statement_items:
+        return
+
+    ensure_financial_statement_items_table()
+
+    query = text("""
+        INSERT INTO financial_statement_items
+            (
+                ticker,
+                statement_type,
+                fiscal_period_end,
+                frequency,
+                line_item,
+                value,
+                source,
+                collected_at
+            )
+        VALUES
+            (
+                :ticker,
+                :statement_type,
+                :fiscal_period_end,
+                :frequency,
+                :line_item,
+                :value,
+                :source,
+                :collected_at
+            )
+        ON DUPLICATE KEY UPDATE
+            value = VALUES(value),
+            source = VALUES(source),
+            collected_at = VALUES(collected_at)
+    """)
+
+    with engine.begin() as conn:
+        for item in statement_items:
+            conn.execute(query, item)
+
+    tickers = sorted({item["ticker"] for item in statement_items})
+    print(f"[DB] Saved {len(statement_items)} financial statement items for {len(tickers)} tickers.")
+
+
 def update_static_indicators(indicator_list: List[Dict]):
     """stocks 테이블에 52주 고점 및 평균 거래량 정보를 박제(Update)"""
     if not indicator_list: return
