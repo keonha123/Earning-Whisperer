@@ -1,0 +1,173 @@
+{
+  "source_file": "data/backtests/nasdaq100_conservative_v956_20170120_20260426_proxy.json",
+  "source_simulation_mode": "price_proxy",
+  "source_universe_profile": "NASDAQ100",
+  "source_risk_style": "CONSERVATIVE",
+  "trade_count": 43,
+  "scenarios": [
+    {
+      "scenario": "base_recomputed",
+      "cost_model": {
+        "name": "base_recomputed",
+        "round_trip_cost_pct": 0.3,
+        "slippage_bps": 8.0,
+        "latency_adverse_bps": 0.0,
+        "total_cost_pct": 0.38
+      },
+      "metrics": {
+        "trade_count": 43,
+        "win_rate_pct": 62.7907,
+        "avg_trade_return_pct": 0.6808,
+        "median_trade_return_pct": 1.2479,
+        "expectancy_pct": 0.6808,
+        "profit_factor": 1.6782,
+        "total_return_pct": 31.2763,
+        "annualized_return_pct": 3.2971,
+        "annualized_volatility_pct": 31.2024,
+        "sharpe_ratio": 2.2955,
+        "sortino_ratio": 6.9859,
+        "max_drawdown_pct": -11.4038,
+        "time_under_water_days": 2713.0,
+        "avg_hold_days": 2.3953,
+        "avg_mfe_pct": 2.9576,
+        "avg_mae_pct": -1.8702,
+        "turnover": 5.1257,
+        "exposure_pct": 3.7871,
+        "benchmark_return_pct": 480.371,
+        "approved_signal_count": 43,
+        "rejected_signal_count": 0
+      },
+      "checks": {
+        "trade_count": true,
+        "win_rate_pct": true,
+        "avg_trade_return_pct": true,
+        "profit_factor": true,
+        "max_drawdown_pct": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "broker_normal",
+      "cost_model": {
+        "name": "broker_normal",
+        "round_trip_cost_pct": 0.35,
+        "slippage_bps": 15.0,
+        "latency_adverse_bps": 5.0,
+        "total_cost_pct": 0.55
+      },
+      "metrics": {
+        "trade_count": 43,
+        "win_rate_pct": 58.1395,
+        "avg_trade_return_pct": 0.5108,
+        "median_trade_return_pct": 1.0779,
+        "expectancy_pct": 0.5108,
+        "profit_factor": 1.4762,
+        "total_return_pct": 22.0671,
+        "annualized_return_pct": 2.4054,
+        "annualized_volatility_pct": 31.2024,
+        "sharpe_ratio": 1.7223,
+        "sortino_ratio": 4.0981,
+        "max_drawdown_pct": -13.2131,
+        "time_under_water_days": 2880.0,
+        "avg_hold_days": 2.3953,
+        "avg_mfe_pct": 2.9576,
+        "avg_mae_pct": -1.8702,
+        "turnover": 5.1257,
+        "exposure_pct": 3.7871,
+        "benchmark_return_pct": 480.371,
+        "approved_signal_count": 43,
+        "rejected_signal_count": 0
+      },
+      "checks": {
+        "trade_count": true,
+        "win_rate_pct": true,
+        "avg_trade_return_pct": true,
+        "profit_factor": true,
+        "max_drawdown_pct": true
+      },
+      "passed": true
+    },
+    {
+      "scenario": "earnings_gap_stress",
+      "cost_model": {
+        "name": "earnings_gap_stress",
+        "round_trip_cost_pct": 0.5,
+        "slippage_bps": 30.0,
+        "latency_adverse_bps": 10.0,
+        "total_cost_pct": 0.9
+      },
+      "metrics": {
+        "trade_count": 43,
+        "win_rate_pct": 51.1628,
+        "avg_trade_return_pct": 0.1608,
+        "median_trade_return_pct": 0.7279,
+        "expectancy_pct": 0.1608,
+        "profit_factor": 1.1315,
+        "total_return_pct": 5.05,
+        "annualized_return_pct": 0.589,
+        "annualized_volatility_pct": 31.2024,
+        "sharpe_ratio": 0.5422,
+        "sortino_ratio": 1.0636,
+        "max_drawdown_pct": -17.1412,
+        "time_under_water_days": 3062.0,
+        "avg_hold_days": 2.3953,
+        "avg_mfe_pct": 2.9576,
+        "avg_mae_pct": -1.8702,
+        "turnover": 5.1257,
+        "exposure_pct": 3.7871,
+        "benchmark_return_pct": 480.371,
+        "approved_signal_count": 43,
+        "rejected_signal_count": 0
+      },
+      "checks": {
+        "trade_count": true,
+        "win_rate_pct": true,
+        "avg_trade_return_pct": true,
+        "profit_factor": true,
+        "max_drawdown_pct": false
+      },
+      "passed": false
+    },
+    {
+      "scenario": "extreme_spread_stress",
+      "cost_model": {
+        "name": "extreme_spread_stress",
+        "round_trip_cost_pct": 0.75,
+        "slippage_bps": 50.0,
+        "latency_adverse_bps": 15.0,
+        "total_cost_pct": 1.4
+      },
+      "metrics": {
+        "trade_count": 43,
+        "win_rate_pct": 51.1628,
+        "avg_trade_return_pct": -0.3392,
+        "median_trade_return_pct": 0.2279,
+        "expectancy_pct": -0.3392,
+        "profit_factor": 0.7688,
+        "total_return_pct": -15.306,
+        "annualized_return_pct": -1.9608,
+        "annualized_volatility_pct": 31.2024,
+        "sharpe_ratio": -1.1436,
+        "sortino_ratio": -2.2432,
+        "max_drawdown_pct": -26.5941,
+        "time_under_water_days": 3062.0,
+        "avg_hold_days": 2.3953,
+        "avg_mfe_pct": 2.9576,
+        "avg_mae_pct": -1.8702,
+        "turnover": 5.1257,
+        "exposure_pct": 3.7871,
+        "benchmark_return_pct": 480.371,
+        "approved_signal_count": 43,
+        "rejected_signal_count": 0
+      },
+      "checks": {
+        "trade_count": true,
+        "win_rate_pct": true,
+        "avg_trade_return_pct": false,
+        "profit_factor": false,
+        "max_drawdown_pct": false
+      },
+      "passed": false
+    }
+  ]
+}

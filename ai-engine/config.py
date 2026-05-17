@@ -1,204 +1,194 @@
-"""Runtime configuration for the EarningWhisperer AI engine."""
-
 from __future__ import annotations
 
 from functools import lru_cache
-import warnings
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Environment-driven settings with safe local defaults."""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False,
         extra="ignore",
+        case_sensitive=False,
+        populate_by_name=True,
     )
 
-    gemini_api_key: str = Field(default="")
-    openai_api_key: str = Field(default="")
+    app_name: str = "EarningWhisperer AI Engine"
+    app_version: str = "9.5.9"
+    environment: Literal["dev", "staging", "prod"] = "dev"
+    log_level: str = "INFO"
 
-    # Legacy model settings kept for compatibility with older env files.
-    gemini_model: str | None = Field(default=None)
-    gemini_fast_model: str | None = Field(default=None)
-    gemini_consensus_model: str | None = Field(default=None)
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
+    database_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/earningwhisperer", alias="DATABASE_URL")
+    database_connect_timeout_seconds: int = Field(default=2, alias="DATABASE_CONNECT_TIMEOUT_SECONDS")
+    database_failure_cooldown_seconds: int = Field(default=15, alias="DATABASE_FAILURE_COOLDOWN_SECONDS")
+    db_schema_path: str = Field(default="sql/ai_engine_event_store_schema.sql", alias="DB_SCHEMA_PATH")
 
-    # New Gemini 3.x routing defaults.
-    gemini_primary_model: str = Field(default="gemini-3-flash-preview")
-    gemini_review_model: str = Field(default="gemini-3-pro-preview")
-    gemini_primary_max_output_tokens: int = Field(default=384, ge=128, le=8192)
-    gemini_standard_max_output_tokens: int = Field(default=640, ge=128, le=8192)
-    gemini_review_max_output_tokens: int = Field(default=960, ge=128, le=8192)
-    gemini_primary_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
-        default="minimal"
+    openai_model_fast: str = Field(default="gpt-5-mini", alias="OPENAI_MODEL_FAST")
+    gemini_model_fast: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL_FAST")
+
+    gemini_primary_model: str | None = Field(default="gemini-3.1-flash-lite", alias="GEMINI_PRIMARY_MODEL")
+    gemini_review_model: str | None = Field(default="gemini-3.1-pro-preview", alias="GEMINI_REVIEW_MODEL")
+    gemini_review_model_candidates: str = Field(
+        default="gemini-3.1-pro-preview,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-2.5-pro",
+        alias="GEMINI_REVIEW_MODEL_CANDIDATES",
     )
-    gemini_standard_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
-        default="low"
-    )
-    gemini_review_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
-        default="medium"
-    )
-    gemini_max_tokens: int = Field(default=2048, ge=512, le=8192)
-    gemini_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
-        default="minimal"
-    )
-    gemini_max_retries: int = Field(default=3, ge=1, le=5)
-    gemini_base_retry_delay: float = Field(default=1.5, ge=0.5, le=5.0)
-    gemini_response_mime_type: str = Field(default="application/json")
-    gemini_consensus_samples: int = Field(default=3, ge=1, le=7)
-    gemini_consensus_min_confidence: float = Field(default=0.78, ge=0.0, le=1.0)
-    gemini_consensus_disagreement_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
+    enable_review_pass: bool = Field(default=True, alias="ENABLE_REVIEW_PASS")
 
-    llm_router_max_calls_per_chunk: int = Field(default=6, ge=1, le=6)
-    llm_router_novelty_threshold: float = Field(default=0.18, ge=0.0, le=1.0)
-    llm_router_high_signal_raw_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-    llm_router_high_priority: int = Field(default=8, ge=1, le=10)
-    llm_router_review_confidence_threshold: float = Field(default=0.68, ge=0.0, le=1.0)
+    # legacy aliases still accepted
+    gemini_fast_model: str | None = None
+    gemini_model: str | None = None
 
-    phase1_provider: Literal["finbert", "lexical"] = Field(default="finbert")
-    phase1_finbert_model_name: str = Field(default="ProsusAI/finbert")
-    phase1_finbert_device: Literal["auto", "cpu", "cuda"] = Field(default="auto")
-    phase1_finbert_max_length: int = Field(default=256, ge=64, le=512)
-    phase1_max_chars: int = Field(default=3000, ge=256, le=12000)
-    phase1_cache_size: int = Field(default=1024, ge=64, le=10000)
-    phase1_warmup_on_startup: bool = Field(default=True)
+    gemini_primary_max_output_tokens: int = Field(default=384, alias="GEMINI_PRIMARY_MAX_OUTPUT_TOKENS")
+    gemini_standard_max_output_tokens: int = Field(default=640, alias="GEMINI_STANDARD_MAX_OUTPUT_TOKENS")
+    gemini_review_max_output_tokens: int = Field(default=960, alias="GEMINI_REVIEW_MAX_OUTPUT_TOKENS")
+    analysis_prompt_budget_economy: int = Field(default=384, alias="ANALYSIS_PROMPT_BUDGET_ECONOMY")
+    analysis_prompt_budget_standard: int = Field(default=640, alias="ANALYSIS_PROMPT_BUDGET_STANDARD")
+    analysis_prompt_budget_review: int = Field(default=960, alias="ANALYSIS_PROMPT_BUDGET_REVIEW")
+    gemini_primary_thinking_level: str = Field(default="minimal", alias="GEMINI_PRIMARY_THINKING_LEVEL")
+    gemini_standard_thinking_level: str = Field(default="low", alias="GEMINI_STANDARD_THINKING_LEVEL")
+    gemini_review_thinking_level: str = Field(default="medium", alias="GEMINI_REVIEW_THINKING_LEVEL")
+    gemini_response_mime_type: str = "application/json"
+    gemini_temperature: float = Field(default=0.15, alias="GEMINI_TEMPERATURE")
+    gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
+    gemini_max_retries: int = Field(default=3, alias="GEMINI_MAX_RETRIES")
+    gemini_base_retry_delay: float = Field(default=1.5, alias="GEMINI_BASE_RETRY_DELAY")
+    gemini_consensus_samples: int = Field(default=3, alias="GEMINI_CONSENSUS_SAMPLES")
+    gemini_consensus_min_confidence: float = Field(default=0.78, alias="GEMINI_CONSENSUS_MIN_CONFIDENCE")
+    gemini_consensus_disagreement_threshold: float = Field(default=0.35, alias="GEMINI_CONSENSUS_DISAGREEMENT_THRESHOLD")
+    gemini_response_cache_enabled: bool = True
+    gemini_response_cache_max_entries: int = 256
+    llm_cost_primary_input_per_million: float = Field(default=0.0, alias="LLM_COST_PRIMARY_INPUT_PER_MILLION")
+    llm_cost_primary_output_per_million: float = Field(default=0.0, alias="LLM_COST_PRIMARY_OUTPUT_PER_MILLION")
+    llm_cost_review_input_per_million: float = Field(default=0.0, alias="LLM_COST_REVIEW_INPUT_PER_MILLION")
+    llm_cost_review_output_per_million: float = Field(default=0.0, alias="LLM_COST_REVIEW_OUTPUT_PER_MILLION")
 
-    alphavantage_api_key: str = Field(default="demo")
+    llm_router_max_calls_per_chunk: int = Field(default=2, alias="LLM_ROUTER_MAX_CALLS_PER_CHUNK")
+    llm_router_novelty_threshold: float = Field(default=0.18, alias="LLM_ROUTER_NOVELTY_THRESHOLD")
+    llm_router_high_signal_raw_threshold: float = Field(default=0.45, alias="LLM_ROUTER_HIGH_SIGNAL_RAW_THRESHOLD")
+    llm_router_high_priority: int = Field(default=8, alias="LLM_ROUTER_HIGH_PRIORITY")
+    llm_router_review_confidence_threshold: float = Field(default=0.68, alias="LLM_ROUTER_REVIEW_CONFIDENCE_THRESHOLD")
 
-    redis_url: str = Field(default="redis://localhost:6379")
-    redis_channel: str = Field(default="trading-signals")
-    redis_enriched_channel: str = Field(default="trading-signals-enriched")
-    redis_backup_queue_size: int = Field(default=100, ge=10, le=1000)
-    redis_reconnect_delay: float = Field(default=2.0, ge=0.5, le=30.0)
+    phase1_provider: Literal["finbert", "mock"] = Field(default="finbert", alias="PHASE1_PROVIDER")
+    phase1_finbert_model_name: str = Field(default="ProsusAI/finbert", alias="PHASE1_FINBERT_MODEL_NAME")
+    phase1_finbert_device: str = Field(default="auto", alias="PHASE1_FINBERT_DEVICE")
+    phase1_finbert_max_length: int = Field(default=256, alias="PHASE1_FINBERT_MAX_LENGTH")
+    phase1_max_chars: int = Field(default=3000, alias="PHASE1_MAX_CHARS")
+    phase1_cache_size: int = Field(default=1024, alias="PHASE1_CACHE_SIZE")
+    phase1_warmup_on_startup: bool = Field(default=True, alias="PHASE1_WARMUP_ON_STARTUP")
 
-    app_host: str = Field(default="0.0.0.0")
-    app_port: int = Field(default=8000, ge=1024, le=65535)
-    app_version: str = Field(default="3.5.2")
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
+    composite_threshold: float = Field(default=0.45, alias="COMPOSITE_THRESHOLD")
+    confidence_threshold: float = Field(default=0.70, alias="CONFIDENCE_THRESHOLD")
+    raw_score_threshold: float = Field(default=0.35, alias="RAW_SCORE_THRESHOLD")
+    max_euphemism_count: int = Field(default=3, alias="MAX_EUPHEMISM_COUNT")
+    min_volume_ratio: float = Field(default=1.50, alias="MIN_VOLUME_RATIO")
+    max_vix: float = Field(default=28.0, alias="MAX_VIX")
+    kelly_max_position: float = Field(default=0.12, alias="KELLY_MAX_POSITION")
+    execution_target_win_rate: float = Field(default=0.50, alias="EXECUTION_TARGET_WIN_RATE")
+    backtest_round_trip_cost_pct: float = Field(default=0.30, alias="BACKTEST_ROUND_TRIP_COST_PCT")
+    slippage_bps_default: float = Field(default=8.0, alias="SLIPPAGE_BPS_DEFAULT")
+    execution_latency_bps_default: float = Field(default=5.0, alias="EXECUTION_LATENCY_BPS_DEFAULT")
+    conservative_execution_cost_limit_pct: float = Field(default=0.55, alias="CONSERVATIVE_EXECUTION_COST_LIMIT_PCT")
 
-    context_history_size: int = Field(default=5, ge=1, le=20)
-    context_session_ttl_seconds: int = Field(default=3600, ge=300)
-    analysis_max_prompt_tokens: int = Field(default=12000, ge=1024, le=128000)
-    analysis_target_chunk_tokens: int = Field(default=2500, ge=256, le=16000)
-    analysis_batch_concurrency: int = Field(default=4, ge=1, le=32)
-    analysis_consensus_max_parallel: int = Field(default=2, ge=1, le=8)
-    rag_enabled: bool = Field(default=True)
-    rag_top_k: int = Field(default=3, ge=1, le=8)
-    rag_max_rewrites: int = Field(default=1, ge=0, le=3)
-    rag_min_relevance_score: float = Field(default=0.18, ge=0.0, le=1.0)
-    rag_hybrid_alpha: float = Field(default=0.70, ge=0.0, le=1.0)
-    rag_dense_candidate_limit: int = Field(default=12, ge=3, le=128)
-    rag_keyword_candidate_limit: int = Field(default=24, ge=3, le=256)
-    rag_bm25_k1: float = Field(default=1.2, ge=0.1, le=3.0)
-    rag_bm25_b: float = Field(default=0.75, ge=0.0, le=1.0)
-    rag_score_dense_weight: float = Field(default=0.60, ge=0.0, le=1.0)
-    rag_score_lexical_weight: float = Field(default=0.30, ge=0.0, le=1.0)
-    rag_score_business_weight: float = Field(default=0.10, ge=0.0, le=1.0)
-    rag_context_chars_per_doc: int = Field(default=320, ge=80, le=2000)
-    rag_decision_max_output_tokens: int = Field(default=256, ge=64, le=1024)
-    rag_decision_thinking_level: Literal["minimal", "low", "medium", "high"] = Field(
-        default="minimal"
-    )
-    rag_external_default_lookback_days: int = Field(default=7, ge=1, le=30)
-    rag_external_max_lookback_days: int = Field(default=30, ge=1, le=30)
-    vector_store_backend: Literal["memory", "qdrant"] = Field(default="qdrant")
-    qdrant_url: str = Field(default="")
-    qdrant_path: str = Field(default="")
-    qdrant_api_key: str = Field(default="")
-    qdrant_collection_name: str = Field(default="external_evidence")
-    qdrant_timeout_seconds: float = Field(default=5.0, ge=0.5, le=30.0)
-    qdrant_prefer_grpc: bool = Field(default=False)
-    external_evidence_retention_days: int = Field(default=30, ge=1, le=365)
-    embedding_provider: Literal["hash", "gemini", "openai"] = Field(default="openai")
-    embedding_model: str = Field(default="text-embedding-3-large")
-    embedding_dimension: int = Field(default=3072, ge=64, le=3072)
-    external_chunk_tokenizer_model: str = Field(default="text-embedding-3-large")
-    external_chunk_size_tokens: int = Field(default=500, ge=1, le=4096)
-    external_chunk_overlap_tokens: int = Field(default=50, ge=0, le=1024)
-    external_chunk_size_chars: int = Field(default=3200, ge=400, le=12000)
-    external_chunk_overlap_chars: int = Field(default=400, ge=0, le=4000)
+    w_sentiment: float = Field(default=0.28, alias="W_SENTIMENT")
+    w_sue: float = Field(default=0.22, alias="W_SUE")
+    w_momentum: float = Field(default=0.18, alias="W_MOMENTUM")
+    w_volume: float = Field(default=0.10, alias="W_VOLUME")
+    w_gap: float = Field(default=0.08, alias="W_GAP")
+    w_reversal: float = Field(default=0.08, alias="W_REVERSAL")
+    w_short_interest: float = Field(default=0.06, alias="W_SHORT_INTEREST")
 
-    composite_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
-    confidence_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
-    raw_score_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-    max_euphemism_count: int = Field(default=2, ge=0, le=10)
-    min_volume_ratio: float = Field(default=1.80, ge=0.0, le=10.0)
-    max_vix: float = Field(default=25.0, ge=10.0, le=80.0)
+    whisper_play_horizon_days: int = 2
+    short_squeeze_horizon_days: int = 3
+    pead_horizon_days: int = 5
+    iv_crush_horizon_days: int = 2
+    reversal_catalyst_horizon_days: int = 2
+    gap_and_go_horizon_days: int = 2
+    gap_fill_horizon_days: int = 2
+    news_breakout_horizon_days: int = 3
+    momentum_carry_horizon_days: int = 4
 
-    kelly_max_position: float = Field(default=0.25, ge=0.01, le=0.50)
-    execution_target_win_rate: float = Field(default=0.50, ge=0.0, le=1.0)
+    yfinance_timeout_seconds: float = Field(default=10.0, alias="YFINANCE_TIMEOUT_SECONDS")
+    yfinance_repair_enabled: bool = Field(default=True, alias="YFINANCE_REPAIR_ENABLED")
+    yfinance_auto_adjust: bool = Field(default=False, alias="YFINANCE_AUTO_ADJUST")
+    yfinance_cache_ttl_seconds: int = Field(default=300, alias="YFINANCE_CACHE_TTL_SECONDS")
+    yfinance_news_limit: int = Field(default=8, alias="YFINANCE_NEWS_LIMIT")
+    alphavantage_api_key: str = Field(default="demo", alias="ALPHAVANTAGE_API_KEY")
 
-    w_sentiment: float = Field(default=0.40, ge=0.0, le=1.0)
-    w_sue: float = Field(default=0.25, ge=0.0, le=1.0)
-    w_momentum: float = Field(default=0.20, ge=0.0, le=1.0)
-    w_volume: float = Field(default=0.15, ge=0.0, le=1.0)
+    redis_channel: str = Field(default="trading-signals", alias="REDIS_CHANNEL")
+    redis_enriched_channel: str = Field(default="trading-signals-enriched", alias="REDIS_ENRICHED_CHANNEL")
+    legacy_redis_publish_enabled: bool = Field(default=True, alias="LEGACY_REDIS_PUBLISH_ENABLED")
+    redis_enriched_publish_enabled: bool = Field(default=True, alias="REDIS_ENRICHED_PUBLISH_ENABLED")
+    redis_backup_queue_size: int = Field(default=100, alias="REDIS_BACKUP_QUEUE_SIZE")
+    redis_reconnect_delay: float = Field(default=2.0, alias="REDIS_RECONNECT_DELAY")
+    redis_socket_timeout_seconds: float = Field(default=1.0, alias="REDIS_SOCKET_TIMEOUT_SECONDS")
 
-    @field_validator("gemini_api_key")
+    app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
+    app_port: int = Field(default=8000, alias="APP_PORT")
+
+    discord_webhook_url: str = Field(default="", alias="DISCORD_WEBHOOK_URL")
+    telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
+    notification_tier: Literal["free", "premium"] = Field(default="free", alias="NOTIFICATION_TIER")
+    notification_free_delay_seconds: int = Field(default=300, alias="NOTIFICATION_FREE_DELAY_SECONDS")
+
+    scorecard_enabled: bool = Field(default=True, alias="SCORECARD_ENABLED")
+    scorecard_store_path: str = Field(default="data/scorecard.json", alias="SCORECARD_STORE_PATH")
+
+    portfolio_store_path: str = Field(default="data/portfolio_snapshot.json", alias="PORTFOLIO_STORE_PATH")
+    portfolio_intraday_refresh_enabled: bool = Field(default=False, alias="PORTFOLIO_INTRADAY_REFRESH_ENABLED")
+    portfolio_intraday_refresh_interval_minutes: int = Field(default=10, alias="PORTFOLIO_INTRADAY_REFRESH_INTERVAL_MINUTES")
+    portfolio_kis_mock_payload_path: str = Field(default="", alias="PORTFOLIO_KIS_MOCK_PAYLOAD_PATH")
+    portfolio_kis_positions_url: str = Field(default="", alias="PORTFOLIO_KIS_POSITIONS_URL")
+    kis_account_number: str = Field(default="", alias="KIS_ACCOUNT_NUMBER")
+    kis_app_key: str = Field(default="", alias="KIS_APP_KEY")
+    kis_app_secret: str = Field(default="", alias="KIS_APP_SECRET")
+
+    options_advisor_enabled: bool = Field(default=True, alias="OPTIONS_ADVISOR_ENABLED")
+    options_iv_rank_high_threshold: float = Field(default=60.0, alias="OPTIONS_IV_RANK_HIGH_THRESHOLD")
+    options_iv_rank_low_threshold: float = Field(default=30.0, alias="OPTIONS_IV_RANK_LOW_THRESHOLD")
+
+    mdd_circuit_breaker_enabled: bool = Field(default=True, alias="MDD_CIRCUIT_BREAKER_ENABLED")
+    mdd_warning_threshold: float = Field(default=-0.10, alias="MDD_WARNING_THRESHOLD")
+    mdd_pause_threshold: float = Field(default=-0.15, alias="MDD_PAUSE_THRESHOLD")
+    mdd_liquidate_threshold: float = Field(default=-0.25, alias="MDD_LIQUIDATE_THRESHOLD")
+    mdd_recovery_grace_days: int = Field(default=3, alias="MDD_RECOVERY_GRACE_DAYS")
+
+    evasion_score_max: float = Field(default=0.40, alias="EVASION_SCORE_MAX")
+    prosody_min_confidence: float = Field(default=0.55, alias="PROSODY_MIN_CONFIDENCE")
+    call_quality_min_score: float = Field(default=0.45, alias="CALL_QUALITY_MIN_SCORE")
+
+    @property
+    def review_model_candidates_list(self) -> list[str]:
+        return [part.strip() for part in self.gemini_review_model_candidates.split(",") if part.strip()]
+
+    @model_validator(mode="before")
     @classmethod
-    def _normalize_api_key(cls, value: str) -> str:
-        return (value or "").strip()
-
-    @field_validator("openai_api_key")
-    @classmethod
-    def _normalize_openai_api_key(cls, value: str) -> str:
-        return (value or "").strip()
-
-    @field_validator("gemini_consensus_samples")
-    @classmethod
-    def _validate_consensus_samples(cls, value: int) -> int:
-        if value > 1 and value % 2 == 0:
-            raise ValueError("gemini_consensus_samples must be odd")
-        return value
+    def _apply_legacy_model_mapping(cls, data):
+        if isinstance(data, dict):
+            has_primary = bool(data.get("gemini_primary_model") or data.get("GEMINI_PRIMARY_MODEL"))
+            has_review = bool(data.get("gemini_review_model") or data.get("GEMINI_REVIEW_MODEL"))
+            if not has_primary and (data.get("gemini_fast_model") or data.get("GEMINI_FAST_MODEL")):
+                data["gemini_primary_model"] = data.get("gemini_fast_model") or data.get("GEMINI_FAST_MODEL")
+            if not has_review and (data.get("gemini_model") or data.get("GEMINI_MODEL")):
+                data["gemini_review_model"] = data.get("gemini_model") or data.get("GEMINI_MODEL")
+        return data
 
     @model_validator(mode="after")
-    def _apply_legacy_model_mapping(self) -> "Settings":
-        explicitly_set = set(self.model_fields_set)
-
-        if self.gemini_fast_model and "gemini_primary_model" not in explicitly_set:
-            self.gemini_primary_model = self.gemini_fast_model
-            warnings.warn(
-                "GEMINI_FAST_MODEL is deprecated; prefer GEMINI_PRIMARY_MODEL.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        if self.gemini_model and "gemini_review_model" not in explicitly_set:
-            self.gemini_review_model = self.gemini_model
-            warnings.warn(
-                "GEMINI_MODEL is deprecated; prefer GEMINI_REVIEW_MODEL.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _validate_weights(self) -> "Settings":
-        total = round(
-            self.w_sentiment + self.w_sue + self.w_momentum + self.w_volume,
-            6,
-        )
-        if abs(total - 1.0) > 1e-5:
-            raise ValueError(
-                "Composite weights must sum to 1.0: "
-                f"{self.w_sentiment} + {self.w_sue} + "
-                f"{self.w_momentum} + {self.w_volume} = {total}"
-            )
-        retrieval_total = round(
-            self.rag_score_dense_weight
-            + self.rag_score_lexical_weight
-            + self.rag_score_business_weight,
-            6,
-        )
-        if abs(retrieval_total - 1.0) > 1e-5:
-            raise ValueError(
-                "Retrieval weights must sum to 1.0: "
-                f"{self.rag_score_dense_weight} + {self.rag_score_lexical_weight} + "
-                f"{self.rag_score_business_weight} = {retrieval_total}"
-            )
+    def _validate_thresholds(self) -> "Settings":
+        if not (0 <= self.composite_threshold <= 1):
+            raise ValueError("COMPOSITE_THRESHOLD must be between 0 and 1")
+        if not (0 <= self.confidence_threshold <= 1):
+            raise ValueError("CONFIDENCE_THRESHOLD must be between 0 and 1")
+        if self.llm_router_max_calls_per_chunk < 1:
+            raise ValueError("LLM_ROUTER_MAX_CALLS_PER_CHUNK must be >= 1")
+        if not (self.mdd_warning_threshold > self.mdd_pause_threshold > self.mdd_liquidate_threshold):
+            raise ValueError("MDD thresholds must be descending in severity")
         return self
 
 

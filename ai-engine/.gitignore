@@ -1,0 +1,49 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local secrets and runtime configuration
+.env
+.env.*
+!.env.example
+
+# Test/runtime cache
+.pytest_cache/
+pytest-cache-files-*/
+tests/_tmp_runtime/
+htmlcov/
+.coverage
+coverage.xml
+
+# Local data/cache artifacts
+data/yfinance_cache/
+data/pytest_tmp/
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Build/package artifacts
+build/
+dist/
+*.egg-info/
+*.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

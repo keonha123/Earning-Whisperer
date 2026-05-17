@@ -1,0 +1,3 @@
+# AI_ENGINE_AUTO_PROMOTION_POLICY_API_UPGRADE_2026_04_19.md
+
+Auto promotion policy API added.

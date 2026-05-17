@@ -1,134 +1,158 @@
-"""FastAPI application entrypoint for the upgraded AI engine."""
-
 from __future__ import annotations
 
-import asyncio
-import logging
-from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
-from api.analyze_router import init_dependencies, router as analyze_router
-from api.integration_router import (
-    init_dependencies as init_integration_dependencies,
-    router as integration_router,
-)
-from api.research_router import router as research_router
-from config import get_settings
-from core.analysis_service import analysis_service
-from core.context_manager import ContextManager
-from core.external_retriever import external_retriever
-from core.five_gate_filter import FiveGateFilter
-from core.gemini_client import gemini_client
-from core.integration_state import IntegrationStateStore
-from core.phase1_scorer import phase1_scorer
-from core.redis_publisher import RedisPublisher
+try:
+    from api.routers import ALL_ROUTERS
+    from config import Settings, get_settings
+    from core.analysis_service import AnalysisService, run_analysis
+    from db.postgres_executor import PsycopgExecutor
+    from models.request_models import AnalyzeRequest
+    from models.storage_models import PersistEnvelopeResponse
+    from repositories.event_store_repository import EventStoreRepository
+    from services import CalibrationService, ControlPlaneService, EquityResearchReportService, RegressionService
+    from services.redis_signal_publisher import RedisSignalPublisher
+    from services.runtime_dispatch_service import dispatch_analysis
+except ImportError:  # pragma: no cover
+    from .api.routers import ALL_ROUTERS
+    from .config import Settings, get_settings
+    from .core.analysis_service import AnalysisService, run_analysis
+    from .db.postgres_executor import PsycopgExecutor
+    from .models.request_models import AnalyzeRequest
+    from .models.storage_models import PersistEnvelopeResponse
+    from .repositories.event_store_repository import EventStoreRepository
+    from .services import CalibrationService, ControlPlaneService, EquityResearchReportService, RegressionService
+    from .services.redis_signal_publisher import RedisSignalPublisher
+    from .services.runtime_dispatch_service import dispatch_analysis
 
-logger = logging.getLogger(__name__)
+
+class HealthResponse(BaseModel):
+    status: str
+    models: dict[str, str]
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Create shared services for the FastAPI app lifecycle."""
+def risk_score_from_sentiment(sentiment_score: float) -> float:
+    return min(1.0, abs(sentiment_score) * 1.5)
 
-    settings = get_settings()
-    logger.info("Starting EarningWhisperer AI Engine v%s", settings.app_version)
 
-    ctx_manager = ContextManager(
-        history_size=settings.context_history_size,
-        session_ttl=settings.context_session_ttl_seconds,
+async def _dispatch_analysis(
+    payload: AnalyzeRequest,
+    settings: Settings,
+    fastapi_app: FastAPI | None = None,
+) -> dict[str, Any]:
+    current_app = fastapi_app if fastapi_app is not None else globals().get("app")
+    analysis_runner = run_analysis
+    if current_app is not None:
+        analysis_service = getattr(current_app.state, "analysis_service", None)
+        if analysis_service is not None and hasattr(analysis_service, "analyze"):
+            analysis_runner = analysis_service.analyze
+    return await dispatch_analysis(
+        payload=payload,
+        settings=settings,
+        analysis_runner=analysis_runner,
+        control_service=_get_control_service(current_app),
     )
-    gate_filter = FiveGateFilter()
-    integration_state = IntegrationStateStore()
-    redis_pub = RedisPublisher()
 
-    await redis_pub.connect()
-    if settings.phase1_warmup_on_startup:
-        await asyncio.to_thread(phase1_scorer.warmup)
-    init_dependencies(ctx_manager, gate_filter, redis_pub, integration_state)
-    init_integration_dependencies(integration_state)
 
-    cleanup_task = asyncio.create_task(_cleanup_loop(ctx_manager))
+def _schema_path_from_settings(settings: Settings) -> Path:
+    configured = Path(settings.db_schema_path)
+    if configured.is_absolute():
+        return configured
+    return Path(__file__).resolve().parent / configured
 
-    app.state.context_manager = ctx_manager
-    app.state.gemini_client = gemini_client
-    app.state.gate_filter = gate_filter
-    app.state.integration_state = integration_state
-    app.state.redis_publisher = redis_pub
 
+def _build_repository(settings: Settings) -> EventStoreRepository:
+    executor = PsycopgExecutor(
+        dsn=settings.database_url,
+        connect_timeout_seconds=settings.database_connect_timeout_seconds,
+        failure_cooldown_seconds=settings.database_failure_cooldown_seconds,
+    )
+    return EventStoreRepository(executor=executor, schema_path=_schema_path_from_settings(settings))
+
+
+def _get_control_service(fastapi_app: FastAPI | None) -> ControlPlaneService | None:
+    if fastapi_app is None or not hasattr(fastapi_app.state, "event_store_repository"):
+        return None
+    return ControlPlaneService(fastapi_app.state.event_store_repository)
+
+
+def _get_calibration_service(fastapi_app: FastAPI) -> CalibrationService:
+    return CalibrationService(fastapi_app.state.event_store_repository)
+
+
+def _get_regression_service(fastapi_app: FastAPI) -> RegressionService:
+    return RegressionService(fastapi_app.state.event_store_repository)
+
+
+def _persist_or_raise(repository: EventStoreRepository, envelope: dict[str, Any]) -> PersistEnvelopeResponse:
     try:
-        yield
-    finally:
-        cleanup_task.cancel()
-        await redis_pub.disconnect()
-        logger.info("Stopping EarningWhisperer AI Engine")
-
-
-async def _cleanup_loop(ctx_manager: ContextManager) -> None:
-    """Periodically remove expired ticker sessions."""
-
-    while True:
-        try:
-            await asyncio.sleep(600)
-            cleaned = await ctx_manager.cleanup_expired()
-            if cleaned > 0:
-                logger.info("Cleaned %d expired sessions", cleaned)
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error("Session cleanup failed: %s", exc)
+        result = repository.save_event_envelope(envelope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        raise HTTPException(status_code=500, detail=f"Failed to persist engine envelope: {exc}") from exc
+    return PersistEnvelopeResponse(
+        status="ok",
+        persisted=result.persisted,
+        event_id=result.event_id,
+        run_id=result.run_id,
+        row_counts=result.row_counts,
+    )
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(
-        title="EarningWhisperer AI Engine",
-        description="Real-time earnings-call analysis and trading-signal engine.",
-        version=settings.app_version,
-        lifespan=lifespan,
+    app = FastAPI(title="EarningWhisperer AI Engine", version=settings.app_version)
+
+    app.config = {
+        "GEMINI_FAST_MODEL": settings.gemini_primary_model,
+        "GEMINI_PRO_MODEL": settings.gemini_review_model,
+        "GEMINI_PRIMARY_MODEL": settings.gemini_primary_model,
+        "GEMINI_REVIEW_MODEL": settings.gemini_review_model,
+        "ENABLE_REVIEW_PASS": settings.enable_review_pass,
+    }
+
+    app.state.settings = settings
+    app.state.analysis_service = AnalysisService(settings=settings)
+    app.state.event_store_repository = _build_repository(settings)
+    app.state.redis_signal_publisher = RedisSignalPublisher(settings=settings)
+    app.state.equity_report_service = EquityResearchReportService(
+        settings=settings,
+        token_budgeter=app.state.analysis_service.token_budgeter,
     )
+    app.state.control_plane_service = _get_control_service(app)
+    app.state.calibration_service = _get_calibration_service(app)
+    app.state.regression_service = _get_regression_service(app)
+    app.state.dispatch_analysis = lambda payload, _app=app: _dispatch_analysis(payload, settings, _app)
+    app.state.persist_envelope = lambda envelope: _persist_or_raise(app.state.event_store_repository, envelope)
 
-    app.include_router(analyze_router)
-    app.include_router(integration_router)
-    app.include_router(research_router)
-
-    @app.get("/health", tags=["monitoring"])
-    async def health():
-        retriever_stats = external_retriever.get_stats()
-        return {
-            "status": "ok",
-            "model": settings.gemini_primary_model,
-            "primary_model": settings.gemini_primary_model,
-            "review_model": settings.gemini_review_model,
-            "vector_store_backend": retriever_stats["effective_backend"],
-            "version": settings.app_version,
-        }
-
-    @app.get("/stats", tags=["monitoring"])
-    async def stats():
-        gemini_stats = await app.state.gemini_client.get_stats()
-        analysis_stats = await analysis_service.get_stats()
-        gate_pass_rates = app.state.gate_filter.get_pass_rates()
-        active_tickers = await app.state.context_manager.get_active_tickers()
-        retriever_stats = external_retriever.get_stats()
-        return {
-            "active_tickers": active_tickers,
-            "gemini_stats": gemini_stats,
-            "route_counts": analysis_stats["route_counts"],
-            "flash_only_rate": analysis_stats["flash_only_rate"],
-            "pro_escalation_rate": analysis_stats["pro_escalation_rate"],
-            "avg_estimated_prompt_tokens": analysis_stats["avg_estimated_prompt_tokens"],
-            "avg_estimated_output_tokens": analysis_stats["avg_estimated_output_tokens"],
-            "economy_prompt_rate": analysis_stats["economy_prompt_rate"],
-            "phase1_status": phase1_scorer.status_snapshot(),
-            "gate_pass_rates": gate_pass_rates,
-            "external_retriever": retriever_stats,
-            "redis_connected": app.state.redis_publisher.is_connected,
-            "redis_backup_queue": app.state.redis_publisher.backup_queue_size,
-            "integration_state_ready": app.state.integration_state is not None,
-        }
+    for router in ALL_ROUTERS:
+        app.include_router(router)
 
     return app
 
 
 app = create_app()
+
+
+__all__ = [
+    "HealthResponse",
+    "_build_repository",
+    "_dispatch_analysis",
+    "_get_calibration_service",
+    "_get_control_service",
+    "_get_regression_service",
+    "_persist_or_raise",
+    "_schema_path_from_settings",
+    "app",
+    "create_app",
+    "get_settings",
+    "risk_score_from_sentiment",
+    "run_analysis",
+]

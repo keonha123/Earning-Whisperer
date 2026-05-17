@@ -1,0 +1,3 @@
+# AI_ENGINE_SHADOW_COMPARE_API_UPGRADE_2026_04_19.md
+
+Shadow compare API added.
