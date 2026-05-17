@@ -12,6 +12,7 @@ public class SignupRequest {
 
     @NotBlank
     @Email
+    @AllowedEmailDomain
     private String email;
 
     @NotBlank

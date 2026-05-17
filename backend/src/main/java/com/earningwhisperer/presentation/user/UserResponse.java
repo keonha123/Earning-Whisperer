@@ -1,5 +1,6 @@
 package com.earningwhisperer.presentation.user;
 
+import com.earningwhisperer.domain.user.OAuthProvider;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.domain.user.UserRole;
 import lombok.Getter;
@@ -16,6 +17,7 @@ public class UserResponse {
     private final String email;
     private final String nickname;
     private final UserRole role;
+    private final OAuthProvider provider;
     private final LocalDateTime createdAt;
 
     public UserResponse(User user) {
@@ -23,6 +25,7 @@ public class UserResponse {
         this.email = user.getEmail();
         this.nickname = user.getNickname();
         this.role = user.getRole();
+        this.provider = user.getProvider() != null ? user.getProvider() : OAuthProvider.LOCAL;
         this.createdAt = user.getCreatedAt();
     }
 }

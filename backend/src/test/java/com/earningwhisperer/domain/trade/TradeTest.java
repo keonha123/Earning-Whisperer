@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Trade 엔티티 단위 테스트")
 class TradeTest {
@@ -28,6 +29,7 @@ class TradeTest {
         // Arrange & Act
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -47,6 +49,7 @@ class TradeTest {
         // Arrange
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -55,12 +58,35 @@ class TradeTest {
                 .build();
 
         // Act
-        trade.executed(10, "BROKER-ORDER-001");
+        trade.executed(10, 125.50, "BROKER-ORDER-001");
 
         // Assert
         assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
         assertThat(trade.getExecutedQty()).isEqualTo(10);
+        assertThat(trade.getExecutedPrice()).isEqualTo(125.50);
         assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-ORDER-001");
+    }
+
+    @Test
+    @DisplayName("executed() 호출 시 센티널 orderQty(0)가 실체결 수량으로 갱신된다")
+    void executed_호출시_센티널_orderQty가_실수량으로_갱신된다() {
+        // Arrange — PENDING 시점엔 orderQty=0 센티널
+        Trade trade = Trade.builder()
+                .user(user)
+                .brokerAccountId(100L)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .build();
+
+        // Act — Trading Terminal이 3주 체결 보고
+        trade.executed(3, 125.50, "BROKER-ORDER-777");
+
+        // Assert — orderQty, executedQty 모두 3
+        assertThat(trade.getOrderQty()).isEqualTo(3);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
     }
 
     @Test
@@ -69,6 +95,7 @@ class TradeTest {
         // Arrange
         Trade trade = Trade.builder()
                 .user(user)
+                .brokerAccountId(100L)
                 .ticker("NVDA")
                 .side(TradeAction.BUY)
                 .orderType(OrderType.MARKET)
@@ -81,5 +108,167 @@ class TradeTest {
 
         // Assert
         assertThat(trade.getStatus()).isEqualTo(TradeStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("executed() 동일 입력으로 재호출 시 멱등하게 no-op 한다")
+    void executed_동일_입력_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        // Act — 같은 입력으로 한 번 더 호출 (네트워크 retry 시나리오)
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-1");
+    }
+
+    @Test
+    @DisplayName("executed() 후 다른 결과로 재호출 시 TradeStateConflictException")
+    void executed_다른_입력_재호출은_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(() -> trade.executed(5, 130.00, "BROKER-2"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("failed() 재호출 시 멱등하게 no-op 한다")
+    void failed_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.failed();
+
+        // Act
+        trade.failed();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("EXECUTED 상태에서 failed() 호출 시 TradeStateConflictException")
+    void EXECUTED에서_failed_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(trade::failed)
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("FAILED 상태에서 executed() 호출 시 TradeStateConflictException")
+    void FAILED에서_executed_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.failed();
+
+        assertThatThrownBy(() -> trade.executed(3, 125.50, "BROKER-1"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("expire() 호출 시 status 가 EXPIRED 로 변경된다")
+    void expire_호출시_상태가_EXPIRED로_변경된다() {
+        Trade trade = pendingTrade();
+
+        trade.expire();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("expire() 재호출은 멱등하게 no-op")
+    void expire_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.expire();
+
+        trade.expire();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("EXECUTED 상태에서 expire() 호출 시 TradeStateConflictException")
+    void EXECUTED에서_expire_시도는_충돌() {
+        Trade trade = pendingTrade();
+        trade.executed(3, 125.50, "BROKER-1");
+
+        assertThatThrownBy(trade::expire)
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("EXPIRED → EXECUTED 정정 전이 허용 — 만료 후 KIS 체결 도착 시 장부 정합성 회복")
+    void EXPIRED에서_executed_정정_허용() {
+        // Arrange — TTL 만료된 Trade
+        Trade trade = pendingTrade();
+        trade.expire();
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXPIRED);
+
+        // Act — 만료 후 KIS 가 실제 체결 결과 콜백을 보냄
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Assert — 정정 전이 성공 + 체결 정보 반영
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getExecutedQty()).isEqualTo(3);
+        assertThat(trade.getExecutedPrice()).isEqualTo(125.50);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-LATE-1");
+        assertThat(trade.getOrderQty()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("EXPIRED → EXECUTED 정정 후 같은 입력 재호출은 멱등")
+    void EXPIRED_정정_후_동일_입력_재호출은_멱등() {
+        Trade trade = pendingTrade();
+        trade.expire();
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Act — 같은 페이로드의 retry 콜백
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.EXECUTED);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("BROKER-LATE-1");
+    }
+
+    @Test
+    @DisplayName("EXPIRED → EXECUTED 정정 후 다른 입력 재호출은 충돌")
+    void EXPIRED_정정_후_다른_입력_재호출은_충돌() {
+        Trade trade = pendingTrade();
+        trade.expire();
+        trade.executed(3, 125.50, "BROKER-LATE-1");
+
+        // Act & Assert — 정정된 EXECUTED 도 멱등 분기는 그대로 작동
+        assertThatThrownBy(() -> trade.executed(5, 130.00, "BROKER-LATE-2"))
+                .isInstanceOf(TradeStateConflictException.class);
+    }
+
+    @Test
+    @DisplayName("orderRatio/aiScore 가 builder 로 보존된다")
+    void builder_orderRatio_aiScore_보존() {
+        Trade trade = Trade.builder()
+                .user(user)
+                .brokerAccountId(100L)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .orderRatio(0.1)
+                .aiScore(0.85)
+                .build();
+
+        assertThat(trade.getOrderRatio()).isEqualTo(0.1);
+        assertThat(trade.getAiScore()).isEqualTo(0.85);
+    }
+
+    private Trade pendingTrade() {
+        return Trade.builder()
+                .user(user)
+                .ticker("NVDA")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.MARKET)
+                .orderQty(0)
+                .price(0.0)
+                .build();
     }
 }

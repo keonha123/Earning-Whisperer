@@ -159,7 +159,39 @@ class EarningsOrchestrator:
             if price_data:
                 database.save_prices(price_data)
 
+    async def monitor_and_trigger_stt(self):
+        """
+        [Phase 4] 실시간 어닝콜 감시 및 워커 실행 로직 (뼈대)
+        매 분마다 호출되어 DB를 확인하고, 임박한 일정이 있다면 워커를 깨웁니다.
+        """
+        from datetime import datetime
+        # 시각적인 확인을 위해 현재 감시 중임을 표시합니다. (운영 시에는 선택 사항)
+        # print(f"🔍 [Monitor] {datetime.now().strftime('%H:%M:%S')} 어닝콜 일정 스캔 중...")
 
+        try:
+            # 1. DB에서 '현재 시간'과 '시작 시간'이 일치하거나 임박한 종목 조회
+            # imminent_calls = database.get_imminent_calls(minutes_ahead=2)
+            imminent_calls = [] # 아직 DB 조회 로직이 없으므로 빈 리스트로 둡니다.
+
+            if not imminent_calls:
+                return
+
+            for call in imminent_calls:
+                ticker = call.get('ticker')
+                ir_url = call.get('ir_url')
+                
+                print(f"🚀 [Orchestrator] {ticker} 어닝콜 임박 감지! 워커 배정을 시작합니다.")
+                
+                # 2. STT 워커 매니저에게 비동기로 작업 전달
+                # (manager.py의 입구 함수를 호출하는 부분 - 추후 연결)
+                # asyncio.create_task(self.worker_manager.start_worker(ticker, ir_url))
+                
+                # 3. 중복 실행 방지를 위해 DB 상태를 'RUNNING' 등으로 업데이트
+                # database.update_call_status(ticker, 'RUNNING')
+
+        except Exception as e:
+            print(f"❌ [Monitor Error] 감시 로직 실행 중 오류 발생: {e}")
+            
 if __name__ == "__main__":
     orchestrator = EarningsOrchestrator()
     

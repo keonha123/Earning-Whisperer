@@ -41,44 +41,34 @@ public class PortfolioSettings extends BaseEntity {
     private Integer cooldownMinutes;
 
     /**
-     * EMA 스코어 임계치 — 이 값을 초과해야 BUY/SELL 실행 (예: 0.6)
+     * AI 점수 임계치 — 이 값 이상이면 BUY/SELL 실행 (예: 0.6)
      */
     @Column(nullable = false)
-    private Double emaThreshold;
+    private Double aiScoreThreshold;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private TradingMode tradingMode;
 
-    /**
-     * Trading Terminal 동기화 데이터 — 실계좌 예수금 잔고.
-     * 룰 엔진의 매수 수량 계산(buyAmountRatio * cashBalance)에 활용된다.
-     * null = 아직 동기화 미완료
-     */
-    @Column
-    private Double cashBalance;
+    // cashBalance 는 BrokerAccount 로 이전됨 (모드/계좌별 분리). 본 엔티티는 사용자 단위 룰 설정만 유지.
 
     @Builder
     public PortfolioSettings(User user, Double buyAmountRatio, Double maxPositionRatio,
-                              Integer cooldownMinutes, Double emaThreshold, TradingMode tradingMode) {
+                              Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         this.user = user;
         this.buyAmountRatio = buyAmountRatio;
         this.maxPositionRatio = maxPositionRatio;
         this.cooldownMinutes = cooldownMinutes;
-        this.emaThreshold = emaThreshold;
+        this.aiScoreThreshold = aiScoreThreshold;
         this.tradingMode = tradingMode;
     }
 
     public void update(Double buyAmountRatio, Double maxPositionRatio,
-                       Integer cooldownMinutes, Double emaThreshold, TradingMode tradingMode) {
+                       Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         this.buyAmountRatio = buyAmountRatio;
         this.maxPositionRatio = maxPositionRatio;
         this.cooldownMinutes = cooldownMinutes;
-        this.emaThreshold = emaThreshold;
+        this.aiScoreThreshold = aiScoreThreshold;
         this.tradingMode = tradingMode;
-    }
-
-    public void syncCashBalance(Double cashBalance) {
-        this.cashBalance = cashBalance;
     }
 }

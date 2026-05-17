@@ -10,6 +10,7 @@ import TabNav, { MypageTab } from "@/components/mypage/TabNav";
 import TradeHistoryTab from "@/components/mypage/TradeHistoryTab";
 import SubscriptionTab from "@/components/mypage/SubscriptionTab";
 import SettingsTab from "@/components/mypage/SettingsTab";
+import type { AuthProvider } from "@/lib/userDisplay";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -19,6 +20,8 @@ interface UserData {
   nickname: string;
   role: "FREE" | "PRO";
   createdAt: string;
+  /** OAuth 가입 경로. 카카오 sentinel 이메일을 가린 표시 분기에 사용. */
+  provider?: AuthProvider | null;
 }
 
 interface Trade {
@@ -114,6 +117,7 @@ export default function MypagePage() {
             <ProfileHeader
               nickname={user.nickname}
               email={user.email}
+              provider={user.provider}
               role={user.role}
               createdAt={user.createdAt}
             />
@@ -123,7 +127,9 @@ export default function MypagePage() {
               <div className="p-5">
                 {tab === "trades" && <TradeHistoryTab trades={trades} />}
                 {tab === "subscription" && <SubscriptionTab role={user.role} />}
-                {tab === "settings" && <SettingsTab email={user.email} />}
+                {tab === "settings" && (
+                  <SettingsTab email={user.email} provider={user.provider} />
+                )}
               </div>
             </div>
           </m.div>

@@ -1,5 +1,8 @@
 package com.earningwhisperer.domain.user;
 
+import com.earningwhisperer.domain.portfolio.Broker;
+import com.earningwhisperer.domain.portfolio.BrokerAccount;
+import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import com.earningwhisperer.domain.portfolio.TradingMode;
@@ -9,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 회원가입 및 로그인 서비스.
+ * 회원가입 · 로그인 · 토큰 갱신 · 로그아웃 서비스.
  *
  * JWT 토큰 생성은 TokenProvider 인터페이스를 통해 위임하여
  * domain 레이어가 infrastructure에 직접 의존하지 않도록 한다.
@@ -20,8 +23,9 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PortfolioSettingsRepository portfolioSettingsRepository;
+    private final BrokerAccountService brokerAccountService;
     private final PasswordEncoder passwordEncoder;
-    private final TokenProvider tokenProvider;
+    private final RefreshTokenService refreshTokenService;
 
     /**
      * 회원가입: 이메일 중복 확인 → User 저장 → 기본 PortfolioSettings 생성.
@@ -31,6 +35,7 @@ public class AuthService {
      */
     @Transactional
     public Long signup(String email, String rawPassword, String nickname) {
+        EmailDomainPolicy.assertAllowed(email);
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
         }
@@ -47,29 +52,49 @@ public class AuthService {
                 .buyAmountRatio(0.1)
                 .maxPositionRatio(0.3)
                 .cooldownMinutes(5)
-                .emaThreshold(0.6)
+                .aiScoreThreshold(0.6)
                 .tradingMode(TradingMode.MANUAL)
                 .build();
         portfolioSettingsRepository.save(defaultSettings);
+
+        // KIS 모의 BrokerAccount 자동 생성 + 활성화 — 신규 사용자가 활성 broker 없는 상태로
+        // 영구 fail-safe HOLD 되는 것을 방지. 사용자는 키 등록 후 즉시 정상 흐름 진입.
+        BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), Broker.KIS, true);
+        brokerAccountService.activateIfFirst(saved.getId(), defaultAccount.getId());
 
         return saved.getId();
     }
 
     /**
-     * 로그인: 자격 증명 검증 후 JWT 토큰 반환.
-     *
-     * @return JWT 액세스 토큰
-     * @throws IllegalArgumentException 이메일 없음 또는 비밀번호 불일치 시
+     * 로그인: 자격 증명 검증 후 Access + Refresh 토큰 쌍 반환.
      */
     @Transactional(readOnly = true)
-    public String login(String email, String rawPassword) {
+    public TokenPair login(String email, String rawPassword) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."));
+
+        if (!user.isLocal()) {
+            throw new IllegalArgumentException("소셜 로그인으로 가입된 계정입니다. " + user.getProvider() + " 로그인을 이용해주세요.");
+        }
 
         if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
             throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
         }
 
-        return tokenProvider.generateToken(user.getId());
+        return refreshTokenService.issue(user.getId());
+    }
+
+    /**
+     * 토큰 갱신: Refresh Token 로테이션 후 새 토큰 쌍 반환.
+     */
+    public TokenPair refresh(String refreshToken) {
+        return refreshTokenService.rotate(refreshToken);
+    }
+
+    /**
+     * 로그아웃: Refresh Token 폐기.
+     */
+    public void logout(String refreshToken) {
+        refreshTokenService.revoke(refreshToken);
     }
 }

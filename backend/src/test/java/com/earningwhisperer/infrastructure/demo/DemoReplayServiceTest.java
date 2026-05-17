@@ -31,51 +31,40 @@ class DemoReplayServiceTest {
 
     @Test
     void buildMessage_일반_이벤트_isSessionEnd가_false() {
-        // Arrange
         DemoReplayEvent event = new DemoReplayEvent(
                 "NVDA", "Revenue grew 94% year-over-year.",
-                0.85, 0.60, "강한 매수 신호.", "BUY", 1732143670L);
+                0.60, "강한 매수 신호.", "BUY", 1732143670L);
 
-        // Act
         DemoSignalMessage msg = service.buildMessage(event, false);
 
-        // Assert
         assertThat(msg.getTicker()).isEqualTo("NVDA");
-        assertThat(msg.getRawScore()).isEqualTo(0.85);
-        assertThat(msg.getEmaScore()).isEqualTo(0.60);
+        assertThat(msg.getAiScore()).isEqualTo(0.60);
         assertThat(msg.getAction()).isEqualTo("BUY");
         assertThat(msg.isSessionEnd()).isFalse();
     }
 
     @Test
     void buildMessage_세션_종료_이벤트_isSessionEnd가_true() {
-        // Arrange
         DemoReplayEvent event = new DemoReplayEvent(
                 "NVDA", "In summary, NVIDIA delivered record results.",
-                0.80, 0.68, "사상 최고 실적 마무리.", "BUY", 1732143750L);
+                0.68, "사상 최고 실적 마무리.", "BUY", 1732143750L);
 
-        // Act
         DemoSignalMessage msg = service.buildMessage(event, true);
 
-        // Assert
         assertThat(msg.isSessionEnd()).isTrue();
         assertThat(msg.getTicker()).isEqualTo("NVDA");
     }
 
     @Test
     void buildMessage_필드_매핑_정확성() {
-        // Arrange
         DemoReplayEvent event = new DemoReplayEvent(
-                "NVDA", "test text", -0.30, 0.49,
+                "NVDA", "test text", 0.49,
                 "중국 규제 리스크.", "HOLD", 1732143690L);
 
-        // Act
         DemoSignalMessage msg = service.buildMessage(event, false);
 
-        // Assert
         assertThat(msg.getTextChunk()).isEqualTo("test text");
-        assertThat(msg.getRawScore()).isEqualTo(-0.30);
-        assertThat(msg.getEmaScore()).isEqualTo(0.49);
+        assertThat(msg.getAiScore()).isEqualTo(0.49);
         assertThat(msg.getRationale()).isEqualTo("중국 규제 리스크.");
         assertThat(msg.getAction()).isEqualTo("HOLD");
         assertThat(msg.getTimestamp()).isEqualTo(1732143690L);

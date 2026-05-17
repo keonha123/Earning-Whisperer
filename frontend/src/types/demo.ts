@@ -1,8 +1,7 @@
 export interface DemoSignalMessage {
   ticker: string;
   text_chunk: string;
-  raw_score: number;
-  ema_score: number;
+  ai_score: number;
   rationale: string;
   action: "BUY" | "SELL" | "HOLD";
   timestamp: number;
@@ -19,13 +18,12 @@ export interface DemoPriceMessage {
 
 export interface SignalEntry {
   action: "BUY" | "SELL" | "HOLD";
-  emaScore: number;
+  aiScore: number;
   rationale: string;
   timestamp: number;
 }
 
 export interface EmaDataPoint {
   time: number;
-  ema: number;
-  raw: number;
+  score: number;
 }
