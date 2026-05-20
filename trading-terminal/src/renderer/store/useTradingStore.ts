@@ -19,7 +19,7 @@ export interface SignalFeedItem extends TradeSignal {
 
 export interface TradeResult {
   tradeId: string
-  status: 'EXECUTED' | 'FAILED'
+  status: 'EXECUTED' | 'PENDING' | 'FAILED'
   orderId: string | null
   executedPrice: number | null
   executedQty: number

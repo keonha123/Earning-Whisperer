@@ -41,9 +41,6 @@ export interface MarketIndexPayload {
 
 export interface CallbackPayload {
   status: 'EXECUTED' | 'FAILED'
-  broker_order_id: string | null
-  executed_price: number | null
-  executed_qty: number
   error_message: string | null
 }
 
@@ -56,13 +53,13 @@ export interface ManualTradePayload {
   executed_qty: number
   executed_price: number | null
   broker_order_id: string | null
-  status: 'EXECUTED' | 'FAILED'
+  status: 'EXECUTED' | 'PENDING' | 'FAILED'
   error_message: string | null
 }
 
 export interface PortfolioSyncPayload {
-  total_cash: number
-  holdings: { ticker: string; qty: number; avg_price: number }[]
+  cash_balance: number
+  positions: { ticker: string; quantity: number; avg_price: number }[]
 }
 
 export interface UserSettings {
