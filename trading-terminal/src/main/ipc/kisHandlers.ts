@@ -90,7 +90,7 @@ export function registerKisHandlers() {
         executed_qty: orderResult.executedQty,
         executed_price: orderResult.executedPrice,
         broker_order_id: orderResult.orderId || null,
-        status: 'EXECUTED' as const,
+        status: orderResult.executedQty > 0 ? ('EXECUTED' as const) : ('PENDING' as const),
         error_message: null,
       }
       BackendClient.recordManualTrade(payload).catch((e) =>
@@ -101,10 +101,10 @@ export function registerKisHandlers() {
       KisService.getBalance()
         .then((balance) =>
           BackendClient.syncPortfolio({
-            total_cash: balance.totalCash,
-            holdings: balance.holdings.map((h) => ({
+            cash_balance: balance.totalCash,
+            positions: balance.holdings.map((h) => ({
               ticker: h.ticker,
-              qty: h.qty,
+              quantity: h.qty,
               avg_price: h.avgPrice,
             })),
           }),
@@ -112,7 +112,7 @@ export function registerKisHandlers() {
         .catch((e) => console.error('[kisHandlers] 포트폴리오 동기화 실패:', e))
 
       const result = {
-        status: 'EXECUTED' as const,
+        status: orderResult.executedQty > 0 ? ('EXECUTED' as const) : ('PENDING' as const),
         orderId: orderResult.orderId,
         executedPrice: orderResult.executedPrice,
         executedQty: orderResult.executedQty,

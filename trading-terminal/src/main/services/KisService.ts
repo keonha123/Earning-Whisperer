@@ -782,8 +782,8 @@ async function inquireOrderFill(
       : []
     const row = rows.find((r) => r.odno === orderId || r.ODNO === orderId)
     if (!row) {
-      console.warn(`[KisService] inquireCcnl 응답에 ODNO=${orderId} 매칭 row 없음`)
-      return null
+      console.warn(`[KisService] inquireCcnl 응답에 ODNO=${orderId} 매칭 row 없음 — 미체결(0) 반환`)
+      return { executedQty: 0, avgPrice: null }
     }
 
     const executedQty = Number(row.tot_ccld_qty ?? row.ft_ccld_qty ?? 0)
