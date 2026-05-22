@@ -1,7 +1,7 @@
 import asyncio
 import random
 from data_pipeline.database import get_all_stocks 
-from agent_test2 import EarningsAgent
+from data_pipeline.stt_worker.core.agent_test2 import EarningsAgent
 import datetime
 
 async def run_individual_test(semaphore, stock, log_file):

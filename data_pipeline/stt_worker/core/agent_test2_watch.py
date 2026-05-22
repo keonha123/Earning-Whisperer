@@ -32,23 +32,51 @@ class EarningsAgent:
                     for i in range(count):
                         candidate = candidates.nth(i)
                         
-                        # [단계 2] 부모 구역 찾기 (어도비 같은 일반 구조 대응을 위해 로직 수정)
-                        # 특정 클래스가 없더라도, 해당 링크를 감싸고 있는 가장 가까운 구획(div나 section)을 찾습니다.
+                        # 💡 [추가된 핵심 로직] 내비게이션 바, 사이드바, 헤더/푸터 영역 내부의 엘리먼트인지 검사
+                        is_menu_element = await candidate.evaluate("""el => {
+                            let parent = el.parentElement;
+                            while (parent) {
+                                const tagName = parent.tagName.toLowerCase();
+                                const className = parent.className ? String(parent.className).toLowerCase() : '';
+                                const idName = parent.id ? String(parent.id).toLowerCase() : '';
+                                
+                                // 내비게이션, 헤더, 푸터, 사이드바 관련 태그나 클래스명/ID가 있으면 메뉴로 판단
+                                if (
+                                    tagName === 'nav' || 
+                                    tagName === 'header' || 
+                                    tagName === 'footer' ||
+                                    className.includes('nav') || 
+                                    className.includes('menu') || 
+                                    className.includes('sidebar') ||
+                                    idName.includes('nav') ||
+                                    idName.includes('sidebar')
+                                ) {
+                                    return true;
+                                }
+                                parent = parent.parentElement;
+                            }
+                            return false;
+                        }""")
+
+                        if is_menu_element:
+                            # 사이드바나 상단 메뉴에 있는 링크는 우리가 찾는 본문 링크가 아니므로 패스합니다.
+                            continue
+
+                        if not await candidate.is_visible():
+                            continue
+
+                        # [단계 2] 부모 구역 찾기 (어도비 같은 일반 구조 대응을 위해 로직 유지)
                         parent_area = candidate.locator("xpath=./ancestor::div[contains(@class, 'block')] | ./ancestor::div[contains(@class, 'section')] | ./ancestor::article | ./ancestor::div[contains(@style, 'display')]")
                         
-                        # 만약 위 조건에 맞는 부모가 없다면, 그냥 바로 위 부모 div를 가져옵니다. (폴백 로직)
                         if await parent_area.count() == 0:
                             parent_area = candidate.locator("xpath=./parent::*")
 
                         context_text = await parent_area.first.inner_text()
                         
-                        # [날짜 체크 주석 처리] - 사용자 요청에 따라 과거 링크라도 일단 타게 함
-                        # if "2026" in context_text: 
-                        #    print(f"📅 날짜 확인됨: {context_text[:30]}...")
-
-                        if await candidate.is_visible():
-                            found_el = candidate
-                            break
+                        # 모든 필터를 통과한 진짜 본문 링크 확보
+                        found_el = candidate
+                        break
+                        
                     if found_el: break
 
                 if not found_el:
@@ -90,7 +118,7 @@ class EarningsAgent:
                 await browser.close()
 
 if __name__ == "__main__":
-    # 어도비 URL로 테스트
-    ADBE_URL = "https://investor.zoetis.com/events-and-presentations/default.aspx"
-    agent = EarningsAgent("ZTS", ADBE_URL)
+    # 신타스 URL로 테스트
+    CINTAS_URL = "https://www.cintas.com/investors/earnings-webcast/event-details"
+    agent = EarningsAgent("CTAS", CINTAS_URL)
     asyncio.run(agent.monitor())
