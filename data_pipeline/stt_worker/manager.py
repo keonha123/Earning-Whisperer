@@ -1,4 +1,3 @@
-# manager.py
 import subprocess
 import os
 import sys
@@ -39,12 +38,14 @@ class EarningManager:
         subprocess.run(["pactl", "unload-module", module_id], stdout=subprocess.DEVNULL)
 
     def launch_agent(self, ticker, url):
-        """ 🚀 격리된 가상 오디오 환경 속으로 요원 프로세스 슈팅 """
+        """ 🚀 격리된 가상 오디오 환경 속으로 요원 프로세스 슈팅 및 실시간 무전 감시 """
         module_id, sink_name = self.create_virtual_audio_sink(ticker)
         if not sink_name:
             print("❌ 오디오 인프라 확보 실패로 작전을 취소합니다.")
-            return
+            return False
 
+        # 지휘관(Orchestrator)에게 보고할 최종 상주 상태 판정 플래그
+        is_streaming_active = False
         try:
             print(f"📡 [Manager] 요원 격리 가동 -> 티커: {ticker} | 목표지: {url}")
             
@@ -53,14 +54,33 @@ class EarningManager:
             custom_env = os.environ.copy()
             custom_env["PULSE_SINK"] = sink_name
             
-            # 요원(monitor.py) 서브프로세스 기동
+            # 💡 [보정 가동] 요원의 실시간 무전을 오케스트레이터가 가로챌 수 있도록 파이프 통로 개설
             process = subprocess.Popen(
                 [self.venv_python, self.agent_script, ticker, url],
-                env=custom_env
+                env=custom_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
             )
             
-            # 요원이 열심히 폼 뚫고 오디오 틀어놓을 때까지 매니저는 모니터링하며 대기합니다.
-            # (실전에서는 여기서 대기하지 않고 비동기로 여러 개를 동시에 관리하게 됩니다.)
+            # 📡 요원이 뱉어내는 로그 스트림을 마이크로초 단위로 실시간 인터셉트 수신
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                # 메인 콘솔 터미널에 요원의 웹 침투 로그 상황을 그대로 중계 출력
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+                # 🎯 [판단] 요원이 본방 재생 버튼을 낚아채서 STT 무한 루프 도청망을 개통했을 때
+                if "어닝콜 오디오 스트리밍 활성화 성공" in line:
+                    is_streaming_active = True
+                
+                # 🎯 [판단] 방이 안 열려서 요원이 5초 만에 브라우저 끄고 자진 철수(먹튀)할 때
+                if "정찰 종료" in line or "등록 폼 작성에 실패했습니다" in line:
+                    is_streaming_active = False
+
             process.wait()
             print(f"🏁 [Manager] {ticker} 요원 미션 종료 및 복귀 확인.")
 
@@ -68,14 +88,17 @@ class EarningManager:
             print(f"\n⚠️ [Manager] 강제 정지 시그널 감지. {ticker} 요원 강제 철수 중...")
             process.terminate()
         finally:
-            # 뚫어놓은 가상 오디오 장치는 반드시 폭파해서 리눅스 사운드 시스템을 청결하게 유지합니다.
+            # 뚫어놓은 가상 오디오 장치는 임무 성패와 상관없이 무조건 완벽하게 폭파하여 자원을 수거합니다.
             self.remove_virtual_audio_sink(module_id)
+            
+        # 오케스트레이터에게 이번 침투가 허탕이었는지 상주 도청 성공이었는지 최종 성적표 상고
+        return is_streaming_active
 
 if __name__ == "__main__":
     # 스케줄러가 에어비앤비 어닝콜 타임을 감지해 던져줬다고 가정한 가동 매커니즘
     manager = EarningManager()
     
-    mock_ticker = "APP"
-    mock_url = "https://investors.applovin.com/events-and-presentations/default.aspx"
+    mock_ticker = "ABNB"
+    mock_url = "https://investors.airbnb.com/events-and-presentations/default.aspx"
     
     manager.launch_agent(mock_ticker, mock_url)
