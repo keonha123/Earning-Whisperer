@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
-import { useTradingStore } from '../store/useTradingStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
 import { useUserStore } from '../store/useUserStore'
 import { useDrawerStore } from '../store/useDrawerStore'
 
-import ModeSelector from '../components/common/ModeSelector'
 import PortfolioCard from '../components/portfolio/PortfolioCard'
 
 import MarketStrip from '../components/dashboard/MarketStrip'
@@ -20,8 +18,8 @@ import { usePrices } from '../hooks/usePrices'
 import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
 // watchlistDevMock 은 이번 PR 에서 제거 (실 IPC 사용). holdings.dev-mock 파일 자체는 보존.
 import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
-import { companyDetailDevMock } from '../fixtures/companyDetail.dev-mock'
 import { useNavigate } from 'react-router-dom'
+import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
 // step=100 (수십만~수백만 단위 자산 차트) 으로 호출.
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
@@ -47,7 +45,6 @@ import { isIpcError } from '../../lib/types/ipcError'
  *  - SignalFeed 는 import 제거 — PR #4 TradingRoom 에서 사용 예정.
  */
 export default function DashboardPage() {
-  const { mode, setMode } = useTradingStore()
   const {
     orderableCash,
     totalCash,
@@ -62,7 +59,7 @@ export default function DashboardPage() {
     setError,
     setBalanceFetchError,
   } = usePortfolioStore()
-  const { plan, settings, setSettings, clear: clearUser } = useUserStore()
+  const { clear: clearUser } = useUserStore()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
 
   const openDrawer = useDrawerStore((s) => s.open)
@@ -119,25 +116,14 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleModeChange(newMode: typeof mode) {
-    try {
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-        tradingMode: newMode,
-        maxBuyRatio: settings.maxBuyRatio,
-        maxHoldingRatio: settings.maxHoldingRatio,
-        cooldownMinutes: settings.cooldownMinutes,
-      })
-      setMode(newMode)
-      setSettings({ tradingMode: newMode })
-    } catch (e) {
-      console.error('모드 변경 실패:', e)
-      showIpcErrorToast(e)
-    }
-  }
-
   // 시세 폴링 캐시 — main PricePoller 가 ticker 별 KIS 가격을 1차 캐싱.
   // useEffect 로 PRICES_GET 1회 + PRICES_UPDATE 구독 시작.
   const { prices } = usePrices()
+
+  // 어닝콜 타임라인 — holdingRows/watchRows useMemo 보다 먼저 선언해야 TDZ 오류 없음.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
+    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
+  )
 
   // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
@@ -154,6 +140,15 @@ export default function DashboardPage() {
   //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
+      }
+      return null
+    }
+
     if (storeHoldings.length === 0 && import.meta.env.DEV) {
       return holdingsDevMock.map((h) => ({
         ticker: h.ticker,
@@ -161,7 +156,7 @@ export default function DashboardPage() {
         currentPrice: h.currentPrice,
         dailyChangePercent: h.dailyChangePercent,
         pnlPercent: h.pnlPercent,
-        earningsBadge: h.earningsBadge,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: h.logoBg,
         logoFg: h.logoFg,
         logoLabel: h.logoLabel,
@@ -181,18 +176,27 @@ export default function DashboardPage() {
         currentPrice: livePrice,
         dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
-        earningsBadge: meta?.earningsBadge ?? null,
+        earningsBadge: getEarningsBadge(h.ticker),
         logoBg: meta?.logoBg,
         logoFg: meta?.logoFg,
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings, prices])
+  }, [storeHoldings, prices, earningsData])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
   // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
   const { items: watchlistItems } = useWatchlist()
   const watchRows: HoldingsTableRow[] = useMemo(() => {
+    const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
+      if (earningsData.live?.ticker === ticker) return 'LIVE'
+      for (const group of earningsData.groups) {
+        const event = group.events.find((e) => e.ticker === ticker)
+        if (event) return event.scheduledAt
+      }
+      return null
+    }
+
     return watchlistItems.map((w) => {
       const entry = prices[w.ticker]
       const cur = entry?.currentPrice ?? 0
@@ -202,10 +206,10 @@ export default function DashboardPage() {
         name: w.companyName,
         currentPrice: cur,
         dailyChangePercent: prev > 0 ? ((cur - prev) / prev) * 100 : 0,
-        earningsBadge: null,
+        earningsBadge: getEarningsBadge(w.ticker),
       }
     })
-  }, [watchlistItems, prices])
+  }, [watchlistItems, prices, earningsData])
 
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고
@@ -215,22 +219,35 @@ export default function DashboardPage() {
   //         실제 데이터 수신 시 자동 전환.
   const { indices, isLoaded } = useMarketIndices()
   const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
-  // EarningsTimeline 데이터: DEV 만 fixture, prod 빈 그룹 + null live.
-  const earningsData = import.meta.env.DEV
-    ? earningsTimelineDevMock
-    : { live: null, groups: [] }
+  // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
+  useEffect(() => {
+    let cancelled = false
 
-  // Asset chart: 현재 IPC 미존재 — NVDA fixture 차트를 시각화 더미로 사용 (DEV).
-  //  TODO(impl): KIS_GET_ASSET_TIMESERIES 도입 후 실제 시계열 사용.
-  //  (보안: 시계열은 사용자별이므로 IPC payload 에 userId 필요 + main 측 인증 검증).
-  const assetChartPoints = useMemo(() => {
-    if (!import.meta.env.DEV) return []
-    return companyDetailDevMock.NVDA.chart30d.map((p) => ({
-      date: p.date,
-      // 가격 → 가공된 자산 추정치 (실제 수치는 실제 데이터로 교체 필요)
-      price: 11900 + (p.price - 110) * 25,
-    }))
+    ipc.invoke<EarningsTimelineData>(IPC_CHANNELS.EARNINGS_TIMELINE_GET)
+      .then((data) => { if (!cancelled) setEarningsData(data) })
+      .catch(() => { /* DEV: fixture 유지, prod: 빈 상태 유지 */ })
+
+    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data: EarningsTimelineData) => {
+      setEarningsData(data)
+    })
+
+    return () => {
+      cancelled = true
+      unsub()
+    }
   }, [])
+
+  const [assetRange, setAssetRange] = useState<7 | 30 | 90>(30)
+  const [assetChartPoints, setAssetChartPoints] = useState<{ date: string; price: number }[]>([])
+
+  useEffect(() => {
+    ipc
+      .invoke(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, { days: assetRange })
+      .then((points: { date: string; totalAssetUsd: number }[]) =>
+        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd }))),
+      )
+      .catch(() => setAssetChartPoints([]))
+  }, [assetRange])
 
   return (
     <div className="flex flex-col gap-2.5 h-full min-h-0">
@@ -250,7 +267,6 @@ export default function DashboardPage() {
             · KIS 모의투자
           </p>
         </div>
-        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={syncBalance}
@@ -272,13 +288,6 @@ export default function DashboardPage() {
             </svg>
             {isSyncing ? '동기화 중' : '동기화'}
           </button>
-          <ModeSelector
-            currentMode={mode}
-            userPlan={plan}
-            onChange={handleModeChange}
-            size="compact"
-          />
-        </div>
       </div>
 
       {error && (
@@ -315,7 +324,7 @@ export default function DashboardPage() {
           />
         </section>
 
-        <AssetChartCard points={assetChartPoints} />
+        <AssetChartCard points={assetChartPoints} range={assetRange} onRangeChange={setAssetRange} />
       </div>
 
       {/* Row 3: Holdings + Earnings timeline */}
@@ -353,7 +362,21 @@ export default function DashboardPage() {
  * Row 2 의 자산 추이 카드. 30D 라인 차트 + Y/X 축 라벨 + 범위 버튼 (UI 전용).
  * 별도 컴포넌트로 분리하지 않고 페이지 내부 헬퍼로 (재사용 없음).
  */
-function AssetChartCard({ points }: { points: { date: string; price: number }[] }) {
+const ASSET_RANGES = [
+  { label: '7D', days: 7 as const },
+  { label: '30D', days: 30 as const },
+  { label: '90D', days: 90 as const },
+]
+
+function AssetChartCard({
+  points,
+  range,
+  onRangeChange,
+}: {
+  points: { date: string; price: number }[]
+  range: 7 | 30 | 90
+  onRangeChange: (r: 7 | 30 | 90) => void
+}) {
   if (points.length === 0) {
     return (
       <section className="rounded-lg bg-surface-1 border border-border-subtle flex items-center justify-center text-[11px] text-text-disabled">
@@ -378,15 +401,15 @@ function AssetChartCard({ points }: { points: { date: string; price: number }[] 
           자산 추이
         </div>
         <div className="inline-flex bg-surface-2 border border-border-subtle rounded-md p-0.5">
-          {(['7D', '30D', '90D'] as const).map((r) => (
+          {ASSET_RANGES.map(({ label, days }) => (
             <button
-              key={r}
+              key={label}
               type="button"
+              onClick={() => onRangeChange(days)}
               className={`num px-2.5 py-0.5 rounded text-[10px] font-semibold tracking-[0.08em]
-                          ${r === '30D' ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}`}
-              // TODO(impl): 범위 변경 → IPC fetch (KIS_GET_ASSET_TIMESERIES)
+                          ${days === range ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary hover:text-text-primary'}`}
             >
-              {r}
+              {label}
             </button>
           ))}
         </div>

@@ -27,6 +27,10 @@ interface MainState {
   isOrderInProgress: boolean
   /** 모의투자(true) / 실전투자(false) 환경 — 토큰/baseURL/rate limit 분기 */
   isPaperTrading: boolean
+  /** TradingRoom 세션 활성 여부 — 진입 시 true, 명시적 나가기 시 false */
+  isTradeSessionActive: boolean
+  /** 현재 세션의 ticker — 이 ticker의 신호만 처리 */
+  activeSessionTicker: string | null
 }
 
 const state: MainState = {
@@ -38,6 +42,8 @@ const state: MainState = {
   tradingMode: 'MANUAL',
   isOrderInProgress: false,
   isPaperTrading: true,
+  isTradeSessionActive: false,
+  activeSessionTicker: null,
 }
 
 const TOKEN_VALIDITY_MARGIN_SEC = 60
@@ -86,6 +92,13 @@ export const mainState = {
   get isPaperTrading() { return state.isPaperTrading },
   setPaperTrading(value: boolean) { state.isPaperTrading = value },
 
+  get isTradeSessionActive() { return state.isTradeSessionActive },
+  get activeSessionTicker() { return state.activeSessionTicker },
+  setTradeSession(active: boolean, ticker?: string) {
+    state.isTradeSessionActive = active
+    state.activeSessionTicker = active && ticker ? ticker : null
+  },
+
   /**
    * 앱 종료 및 로그아웃 시 민감 데이터 소거.
    * isPaperTrading은 사용자 환경 선택값이므로 유지한다.
@@ -98,5 +111,7 @@ export const mainState = {
     state.kisTokenLifetimeSec = null
     state.tradingMode = 'MANUAL'
     state.isOrderInProgress = false
+    state.isTradeSessionActive = false
+    state.activeSessionTicker = null
   },
 }

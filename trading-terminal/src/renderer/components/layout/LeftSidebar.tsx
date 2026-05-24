@@ -1,6 +1,8 @@
+import SessionBadge from './SessionBadge'
+
 const NAV_ITEMS = [
   { path: '/dashboard', label: '대시보드' },
-  { path: '/trading-room', label: 'Trading Room' },
+  { path: '/market', label: 'Market' },
   { path: '/history', label: '체결 내역' },
   { path: '/settings', label: '설정' },
 ] as const
@@ -21,7 +23,7 @@ const NAV_ICONS: Record<string, React.ReactNode> = {
       <rect x="9" y="9" width="5" height="5" rx="1" />
     </svg>
   ),
-  '/trading-room': (
+  '/market': (
     <svg
       width="14"
       height="14"
@@ -105,6 +107,9 @@ export default function LeftSidebar({ activePath, onNavigate }: Props) {
           />
         ))}
       </div>
+
+      {/* 세션 배지 — 활성 세션 시에만 표시 */}
+      <SessionBadge />
 
       {/* 하단 — PRO 뱃지 + 버전 */}
       <div className="mt-auto px-3 py-2.5 border-t border-border-subtle flex flex-col gap-1.5 shrink-0">

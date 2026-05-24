@@ -1,139 +1,57 @@
-"""Sliding-window transcript context management keyed by per-call session ids."""
-
 from __future__ import annotations
 
-import asyncio
-import logging
-import time
-from collections import deque
-from dataclasses import dataclass, field
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from time import time
 from typing import Deque
 
-logger = logging.getLogger(__name__)
+try:
+    from models.request_models import SectionType, SourceType
+except ImportError:  # pragma: no cover
+    from ..models.request_models import SectionType, SourceType
 
 
-@dataclass
+@dataclass(slots=True)
 class ChunkRecord:
-    """A single transcript fragment kept in the rolling context window."""
+    sequence: int = 0
+    text_chunk: str = ""
+    timestamp: int | float = 0.0
+    section_type: SectionType = SectionType.PREPARED_REMARKS
+    source_type: SourceType = SourceType.EARNINGS_CALL
+    raw_score: float = 0.0
 
-    sequence: int
-    text_chunk: str
-    timestamp: int
-
-
-@dataclass
-class ContextSession:
-    """Rolling transcript state for one earnings-call session key."""
-
-    session_key: str
-    chunks: Deque[ChunkRecord] = field(default_factory=deque)
-    created_at: float = field(default_factory=time.time)
-    last_updated: float = field(default_factory=time.time)
-    is_closed: bool = False
+    @property
+    def text(self) -> str:
+        return self.text_chunk
 
 
-class ContextManager:
-    """Maintain a bounded chunk history per session key.
+class RollingContextManager:
+    def __init__(self, max_chunks: int = 5) -> None:
+        self.max_chunks = max_chunks
+        self._store: dict[str, Deque[ChunkRecord]] = defaultdict(lambda: deque(maxlen=max_chunks))
 
-    Session keys may be plain tickers or call-scoped ids such as
-    ``NVDA:call-001``. The API uses ``session_key`` consistently so the
-    interface matches real usage in the router layer.
-    """
+    def get(self, ticker: str) -> list[ChunkRecord]:
+        return list(self._store[(ticker or '').upper()])
 
-    def __init__(self, history_size: int = 5, session_ttl: int = 3600) -> None:
-        self._history_size = history_size
-        self._session_ttl = session_ttl
-        self._sessions: dict[str, ContextSession] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._global_lock = asyncio.Lock()
+    def add(self, ticker: str, record: ChunkRecord) -> None:
+        if record.timestamp == 0.0:
+            record.timestamp = time()
+        if record.sequence == 0:
+            record.sequence = len(self._store[(ticker or '').upper()]) + 1
+        self._store[(ticker or '').upper()].append(record)
 
-    async def update(
-        self,
-        session_key: str,
-        chunk: ChunkRecord,
-        is_final: bool = False,
-    ) -> None:
-        """Append a chunk to a session and optionally close it."""
 
-        lock = await self._get_or_create_lock(session_key)
-
-        async with lock:
-            session = self._sessions.get(session_key)
-            if session is None or session.is_closed:
-                session = ContextSession(session_key=session_key)
-                self._sessions[session_key] = session
-                logger.debug("Session created: session_key=%s", session_key)
-
-            session.chunks.append(chunk)
-            if len(session.chunks) > self._history_size:
-                session.chunks.popleft()
-
-            session.last_updated = time.time()
-
-            if is_final:
-                session.is_closed = True
-                logger.info(
-                    "Session closed: session_key=%s total_chunks=%d",
-                    session_key,
-                    len(session.chunks),
-                )
-
-    async def get_context(self, session_key: str) -> list[ChunkRecord]:
-        """Return the recent context window for one session key."""
-
-        lock = await self._get_or_create_lock(session_key)
-
-        async with lock:
-            session = self._sessions.get(session_key)
-            if session is None:
-                return []
-            return list(session.chunks)
-
-    async def get_active_tickers(self) -> list[str]:
-        """Return active session keys that are not closed yet."""
-
-        async with self._global_lock:
-            return [
-                session_key
-                for session_key, session in self._sessions.items()
-                if not session.is_closed
-            ]
-
-    async def cleanup_expired(self) -> int:
-        """Remove expired sessions without deleting freshly updated state."""
-
-        now = time.time()
-        expired_candidates: list[str] = []
-
-        async with self._global_lock:
-            for session_key, session in self._sessions.items():
-                if now - session.last_updated > self._session_ttl:
-                    expired_candidates.append(session_key)
-
-        cleaned = 0
-        for session_key in expired_candidates:
-            lock = await self._get_or_create_lock(session_key)
-            async with lock:
-                async with self._global_lock:
-                    session = self._sessions.get(session_key)
-                    if session is None:
-                        continue
-
-                    age = time.time() - session.last_updated
-                    if age <= self._session_ttl:
-                        continue
-
-                    self._sessions.pop(session_key, None)
-                    self._locks.pop(session_key, None)
-                    cleaned += 1
-                    logger.info("Expired session cleaned: session_key=%s", session_key)
-
-        return cleaned
-
-    async def _get_or_create_lock(self, session_key: str) -> asyncio.Lock:
-        """Return the per-session lock, creating it when needed."""
-
-        async with self._global_lock:
-            if session_key not in self._locks:
-                self._locks[session_key] = asyncio.Lock()
-            return self._locks[session_key]
+def novelty_against_context(current_chunk: str, context_chunks: list[ChunkRecord]) -> float:
+    if not context_chunks:
+        return 1.0
+    current = set(current_chunk.lower().split())
+    if not current:
+        return 0.0
+    max_overlap = 0.0
+    for chunk in context_chunks:
+        other = set(chunk.text_chunk.lower().split())
+        if not other:
+            continue
+        overlap = len(current & other) / max(1, len(current | other))
+        max_overlap = max(max_overlap, overlap)
+    return max(0.0, min(1.0, 1.0 - max_overlap))

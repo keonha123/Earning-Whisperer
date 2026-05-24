@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams, Navigate } from 'react-router-dom'
 import { useTradingStore, type SignalFeedItem } from '../store/useTradingStore'
 import { useUserStore } from '../store/useUserStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
@@ -34,19 +35,23 @@ const EMPTY_TRANSCRIPT: readonly TranscriptLine[] = []
 const EMPTY_PRICES: readonly PricePoint[] = []
 
 export default function TradingRoomPage() {
-  const { mode, setMode, signalHistory, activeSignal } = useTradingStore()
+  const { mode, setMode, signalHistory, activeSignal, setSession } = useTradingStore()
   const { plan, settings, setSettings } = useUserStore()
   const orderableCash = usePortfolioStore((s) => s.orderableCash)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // ── DEV-only fixtures (prod 빌드에서는 빈 배열/null) ─────────────────────────
   const priceSeries = import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
 
-  // ticker / 회사명 / 현재가 / WPM 우선순위:
-  //  1) activeSignal (실데이터)
-  //  2) liveMeta (DEV fixture)
-  //  3) null
-  const ticker = activeSignal?.ticker ?? liveMeta?.ticker ?? null
+  // ticker 우선순위:
+  //  1) activeSignal (실시간 어닝콜 신호)
+  //  2) ?ticker= 쿼리 파라미터 (Market Screen 또는 EarningsTimeline 진입)
+  //  3) liveMeta (DEV fixture)
+  //  4) null → /market 리다이렉트
+  const paramTicker = searchParams.get('ticker') || null
+  const ticker = activeSignal?.ticker ?? paramTicker ?? liveMeta?.ticker ?? null
 
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
@@ -102,6 +107,21 @@ export default function TradingRoomPage() {
   // ── 타임프레임 (UI only — fixture 단일 시계열만 표시) ──────────────────────────
   const [timeframe, setTimeframe] = useState<Timeframe>('1D')
 
+  // ticker 결정 시 세션 시작 — cleanup 없음 (비명시적 이동 시 세션 유지가 의도된 동작)
+  useEffect(() => {
+    if (!ticker) return
+    ipc.invoke(IPC_CHANNELS.TRADE_SESSION_START, { ticker })
+      .then(() => setSession(true, ticker))
+      .catch(console.error)
+  }, [ticker])
+
+  // ticker 없으면 Market Screen으로 — 모든 hooks 이후에 체크
+  if (!ticker) return <Navigate to="/market" replace />
+
+  function handleExit() {
+    navigate('/market')
+  }
+
   async function handleModeChange(newMode: typeof mode) {
     try {
       await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
@@ -118,25 +138,22 @@ export default function TradingRoomPage() {
     }
   }
 
+  const [isOrderLoading, setIsOrderLoading] = useState(false)
+
   async function handleOrderSubmit(payload: OrderBarSubmitPayload) {
     if (!ticker) return
-    // TODO(impl): 수동 주문 IPC — 현재 KIS_PLACE_ORDER 는 TradeSignal 형식만 받으므로
-    //   manual order 전용 채널 (e.g. KIS_PLACE_MANUAL_ORDER) 이 필요하다.
-    //   별도 PR 에서 main 측 핸들러 추가 + qty/price/side 시그니처 정의 후 연결.
-    //
-    //   안전 장치:
-    //   - prod 빌드에서는 OrderBar 의 disabled prop 으로 입력 자체를 막고 있으므로 본
-    //     함수가 호출될 가능성은 사실상 없으나, 방어적으로 noop 처리.
-    //   - DEV 빌드에서는 콘솔로 호출 사실만 남긴다. ticker/qty/price 같은 사용자 입력
-    //     페이로드는 DevTools 로그에 그대로 노출되지 않도록 redact (prod DevTools 우발
-    //     활성화 시 정보 누출 방지).
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.info('[TradingRoom] manual order DEV noop:', {
+    setIsOrderLoading(true)
+    try {
+      await ipc.invoke(IPC_CHANNELS.KIS_PLACE_MANUAL_ORDER, {
         side: payload.side,
-        qtyClass: payload.qty > 100 ? 'large' : 'small',
-        orderType: payload.price == null ? 'market' : 'limit',
+        ticker,
+        qty: payload.qty,
+        price: payload.price,
       })
+    } catch (e) {
+      showIpcErrorToast(e)
+    } finally {
+      setIsOrderLoading(false)
     }
   }
 
@@ -151,6 +168,7 @@ export default function TradingRoomPage() {
           elapsedLabel={elapsedLabel}
           wpm={liveMeta?.wpm}
           isLive={isLive}
+          onExit={handleExit}
         />
         <div className="w-72 shrink-0">
           <ModeSelector
@@ -295,12 +313,6 @@ export default function TradingRoomPage() {
       </div>
 
       {/* ── 하단 80px 고정 OrderBar ─────────────────────────────────────────────── */}
-      {/*
-        prod 빌드에서는 manual order IPC (KIS_PLACE_MANUAL_ORDER) 가 아직 없으므로
-        OrderBar 자체를 명시적 disabled 로 표시한다 (silent noop 회피 — 사용자가
-        클릭 시 "주문된 줄" 알 수 없는 상태 방지).
-        DEV 빌드에서는 정상 입력 + DEV noop 로그.
-      */}
       <OrderBar
         ticker={ticker}
         currentPrice={currentPrice}
@@ -308,9 +320,9 @@ export default function TradingRoomPage() {
         orderableCash={orderableCash}
         mode={mode}
         onSubmit={handleOrderSubmit}
-        disabled={!import.meta.env.DEV}
-        disabledLabel="수동 주문은 다음 업데이트에서 지원됩니다"
+        isLoading={isOrderLoading}
       />
+
     </div>
   )
 }

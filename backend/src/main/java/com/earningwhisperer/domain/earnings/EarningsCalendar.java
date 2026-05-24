@@ -31,6 +31,10 @@ public class EarningsCalendar extends BaseEntity {
 
     private boolean confirmed;
 
+    /** Finnhub hour 필드: "bmo"(장전) | "amc"(장후) | "dmh"(장중) | null(미정). */
+    @Column(name = "market_session", length = 3)
+    private String marketSession;
+
     @Column(name = "eps_estimate", precision = 10, scale = 4)
     private BigDecimal epsEstimate;
 
@@ -41,11 +45,13 @@ public class EarningsCalendar extends BaseEntity {
     public EarningsCalendar(Stock stock,
                             Instant scheduledAt,
                             boolean confirmed,
+                            String marketSession,
                             BigDecimal epsEstimate,
                             BigDecimal revenueEstimate) {
         this.stock = stock;
         this.scheduledAt = scheduledAt;
         this.confirmed = confirmed;
+        this.marketSession = marketSession;
         this.epsEstimate = epsEstimate;
         this.revenueEstimate = revenueEstimate;
     }
@@ -60,16 +66,14 @@ public class EarningsCalendar extends BaseEntity {
         this.revenueEstimate = revenueEstimate;
     }
 
-    /**
-     * 일정/컨센서스를 한번에 갱신 — Finnhub 응답 한 row 의 모든 mutable 필드를 한번에 반영하기 위한 헬퍼.
-     * estimate 가 null 인 케이스(Finnhub 미제공)는 그대로 null 로 덮어쓴다.
-     */
     public void updateAll(Instant scheduledAt,
                           boolean confirmed,
+                          String marketSession,
                           BigDecimal epsEstimate,
                           BigDecimal revenueEstimate) {
         this.scheduledAt = scheduledAt;
         this.confirmed = confirmed;
+        this.marketSession = marketSession;
         this.epsEstimate = epsEstimate;
         this.revenueEstimate = revenueEstimate;
     }

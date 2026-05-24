@@ -21,8 +21,12 @@ export const IPC_CHANNELS = {
 
   KIS_GET_BALANCE: 'terminal:kis:get-balance',
   KIS_PLACE_ORDER: 'terminal:kis:place-order',
+  /** 사용자가 OrderBar 에서 직접 입력한 수동 주문. payload: ManualOrderRequest */
+  KIS_PLACE_MANUAL_ORDER: 'terminal:kis:place-manual-order',
   KIS_GET_TOKEN_STATUS: 'terminal:kis:get-token-status',
   KIS_ISSUE_TOKEN: 'terminal:kis:issue-token',
+  /** invoke({ days: 7|30|90 }) → AssetHistoryPoint[] — 백엔드 GET /api/v1/portfolio/asset-history */
+  KIS_GET_ASSET_TIMESERIES: 'terminal:portfolio:get-asset-timeseries',
 
   SETTINGS_UPDATE: 'terminal:settings:update',
 
@@ -47,6 +51,10 @@ export const IPC_CHANNELS = {
 
   TRADES_GET: 'terminal:trades:get',
   TRADE_CANCEL: 'terminal:trade:cancel',
+  /** TradingRoom 진입 시 세션 시작. payload: { ticker: string } */
+  TRADE_SESSION_START: 'terminal:trade-session:start',
+  /** TradingRoom 명시적 나가기 시 세션 종료. */
+  TRADE_SESSION_END: 'terminal:trade-session:end',
 
   /**
    * 글로벌 시장 지수 5종 (SPX/NDX/VIX/DXY/10Y) 초기 스냅샷 조회.
@@ -147,6 +155,34 @@ export const IPC_CHANNELS = {
    * snake_case → camelCase 변환은 store 의 upsertSegment 에서 수행.
    */
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
+
+  /**
+   * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
+   * S&P 500 전체 종목 대상. main process 에서 그룹핑 후 EarningsTimelineData 반환.
+   * 응답: EarningsTimelineData { live, groups }
+   */
+  EARNINGS_TIMELINE_GET: 'terminal:earnings:timeline-get',
+
+  /**
+   * 어닝콜 타임라인 5분 폴링 push (Main → Renderer).
+   * 로그인 후 5분 간격으로 갱신된 EarningsTimelineData 를 전송한다.
+   * payload: EarningsTimelineData
+   */
+  EARNINGS_TIMELINE_UPDATE: 'terminal:earnings:timeline-update',
+
+  /**
+   * S&P 500 종목 리스트 조회 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/sp500 — JWT 불필요, 시가총액순 정렬.
+   * 응답: Sp500Stock[]
+   */
+  STOCKS_SP500_GET: 'terminal:stocks:sp500-get',
+
+  /**
+   * 전체 주가 스냅샷 초기 로딩 (Renderer → Main, invoke).
+   * GET /api/v1/stocks/prices — JWT 불필요.
+   * 응답: StockPriceEntry[] (ticker, currentPrice, previousClose, changePercent, updatedAt)
+   */
+  STOCK_PRICES_SNAPSHOT_GET: 'terminal:stocks:prices-snapshot-get',
 } as const
 
 /**

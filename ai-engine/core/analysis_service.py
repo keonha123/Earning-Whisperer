@@ -1,137 +1,82 @@
-"""Analysis orchestration service with Gemini 3.x cost-aware routing."""
-
 from __future__ import annotations
 
-import asyncio
 import logging
-import warnings
-from dataclasses import dataclass, field
-from typing import Sequence
 
-from config import get_settings
-from models.request_models import MarketData, SectionType
-from models.signal_models import GeminiAnalysisResult
-from src.graph.workflow import agent
-from .context_manager import ChunkRecord
-from .gemini_client import gemini_client
-from .phase1_scorer import Phase1ScoreResult
-from .prompt_builder import SYSTEM_PROMPT, build_prompt
+try:
+    from config import get_settings
+    from core.analysis_enrichment import AnalysisEnrichmentPipeline
+    from core.context_manager import ChunkRecord, RollingContextManager
+    from core.gemini_client import gemini_client
+    from core.llm_router import decide_route
+    from core.phase1_scorer import score_phase1
+    from core.prompt_builder import build_prompt
+    from core.signal_data_hub import SignalDataHub
+    from core.token_budgeter import TokenBudgeter, TokenUsageEvent, estimate_tokens
+    from core.transcript_signal_enhancer import TranscriptSignalEnhancer
+    from models.canonical_models import CanonicalEventBundle, CanonicalSourceHealth
+    from models.request_models import MarketData, SectionType, SourceType
+    from models.signal_models import GeminiAnalysisResult
+    from services.canonical_bundle_service import CanonicalBundleService, SourceHealthTelemetry
+except ImportError:  # pragma: no cover
+    from ..config import get_settings
+    from .analysis_enrichment import AnalysisEnrichmentPipeline
+    from .context_manager import ChunkRecord, RollingContextManager
+    from .gemini_client import gemini_client
+    from .llm_router import decide_route
+    from .phase1_scorer import score_phase1
+    from .prompt_builder import build_prompt
+    from .signal_data_hub import SignalDataHub
+    from .token_budgeter import TokenBudgeter, TokenUsageEvent, estimate_tokens
+    from .transcript_signal_enhancer import TranscriptSignalEnhancer
+    from ..models.canonical_models import CanonicalEventBundle, CanonicalSourceHealth
+    from ..models.request_models import MarketData, SectionType, SourceType
+    from ..models.signal_models import GeminiAnalysisResult
+    from ..services.canonical_bundle_service import CanonicalBundleService, SourceHealthTelemetry
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RoutingStats:
-    total_chunks: int = 0
-    flash_only_chunks: int = 0
-    pro_escalations: int = 0
-    economy_prompts: int = 0
-    total_prompt_tokens: int = 0
-    total_output_tokens: int = 0
-    route_counts: dict[str, int] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, object]:
-        total = max(self.total_chunks, 1)
-        return {
-            "route_counts": dict(sorted(self.route_counts.items())),
-            "flash_only_rate": round(self.flash_only_chunks / total, 4),
-            "pro_escalation_rate": round(self.pro_escalations / total, 4),
-            "avg_estimated_prompt_tokens": round(self.total_prompt_tokens / total, 1),
-            "avg_estimated_output_tokens": round(self.total_output_tokens / total, 1),
-            "economy_prompt_rate": round(self.economy_prompts / total, 4),
-        }
-
-
 class AnalysisService:
-    """Build prompts and execute the graph-based Gemini workflow."""
+    def __init__(self, **_: object) -> None:
+        self.context_manager = RollingContextManager(max_chunks=5)
+        self.transcript_enhancer = TranscriptSignalEnhancer()
+        self.canonical_bundle_service = CanonicalBundleService()
+        self.route_counts: dict[str, int] = {}
+        self.source_health_telemetry = SourceHealthTelemetry()
+        self.signal_data_hub = SignalDataHub()
+        self.token_budgeter = TokenBudgeter()
+        self.enrichment_pipeline = AnalysisEnrichmentPipeline()
 
-    def __init__(self) -> None:
-        self._stats = RoutingStats()
-        self._stats_lock = asyncio.Lock()
-
-    def build_prompt(
-        self,
+    @staticmethod
+    def _fallback_result(
         *,
         ticker: str,
-        current_chunk: str,
-        context_chunks: Sequence[ChunkRecord],
-        market_data: MarketData | None,
-        prompt_profile: str = "standard",
-        context_policy: str = "rolling",
-        phase1_score: float | None = None,
-        previous_result: GeminiAnalysisResult | None = None,
-        review_reason: str | None = None,
-    ) -> str:
-        return build_prompt(
-            ticker=ticker,
-            current_chunk=current_chunk,
-            context_chunks=list(context_chunks),
-            market_data=market_data,
-            prompt_profile=prompt_profile,
-            context_policy=context_policy,
-            phase1_score=phase1_score,
-            previous_result=previous_result,
-            review_reason=review_reason,
-        )
-
-    async def _analyze_prompt_direct(
-        self,
-        prompt: str,
-        *,
-        model: str | None = None,
-        max_output_tokens: int | None = None,
-        thinking_level: str | None = None,
+        route_profile: str,
+        model_route: str,
+        source_type: SourceType,
+        chunk_sequence: int,
+        detail: str,
     ) -> GeminiAnalysisResult:
-        settings = get_settings()
-        target_model = model or settings.gemini_primary_model
-        config = {
-            "system_instruction": SYSTEM_PROMPT,
-            "max_output_tokens": max_output_tokens or settings.gemini_standard_max_output_tokens,
-            "response_mime_type": settings.gemini_response_mime_type,
-            "thinking_level": thinking_level or settings.gemini_standard_thinking_level,
-        }
-        raw = await gemini_client.generate_content(
-            model=target_model,
-            contents=prompt,
-            config=config,
-        )
-        result = gemini_client.parse_response_text(raw)
-        result.model_route = result.model_route or target_model
-        return result
-
-    async def analyze_prompt(
-        self,
-        prompt: str,
-        *,
-        model: str | None = None,
-        max_output_tokens: int | None = None,
-        thinking_level: str | None = None,
-        allow_direct_prompt: bool = False,
-    ) -> GeminiAnalysisResult:
-        """Deprecated direct-prompt helper.
-
-        This bypasses the live routing graph and should only be used for
-        explicit research or debugging workflows.
-        """
-
-        if not allow_direct_prompt:
-            raise RuntimeError(
-                "Direct prompt analysis bypasses live routing. "
-                "Use AnalysisService.analyze() for production flows or pass "
-                "allow_direct_prompt=True for explicit research usage."
-            )
-
-        warnings.warn(
-            "AnalysisService.analyze_prompt() is deprecated because it bypasses "
-            "the live routing graph. Prefer AnalysisService.analyze().",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return await self._analyze_prompt_direct(
-            prompt,
-            model=model,
-            max_output_tokens=max_output_tokens,
-            thinking_level=thinking_level,
+        return GeminiAnalysisResult(
+            direction="NEUTRAL",
+            magnitude=0.0,
+            confidence=0.0,
+            rationale="LLM response validation failed; neutral fallback applied.",
+            catalyst_type="UNCLASSIFIED",
+            euphemism_count=0,
+            negative_word_ratio=0.0,
+            cot_reasoning="fallback",
+            model_route=model_route,
+            route_profile=route_profile,
+            source_type=source_type.value,
+            chunk_sequence=chunk_sequence,
+            metadata={
+                "llm_error": {
+                    "ticker": ticker,
+                    "stage": "response_parse_or_schema_validation",
+                    "detail": detail[:400],
+                }
+            },
         )
 
     async def analyze(
@@ -139,58 +84,189 @@ class AnalysisService:
         *,
         ticker: str,
         current_chunk: str,
-        context_chunks: Sequence[ChunkRecord],
-        market_data: MarketData | None,
-        section_type: SectionType | None,
-        chunk_timestamp: int,
+        market_data: MarketData,
+        section_type: SectionType,
+        source_type: SourceType,
+        chunk_sequence: int,
         request_priority: int,
         is_final: bool,
-        phase1_result: Phase1ScoreResult,
+        route_profile: str | None = None,
+        universe_profile: str | None = None,
+        canonical_bundle: CanonicalEventBundle | None = None,
+        source_health: list[CanonicalSourceHealth] | None = None,
     ) -> GeminiAnalysisResult:
-        state = {
-            "ticker": ticker,
-            "current_chunk": current_chunk,
-            "current_market_data": market_data,
-            "context_chunks": list(context_chunks),
-            "section_type": section_type,
-            "chunk_timestamp": chunk_timestamp,
-            "request_priority": request_priority,
-            "is_final": is_final,
-            "phase1_raw_score": phase1_result.raw_score,
-            "phase1_confidence": phase1_result.confidence,
-        }
-        response_state = await agent.ainvoke(state)
-        if not isinstance(response_state, dict) or "result" not in response_state:
-            raise RuntimeError("Gemini routing workflow did not return a result")
+        settings = get_settings()
+        feature_bundle = self.canonical_bundle_service.build_feature_bundle(
+            ticker=ticker,
+            market_data=market_data,
+            current_chunk=current_chunk,
+            canonical_bundle=canonical_bundle,
+            source_health=source_health,
+        )
+        self.source_health_telemetry.record(feature_bundle)
+        data_hub_receipt = self.signal_data_hub.record_feature_bundle(
+            ticker=ticker,
+            feature_bundle=feature_bundle,
+        )
+        phase1 = score_phase1(
+            current_chunk=current_chunk,
+            market_data=market_data,
+            section_type=section_type,
+            source_type=source_type,
+        )
+        context_chunks = self.context_manager.get(ticker)
+        route_decision = decide_route(
+            current_chunk=current_chunk,
+            context_chunks=context_chunks,
+            market_data=market_data,
+            section_type=section_type,
+            request_priority=request_priority,
+            is_final=is_final,
+            phase1_raw_score=phase1.raw_score,
+        )
+        effective_profile = route_profile or route_decision.route_profile
+        self.route_counts[route_decision.model] = self.route_counts.get(route_decision.model, 0) + 1
 
-        result: GeminiAnalysisResult = response_state["result"]
-        await self._record_route_stats(response_state)
-        return result
+        prompt = build_prompt(
+            ticker=ticker,
+            current_chunk=current_chunk,
+            context_chunks=context_chunks,
+            market_data=market_data,
+            section_type=section_type.value,
+            source_type=source_type.value,
+            route_profile=effective_profile,
+            context_policy=route_decision.context_policy,
+            phase1_score=phase1.raw_score,
+            feature_bundle_context=feature_bundle.get("prompt_context"),
+        )
+        usage = await gemini_client.generate_content_with_metadata(
+            model=route_decision.model,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "temperature": settings.gemini_temperature,
+                "max_output_tokens": route_decision.max_output_tokens,
+                "route_profile": effective_profile,
+            },
+        )
+        try:
+            parsed_dict = gemini_client.parse_response_text(usage.text)
+            parsed = GeminiAnalysisResult.model_validate(parsed_dict)
+        except Exception as exc:
+            logger.warning(
+                "Neutral fallback applied for %s chunk %s after invalid LLM response: %s",
+                ticker,
+                chunk_sequence,
+                exc,
+            )
+            parsed = self._fallback_result(
+                ticker=ticker,
+                route_profile=effective_profile,
+                model_route=route_decision.model,
+                source_type=source_type,
+                chunk_sequence=chunk_sequence,
+                detail=str(exc),
+            )
+        parsed.route_profile = effective_profile
+        parsed.model_route = route_decision.model
+        parsed.source_type = source_type.value
+        parsed.chunk_sequence = chunk_sequence
+        parsed.metadata.update(
+            {
+                "phase1": {"raw_score": phase1.raw_score, "confidence": phase1.confidence, "label": phase1.label, "provider": phase1.provider, "rationale_hint": phase1.rationale_hint},
+                "router": {
+                    "context_policy": route_decision.context_policy,
+                    "novelty": round(route_decision.novelty, 4),
+                    "primary_model": route_decision.primary_model,
+                },
+                "feature_bundle": feature_bundle,
+                "source_health_summary": feature_bundle.get("source_health_summary"),
+                "signal_data_hub": data_hub_receipt,
+            }
+        )
+        if canonical_bundle is not None:
+            parsed.metadata["canonical_bundle"] = canonical_bundle.model_dump(mode="json")
+        if source_health:
+            parsed.metadata["source_health"] = [item.model_dump(mode="json") for item in source_health]
 
-    async def get_stats(self) -> dict[str, object]:
-        async with self._stats_lock:
-            return self._stats.to_dict()
+        if source_type == SourceType.EARNINGS_CALL:
+            snapshot = self.transcript_enhancer.evaluate(
+                ticker=ticker,
+                text_chunk=current_chunk,
+                section_type=section_type,
+                analysis=parsed,
+                audio_features=parsed.metadata.get("audio_features") if isinstance(parsed.metadata, dict) else None,
+            )
+            parsed = self.transcript_enhancer.apply(parsed, snapshot)
 
-    async def _record_route_stats(self, state: dict) -> None:
-        route_profile = state.get("route_profile", "unknown")
-        used_review = bool(state.get("review_result_text"))
-        prompt_tokens = int(state.get("estimated_prompt_tokens", 0) or 0)
-        output_tokens = int(state.get("estimated_output_tokens", 0) or 0)
+        parsed = self.enrichment_pipeline.enrich(
+            market_data=market_data,
+            analysis=parsed,
+            section_type=section_type,
+            source_type=source_type,
+            universe_profile=universe_profile,
+        )
 
-        async with self._stats_lock:
-            self._stats.total_chunks += 1
-            self._stats.total_prompt_tokens += prompt_tokens
-            self._stats.total_output_tokens += output_tokens
-            self._stats.route_counts[route_profile] = self._stats.route_counts.get(route_profile, 0) + 1
-            if route_profile == "economy":
-                self._stats.economy_prompts += 1
-            if used_review:
-                self._stats.pro_escalations += 1
-                self._stats.route_counts["review_escalation"] = (
-                    self._stats.route_counts.get("review_escalation", 0) + 1
-                )
-            else:
-                self._stats.flash_only_chunks += 1
+        approved_signal = (
+            parsed.direction in {"BULLISH", "BEARISH"}
+            and parsed.strategy not in {None, "SENTIMENT_ONLY"}
+            and float(parsed.confidence) >= float(settings.confidence_threshold)
+        )
+        self.token_budgeter.record(
+            TokenUsageEvent(
+                route_profile=effective_profile,
+                model=route_decision.model,
+                prompt_tokens=int(usage.prompt_tokens or estimate_tokens(prompt)),
+                output_tokens=int(usage.output_tokens or 0),
+                total_tokens=int(usage.total_tokens or 0),
+                estimated_cost_usd=float(usage.estimated_cost_usd or 0.0),
+                cached=bool(usage.cached),
+                coalesced=bool(usage.coalesced),
+                approved_signal=approved_signal,
+                budget_tokens=self.token_budgeter.prompt_budget(effective_profile),
+            )
+        )
+
+        self.context_manager.add(
+            ticker,
+            ChunkRecord(
+                sequence=chunk_sequence,
+                text_chunk=current_chunk,
+                section_type=section_type,
+                source_type=source_type,
+                raw_score=phase1.raw_score,
+            ),
+        )
+        return parsed
 
 
-analysis_service = AnalysisService()
+async def run_analysis(
+    *,
+    ticker: str,
+    current_chunk: str,
+    market_data: MarketData,
+    section_type: SectionType,
+    source_type: SourceType,
+    chunk_sequence: int,
+    request_priority: int,
+    is_final: bool,
+    route_profile: str | None = None,
+    universe_profile: str | None = None,
+    canonical_bundle: CanonicalEventBundle | None = None,
+    source_health: list[CanonicalSourceHealth] | None = None,
+) -> GeminiAnalysisResult:
+    service = AnalysisService()
+    return await service.analyze(
+        ticker=ticker,
+        current_chunk=current_chunk,
+        market_data=market_data,
+        section_type=section_type,
+        source_type=source_type,
+        chunk_sequence=chunk_sequence,
+        request_priority=request_priority,
+        is_final=is_final,
+        route_profile=route_profile,
+        universe_profile=universe_profile,
+        canonical_bundle=canonical_bundle,
+        source_health=source_health,
+    )

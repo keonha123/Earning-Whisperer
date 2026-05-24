@@ -19,7 +19,7 @@ export interface SignalFeedItem extends TradeSignal {
 
 export interface TradeResult {
   tradeId: string
-  status: 'EXECUTED' | 'FAILED'
+  status: 'EXECUTED' | 'PENDING' | 'FAILED'
   orderId: string | null
   executedPrice: number | null
   executedQty: number
@@ -34,6 +34,8 @@ interface TradingState {
   pendingConfirm: TradeSignal | null
   lastExecutedTrade: TradeResult | null
   signalHistory: SignalFeedItem[]
+  isSessionActive: boolean
+  sessionTicker: string | null
 
   setMode: (mode: TradingMode) => void
   forceManual: (reason?: string) => void
@@ -42,6 +44,7 @@ interface TradingState {
   setPendingConfirm: (signal: TradeSignal | null) => void
   updateSignalStatus: (tradeId: string, status: SignalStatus) => void
   setLastExecutedTrade: (result: TradeResult) => void
+  setSession: (active: boolean, ticker?: string) => void
 }
 
 const MAX_HISTORY = 50
@@ -54,6 +57,8 @@ export const useTradingStore = create<TradingState>((set) => ({
   pendingConfirm: null,
   lastExecutedTrade: null,
   signalHistory: [],
+  isSessionActive: false,
+  sessionTicker: null,
 
   setMode: (mode) => set({ mode }),
 
@@ -88,4 +93,10 @@ export const useTradingStore = create<TradingState>((set) => ({
     })),
 
   setLastExecutedTrade: (result) => set({ lastExecutedTrade: result }),
+
+  setSession: (active, ticker) =>
+    set({
+      isSessionActive: active,
+      sessionTicker: active && ticker ? ticker : null,
+    }),
 }))

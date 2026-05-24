@@ -1,51 +1,52 @@
-"""Final parse node."""
-
 from __future__ import annotations
 
-from core.gemini_client import gemini_client
-from ..state import AgentState
+from dataclasses import dataclass, field
+from typing import Any
 
 
-async def parse_and_finalize(state: AgentState) -> AgentState:
-    if state.get("review_result_text"):
-        result = gemini_client.parse_response_text(state["review_result_text"])
-        result.model_route = f"{state['primary_model']}->{state['review_model']}"
+@dataclass(slots=True)
+class FinalizedResult:
+    direction: str
+    magnitude: float
+    confidence: float
+    rationale: str
+    catalyst_type: str
+    model_route: str = "fallback"
+    strategy: str = "SENTIMENT_ONLY"
+    review_triggered: bool = False
+    hold_days: int = 1
+    risk_flags: list[str] = field(default_factory=list)
+
+
+async def parse_and_finalize(state: dict[str, Any]) -> dict[str, FinalizedResult]:
+    parsed = state.get("parsed_result") or {}
+    if parsed:
         return {
-            **state,
-            "result": result,
-            "estimated_prompt_tokens": state.get("estimated_prompt_tokens_consumed", 0),
-            "estimated_output_tokens": state.get("estimated_output_tokens_consumed", 0),
+            "result": FinalizedResult(
+                direction=parsed.get("direction", "NEUTRAL"),
+                magnitude=parsed.get("magnitude", 0.0),
+                confidence=parsed.get("confidence", 0.0),
+                rationale=parsed.get("rationale", "Parsed result"),
+                catalyst_type=parsed.get("catalyst_type", "UNCLASSIFIED"),
+                model_route=parsed.get("model_route", "direct"),
+                strategy=parsed.get("strategy", "SENTIMENT_ONLY"),
+                review_triggered=parsed.get("review_triggered", False),
+                hold_days=parsed.get("hold_days", 1),
+                risk_flags=parsed.get("risk_flags", []),
+            )
         }
 
-    result = state.get("parsed_primary_result") or state.get("result")
-    if result is None:
-        # When review is capped at one live LLM call, a malformed first pass
-        # should degrade to a neutral fallback instead of crashing the pipeline.
-        fallback = gemini_client._fallback_result()
-        fallback.model_route = f"{state['primary_model']}->fallback"
-        return {
-            **state,
-            "result": fallback,
-            "estimated_prompt_tokens": state.get(
-                "estimated_prompt_tokens_consumed",
-                state.get("estimated_prompt_tokens", 0),
-            ),
-            "estimated_output_tokens": state.get(
-                "estimated_output_tokens_consumed",
-                state["primary_config"]["max_output_tokens"],
-            ),
-        }
-
-    result.model_route = result.model_route or state["primary_model"]
+    raw_response = state.get("raw_response", "")
+    analysis = state.get("analysis") or {}
+    primary_model = state.get("primary_model", "unknown")
     return {
-        **state,
-        "result": result,
-        "estimated_prompt_tokens": state.get(
-            "estimated_prompt_tokens_consumed",
-            state.get("estimated_prompt_tokens", 0),
-        ),
-        "estimated_output_tokens": state.get(
-            "estimated_output_tokens_consumed",
-            state["primary_config"]["max_output_tokens"],
-        ),
+        "result": FinalizedResult(
+            direction=analysis.get("direction", "NEUTRAL"),
+            magnitude=analysis.get("magnitude", 0.0),
+            confidence=analysis.get("confidence", 0.0),
+            rationale=raw_response or analysis.get("rationale", "Fallback analysis generated because parsing failed"),
+            catalyst_type=analysis.get("catalyst_type", "UNCLASSIFIED"),
+            model_route=f"{primary_model}->fallback",
+            strategy="ERROR_FALLBACK",
+        )
     }
