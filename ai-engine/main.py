@@ -14,7 +14,7 @@ try:
     from models.request_models import AnalyzeRequest
     from models.storage_models import PersistEnvelopeResponse
     from repositories.event_store_repository import EventStoreRepository
-    from services import CalibrationService, ControlPlaneService, EquityResearchReportService, RegressionService
+    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, RegressionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
 except ImportError:  # pragma: no cover
@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover
     from .models.request_models import AnalyzeRequest
     from .models.storage_models import PersistEnvelopeResponse
     from .repositories.event_store_repository import EventStoreRepository
-    from .services import CalibrationService, ControlPlaneService, EquityResearchReportService, RegressionService
+    from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, RegressionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
 
@@ -120,11 +120,15 @@ def create_app() -> FastAPI:
 
     app.state.settings = settings
     app.state.analysis_service = AnalysisService(settings=settings)
+    app.state.evidence_service = app.state.analysis_service.evidence_service
     app.state.event_store_repository = _build_repository(settings)
     app.state.redis_signal_publisher = RedisSignalPublisher(settings=settings)
     app.state.equity_report_service = EquityResearchReportService(
         settings=settings,
         token_budgeter=app.state.analysis_service.token_budgeter,
+    )
+    app.state.earnings_intelligence_service = EarningsIntelligenceService(
+        retriever=app.state.analysis_service.external_retriever,
     )
     app.state.control_plane_service = _get_control_service(app)
     app.state.calibration_service = _get_calibration_service(app)

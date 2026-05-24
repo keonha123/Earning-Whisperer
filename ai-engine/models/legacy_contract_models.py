@@ -28,6 +28,7 @@ class LegacyAnalyzeRequest(BaseModel):
     route_profile: str | None = None
     needs_review: bool = False
     universe_profile: str | None = None
+    investment_profile: str | None = None
 
 
 class LegacySignalMessage(BaseModel):
@@ -52,6 +53,12 @@ class LegacySignalMessage(BaseModel):
     blocked_reason_ko: str | None = None
     signal_brief: dict[str, Any] | None = None
     engine_event_id: str | None = None
+    investment_profile: str | None = None
+    investment_profile_label_ko: str | None = None
+    universe_profile: str | None = None
+    risk_style: str | None = None
+    redis_output_profile: str | None = None
+    strategy_recommendation: dict[str, Any] | None = None
     schema_version: str = "2026-05-13.legacy-ai-signal-v1"
 
 

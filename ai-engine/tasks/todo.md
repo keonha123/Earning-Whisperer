@@ -845,3 +845,65 @@
   - `python -m pytest -q` -> `120 passed`
   - `python -m compileall .` -> success, with only existing temp-directory listing warnings
   - `python -m pip check` -> `No broken requirements found.`
+
+# RAG Evidence Layer And Live Call Intelligence Track
+
+## Scope Guard
+- [x] Keep all work local unless the user explicitly requests remote commit, push, or merge
+- [x] Treat `origin/hyeongyu` as reference only; do not copy external branch code wholesale
+- [x] Keep existing analyze request/response contracts additive and backward-compatible
+- [x] Avoid adding heavyweight runtime dependencies without local validation
+
+## Implementation
+- [x] Add explicit evidence/RAG models for documents, citations, fact-checks, claim diffs, omissions, impact chains, and trade exits
+- [x] Add an evidence store repository with a pgvector-ready contract and deterministic local sparse retrieval fallback
+- [x] Add an evidence retrieval service that builds prompt-safe evidence context with source, date, and confidence
+- [x] Wire retrieved evidence into the LLM prompt and reduce confidence when evidence is absent or weak
+- [x] Add impact-chain endpoints for related stock spillover scoring
+- [x] Add real-time earnings-call fact-check, historical claim diff, and omission/evasion endpoints
+- [x] Extend trade-plan output with explicit stop-loss, take-profit, time-stop, trailing-stop, and position-scale structures
+- [x] Add .gitignore rules for large backtest artifacts and clean tracked runtime/cache artifacts if safe
+
+## Validation
+- [x] Add focused unit/API tests for evidence retrieval and new endpoints
+- [x] Run targeted pytest set for evidence, prompt, trade-plan, and API compatibility
+- [x] Run compile validation for touched modules
+
+## Review
+- Added explicit RAG/evidence retrieval contracts in `models/evidence_models.py`.
+- Added `EvidenceStoreRepository` with pgvector-ready backend metadata and deterministic sparse retrieval fallback.
+- Added `EvidenceRetrievalService` for prompt-safe citations, fact-checks, claim diffs, omission/evasion scoring, impact-chain scoring, and standalone trade-exit generation.
+- Wired retrieved evidence into `AnalysisService` and `build_prompt`; unsupported directional judgments are confidence-penalized and risk-flagged.
+- Registered `/v1/engine/evidence/search`, `/v1/engine/fact-check`, `/v1/engine/claim-diff`, `/v1/engine/omission/analyze`, `/v1/engine/impact-chain/{ticker}`, `/v1/engine/impact-chain/analyze`, and `/v1/engine/trade-exits/generate`.
+- Extended `trade_plan` with `auto_exit_plan` while preserving existing numeric `stop_loss`, `take_profit_1`, and `take_profit_2`.
+- Removed tracked `ai-engine/data/backtests/*.json` and `*.md` artifacts, kept `.gitkeep`, and ignored future large backtest artifacts.
+- Validation:
+  - `py -3.13 -m pytest tests/test_evidence_retrieval_service.py tests/test_canonical_bundle_service.py tests/test_trade_plan_and_options.py -q` -> `13 passed`
+  - `py -3.13 -m pytest tests/test_runtime_dispatch_paths.py tests/test_analysis_service_fallback.py tests/test_analysis_enrichment_pipeline.py tests/test_event_payload_builder.py tests/test_main_productized_response.py tests/test_stats_token_usage.py -q` -> `8 passed`
+  - `py -3.13 -m pytest -q` -> `147 passed`
+  - `py -3.13 -m compileall .` -> success
+
+# Main Integration Branch For Youngjun AI Engine
+
+## Scope Guard
+- [x] Use a separate worktree so the dirty local `youngjun` workspace is not touched
+- [x] Start from `origin/main`, not from local `youngjun`
+- [x] Restore only `ai-engine` from `origin/youngjun`
+- [x] Keep all non-`ai-engine` paths unchanged
+
+## Implementation
+- [x] Created branch `codex/merge-youngjun-ai-engine` from `origin/main`
+- [x] Restored `ai-engine` from `origin/youngjun`
+- [x] Fixed missing external RAG settings and `AnalysisService.external_retriever` wiring
+- [x] Registered earnings-intelligence router and app service
+- [x] Restored investment-profile fields in legacy request/signal contracts
+- [x] Repaired corrupted investment-profile test aliases to stable ASCII aliases
+
+## Validation
+- [x] Confirm changed paths are limited to `ai-engine/`
+- [x] `py -3.13 -m pytest tests/test_analysis_service_rag_flow.py tests/test_earnings_intelligence_api.py tests/test_external_retriever_hyeongyu_compat.py tests/test_investment_profile_routing.py -q` -> `10 passed`
+- [x] `py -3.13 -m pytest -q` -> `157 passed`
+- [x] `py -3.13 -m compileall .` -> success after rerunning with elevated pycache write permission
+
+## Review
+- The integration branch now carries the `origin/youngjun` AI engine on top of `origin/main`, plus small fixes needed for the youngjun RAG/profile tests to pass.
