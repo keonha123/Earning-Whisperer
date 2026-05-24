@@ -7,8 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from models.canonical_models import CanonicalEventBundle, CanonicalSourceHealth
+    from models.evidence_models import EvidenceDocument
 except ImportError:  # pragma: no cover
     from .canonical_models import CanonicalEventBundle, CanonicalSourceHealth
+    from .evidence_models import EvidenceDocument
 
 
 class SectionType(str, Enum):
@@ -122,6 +124,8 @@ class AnalyzeRequest(BaseModel):
     route_profile: str | None = None
     needs_review: bool = False
     universe_profile: str | None = None
+    investment_profile: str | None = None
     canonical_bundle: CanonicalEventBundle | None = None
     source_health: list[CanonicalSourceHealth] = Field(default_factory=list)
+    evidence_documents: list[EvidenceDocument] = Field(default_factory=list)
     request_metadata: dict[str, Any] = Field(default_factory=dict)

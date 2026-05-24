@@ -92,6 +92,7 @@ def build_prompt(
     phase1_score: float = 0.0,
     max_tokens: int | None = None,
     feature_bundle_context: str | None = None,
+    evidence_context: str | None = None,
 ) -> str:
     settings = get_settings()
     effective_prompt_profile = prompt_profile or route_profile or "standard"
@@ -135,5 +136,7 @@ def build_prompt(
         prompt += f"CONTEXT_CHUNKS:\n{context_text}\n\n"
     if feature_bundle_context:
         prompt += f"FEATURE_BUNDLE:\n{_truncate_chars(feature_bundle_context, 320)}\n\n"
+    if evidence_context:
+        prompt += f"EVIDENCE_LAYER:\n{_truncate_chars(evidence_context, 900)}\n\n"
     prompt += f"CURRENT_CHUNK:\n{current_text}"
     return _truncate_to_tokens(prompt, ceiling)

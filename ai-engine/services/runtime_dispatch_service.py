@@ -117,6 +117,8 @@ async def dispatch_analysis(
         universe_profile=payload.universe_profile,
         canonical_bundle=payload.canonical_bundle,
         source_health=payload.source_health,
+        evidence_documents=payload.evidence_documents,
+        request_metadata=payload.request_metadata,
     )
     analysis = result.model_dump()
     analysis.setdefault(

@@ -17,3 +17,4 @@
 - Repository upsert targets and SQL bootstrap constraints must be reviewed together; an `ON CONFLICT (...)` path without a matching unique or exclusion constraint can pass unit tests and still fail immediately in production PostgreSQL.
 - If a product risks looking like retail brokerage AI, add verifiable institutional artifacts: evidence scoring, execution feasibility, capacity/slippage limits, red-team thesis, kill conditions, and replay/control linkage.
 - When using external repositories as references, copy architectural ideas only after checking license risk; reimplement the concept in the local architecture instead of importing or pasting source.
+- Do not treat canonical bundles or source-health summaries as RAG by themselves; an explicit evidence layer must retrieve cited source/date/confidence snippets and inject only those citations into the LLM prompt.

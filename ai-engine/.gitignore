@@ -25,6 +25,9 @@ coverage.xml
 # Local data/cache artifacts
 data/yfinance_cache/
 data/pytest_tmp/
+data/backtests/*.json
+data/backtests/*.md
+!data/backtests/.gitkeep
 *.sqlite
 *.sqlite3
 *.db
