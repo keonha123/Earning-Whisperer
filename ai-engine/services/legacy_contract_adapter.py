@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 try:
+    from core.investment_profiles import build_strategy_recommendation, profile_action_from_score, resolve_investment_profile
     from models.legacy_contract_models import LegacyAnalyzeRequest, LegacySignalMessage
     from models.request_models import AnalyzeRequest, MarketData, SectionType, SourceType
 except ImportError:  # pragma: no cover
+    from ..core.investment_profiles import build_strategy_recommendation, profile_action_from_score, resolve_investment_profile
     from ..models.legacy_contract_models import LegacyAnalyzeRequest, LegacySignalMessage
     from ..models.request_models import AnalyzeRequest, MarketData, SectionType, SourceType
 
@@ -80,8 +82,10 @@ class LegacyContractAdapter:
             route_profile=payload.route_profile,
             needs_review=payload.needs_review,
             universe_profile=payload.universe_profile,
+            investment_profile=payload.investment_profile,
             request_metadata={
                 "legacy_contract": True,
+                "investment_profile": payload.investment_profile,
                 "original_timestamp": payload.timestamp,
                 "original_sequence": payload.sequence,
                 "original_text_chunk": payload.text_chunk,
@@ -95,6 +99,24 @@ class LegacyContractAdapter:
         event = data.get("event") if isinstance(data.get("event"), dict) else {}
         signal_brief = envelope.get("signal_brief") if isinstance(envelope.get("signal_brief"), dict) else data.get("signal_brief")
         raw_score = _signed_raw_score(analysis)
+        metadata = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
+        profile_meta = metadata.get("investment_profile") if isinstance(metadata.get("investment_profile"), dict) else None
+        profile = resolve_investment_profile(payload.investment_profile)
+        if profile is None and isinstance(profile_meta, dict):
+            profile = resolve_investment_profile(str(profile_meta.get("code") or ""))
+        action = profile_action_from_score(raw_score, profile) if profile is not None else _action_from_score(raw_score)
+        strategy_recommendation = (
+            build_strategy_recommendation(
+                profile,
+                strategy=analysis.get("strategy") or envelope.get("strategy"),
+                action=action,
+                confidence=_safe_float(analysis.get("confidence")) if analysis.get("confidence") is not None else None,
+                hold_days=_safe_int(analysis.get("hold_days"), 0) or None,
+                risk_flags=list(analysis.get("risk_flags") or []),
+            )
+            if profile is not None
+            else None
+        )
         return LegacySignalMessage(
             ticker=payload.ticker,
             raw_score=raw_score,
@@ -102,7 +124,7 @@ class LegacyContractAdapter:
             text_chunk=payload.text_chunk,
             timestamp=_safe_int(payload.timestamp),
             is_session_end=bool(payload.is_final),
-            action=_action_from_score(raw_score),
+            action=action,
             confidence=_safe_float(analysis.get("confidence")) if analysis.get("confidence") is not None else None,
             strategy=analysis.get("strategy") or envelope.get("strategy"),
             hold_days=_safe_int(analysis.get("hold_days"), 0) or None,
@@ -111,6 +133,12 @@ class LegacyContractAdapter:
             blocked_reason_ko=analysis.get("blocked_reason_ko"),
             signal_brief=signal_brief if isinstance(signal_brief, dict) else None,
             engine_event_id=event.get("event_id") if isinstance(event, dict) else None,
+            investment_profile=profile.code if profile is not None else None,
+            investment_profile_label_ko=profile.label_ko if profile is not None else None,
+            universe_profile=profile.universe_profile if profile is not None else None,
+            risk_style=profile.risk_style if profile is not None else None,
+            redis_output_profile=profile.redis_output_profile if profile is not None else None,
+            strategy_recommendation=strategy_recommendation,
         )
 
     @staticmethod

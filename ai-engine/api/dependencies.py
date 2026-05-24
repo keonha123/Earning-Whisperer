@@ -13,8 +13,9 @@ try:
     from models.request_models import AnalyzeRequest
     from models.storage_models import PersistEnvelopeResponse
     from repositories.event_store_repository import EventStoreRepository
-    from services import CalibrationService, ControlPlaneService, RegressionService
+    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService
     from services.equity_report_service import EquityResearchReportService
+    from services.evidence_retrieval_service import EvidenceRetrievalService
     from services.redis_signal_publisher import RedisSignalPublisher
 except ImportError:  # pragma: no cover
     from ..config import Settings
@@ -22,8 +23,9 @@ except ImportError:  # pragma: no cover
     from ..models.request_models import AnalyzeRequest
     from ..models.storage_models import PersistEnvelopeResponse
     from ..repositories.event_store_repository import EventStoreRepository
-    from ..services import CalibrationService, ControlPlaneService, RegressionService
+    from ..services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService
     from ..services.equity_report_service import EquityResearchReportService
+    from ..services.evidence_retrieval_service import EvidenceRetrievalService
     from ..services.redis_signal_publisher import RedisSignalPublisher
 
 
@@ -59,6 +61,14 @@ def get_equity_report_service(app: FastAPI) -> EquityResearchReportService:
     return app.state.equity_report_service
 
 
+def get_evidence_service(app: FastAPI) -> EvidenceRetrievalService:
+    return app.state.evidence_service
+
+
+def get_earnings_intelligence_service(app: FastAPI) -> EarningsIntelligenceService:
+    return app.state.earnings_intelligence_service
+
+
 def get_control_service(app: FastAPI) -> ControlPlaneService:
     return ControlPlaneService(get_repository(app))
 
@@ -78,7 +88,9 @@ __all__ = [
     "get_calibration_service",
     "get_control_service",
     "get_dispatch_analysis",
+    "get_earnings_intelligence_service",
     "get_equity_report_service",
+    "get_evidence_service",
     "get_persist_envelope",
     "get_redis_signal_publisher",
     "get_regression_service",
