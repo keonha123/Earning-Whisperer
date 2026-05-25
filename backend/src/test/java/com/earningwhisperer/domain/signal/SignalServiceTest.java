@@ -286,7 +286,7 @@ class SignalServiceTest {
     private TradingSignalMessage buildSignal(String ticker, double aiScore) {
         try {
             String json = """
-                    {"ticker":"%s","ai_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
+                    {"ticker":"%s","raw_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
                     """.formatted(ticker, aiScore);
             return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, TradingSignalMessage.class);
         } catch (Exception e) {
