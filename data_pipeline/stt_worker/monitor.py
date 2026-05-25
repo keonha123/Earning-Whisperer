@@ -14,12 +14,12 @@ class EarningsAgent:
         self.ticker = ticker
         self.ir_url = ir_url
         self.sequence_counter = 0
-        self.ai_engine_url = "http://localhost:8000/api/v1/analyze" 
+        self.ai_engine_url = "http://localhost:8000/api/v1/analyze"
         
         # 💡 [Q4 계정 설정] 본인의 실제 Q4 마스터 계정 정보를 주입하세요.
         self.investor_profile = {
             "email": "dheorbdheo@naver.com", 
-            "password": "YOUR_Q4_PASSWORD_HERE",  
+            "password": "Cho0523oh!",  
             "first_name": "Minsoo",
             "last_name": "Kim",
             "company": "Private Investor"
@@ -378,7 +378,7 @@ class EarningsAgent:
 
 if __name__ == "__main__":
     target_ticker = sys.argv[1] if len(sys.argv) > 1 else "ABNB"
-    target_url = sys.argv[2] if len(sys.argv) > 2 else "https://investors.airbnb.com" 
+    target_url = sys.argv[2] if len(sys.argv) > 2 else "https://investors.airbnb.com/events-and-presentations/default.aspx" 
     
     agent = EarningsAgent(target_ticker, target_url)
     asyncio.run(agent.monitor())
