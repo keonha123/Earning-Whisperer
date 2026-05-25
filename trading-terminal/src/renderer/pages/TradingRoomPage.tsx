@@ -21,6 +21,8 @@ import {
   type PricePoint,
 } from '../fixtures/liveSession.dev-mock'
 import { useLiveTranscript } from '../hooks/useLiveTranscript'
+import { usePrices } from '../hooks/usePrices'
+import { useCompanyDetail } from '../hooks/useCompanyDetail'
 import type { TranscriptSegment } from '../store/useTranscriptStore'
 // liveAiScoreSeriesDevMock 은 향후 EmaChart 가 보라색 AI 점수 라인으로 재활용 예정.
 // fixture export 자체는 유지하되, 본 페이지에서는 사용처가 없어 import 하지 않는다
@@ -41,8 +43,7 @@ export default function TradingRoomPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  // ── DEV-only fixtures (prod 빌드에서는 빈 배열/null) ─────────────────────────
-  const priceSeries = import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES
+  // ── DEV-only fixtures (prod 빌드에서는 null) ─────────────────────────────────
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
 
   // ticker 우선순위:
@@ -56,6 +57,24 @@ export default function TradingRoomPage() {
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
   const { segments: liveSegments, endedCallIds } = useLiveTranscript(ticker)
+
+  // ── 실시간 시세 (다른 화면과 동일 소스: PRICES_UPDATE ← PricePoller/STOMP) ──────
+  const { prices } = usePrices()
+  const livePrice = ticker ? prices[ticker] : undefined
+
+  // ── 가격 차트 시계열 (STOCK_GET_DETAIL.chart30d 재사용 — CompanyDrawer 와 동일 소스) ──
+  // 30일 일봉 종가. 분봉(1m/5m/1H) 실시간 누적은 별도 작업(범위 외)이라 timeframe 은 아직 UI-only.
+  const { data: companyDetail } = useCompanyDetail(ticker)
+  const chartSeries = useMemo<readonly PricePoint[]>(() => {
+    const c30 = companyDetail?.chart30d
+    if (c30 && c30.length > 0) {
+      return c30
+        .filter((d) => Number.isFinite(d.close))
+        // date 는 "YYYY-MM-DD" → X축 라벨용 "MM-DD" 로 축약 (full date 는 좁은 축에서 겹침).
+        .map((d) => ({ time: d.date.slice(5), price: d.close }))
+    }
+    return import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES
+  }, [companyDetail])
 
   // segment → TranscriptLine 어댑터 (STTScriptPanel 의 기존 인터페이스 보존).
   const liveTranscript = useMemo<readonly TranscriptLine[]>(
@@ -88,8 +107,22 @@ export default function TradingRoomPage() {
       ? !endedCallIds.has(activeCallId)
       : activeSignal != null
   const companyName = liveMeta?.companyName ?? null
-  const currentPrice = liveMeta?.currentPrice ?? null
-  const changePercent = liveMeta?.changePercent
+  // 현재가/변동률: 실시간 시세(PRICES_UPDATE) 우선, 없으면 DEV fixture 폴백.
+  // 단 실시세가 있으면 변동치도 실데이터 기준만 사용 — 전일종가 결측(previousClose<=0,
+  // KIS 미제공) 시엔 미표시(undefined). 실가격 + fixture 가짜변동률 혼합을 방지.
+  const currentPrice = livePrice?.currentPrice ?? liveMeta?.currentPrice ?? null
+  const changePercent = livePrice
+    ? livePrice.previousClose > 0
+      ? ((livePrice.currentPrice - livePrice.previousClose) / livePrice.previousClose) * 100
+      : undefined
+    : liveMeta?.changePercent
+  const changeAmount = livePrice
+    ? livePrice.previousClose > 0
+      ? livePrice.currentPrice - livePrice.previousClose
+      : undefined
+    : liveMeta?.changeAmount
+  const priceLabel =
+    currentPrice != null ? `$${currentPrice.toFixed(2)}` : liveMeta?.currentPriceLabel ?? '—'
   const sessionLabel = liveMeta?.sessionLabel ?? null
   // 경과 시간 라벨 — fixture 정적값 ("25:14"). 실시간 헬퍼는 본 PR 범위 외.
   const elapsedLabel = liveMeta?.elapsedLabel ?? null
@@ -158,7 +191,7 @@ export default function TradingRoomPage() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col h-[calc(100%+3rem)] -m-6">
       {/* ── 페이지 내부 상단 헤더 행 (LIVE + ticker + 종목정보 + 메타 + ModeSelector) */}
       <div className="px-4 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-0">
         <TradingRoomHeader
@@ -206,12 +239,12 @@ export default function TradingRoomPage() {
             {/* 가격 pane */}
             <ChartPane
               kind="price"
-              priceLabel={liveMeta?.currentPriceLabel ?? '—'}
+              priceLabel={priceLabel}
               changePercent={changePercent}
-              changeAmount={liveMeta?.changeAmount}
+              changeAmount={changeAmount}
               volumeLabel={liveMeta?.volumeLabel}
               marketSession={liveMeta?.marketSession}
-              series={priceSeries}
+              series={chartSeries}
               isLive={isLive}
             />
 
