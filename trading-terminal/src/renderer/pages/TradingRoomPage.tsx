@@ -191,7 +191,7 @@ export default function TradingRoomPage() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col h-[calc(100%+3rem)] -m-6">
       {/* ── 페이지 내부 상단 헤더 행 (LIVE + ticker + 종목정보 + 메타 + ModeSelector) */}
       <div className="px-4 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-0">
         <TradingRoomHeader
