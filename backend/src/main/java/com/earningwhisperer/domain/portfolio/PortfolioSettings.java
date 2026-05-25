@@ -2,6 +2,7 @@ package com.earningwhisperer.domain.portfolio;
 
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.global.common.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -18,6 +19,9 @@ public class PortfolioSettings extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // LAZY proxy 가 API 응답으로 직렬화되면 Jackson 이 ByteBuddyInterceptor 직렬화에 실패한다.
+    // user 연관은 어떤 응답에도 노출할 필요가 없으므로 직렬화에서 항상 제외한다.
+    @JsonIgnore
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;

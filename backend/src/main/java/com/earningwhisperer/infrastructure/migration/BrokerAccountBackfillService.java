@@ -23,10 +23,12 @@ public class BrokerAccountBackfillService {
 
     @Transactional
     public void backfill() {
-        // 0. 운영 prod 잔존 컬럼/제약 정리 (IF EXISTS — 이미 drop 됐거나 처음부터 없는 환경에서도 안전).
-        // 환경(MySQL/H2)별 IF EXISTS 지원 차이를 고려해 try-catch 로 best-effort.
-        tryExecute("ALTER TABLE portfolio_settings DROP COLUMN cash_balance");
-        tryExecute("ALTER TABLE positions DROP INDEX uk_position_user_ticker");
+        // 0. 운영 prod 잔존 컬럼/제약 정리 — 반드시 "존재할 때만" DROP 한다.
+        // MySQL 에서는 SQL 예외가 발생하면 catch 하더라도 현재 트랜잭션이 rollback-only 로 마킹되어,
+        // 아래 backfill 전체가 commit 시점에 UnexpectedRollbackException 으로 롤백된다.
+        // 따라서 try-catch 대신 information_schema 로 사전 확인 후 존재할 때만 실행한다.
+        dropColumnIfExists("portfolio_settings", "cash_balance");
+        dropIndexIfExists("positions", "uk_position_user_ticker");
 
         // 1. 모든 사용자에 KIS-paper BrokerAccount 자동 생성 (없는 경우만)
         @SuppressWarnings("unchecked")
@@ -87,13 +89,31 @@ public class BrokerAccountBackfillService {
         }
     }
 
-    private void tryExecute(String sql) {
-        try {
-            em.createNativeQuery(sql).executeUpdate();
-            log.info("[BrokerAccountBackfill] 정리 SQL 실행 성공: {}", sql);
-        } catch (Exception e) {
-            // 이미 drop 됐거나 처음부터 없는 환경 — 정상
-            log.debug("[BrokerAccountBackfill] 정리 SQL skip ({}): {}", e.getMessage(), sql);
+    private void dropColumnIfExists(String table, String column) {
+        Number count = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c
+                """)
+                .setParameter("t", table)
+                .setParameter("c", column)
+                .getSingleResult();
+        if (count.intValue() > 0) {
+            em.createNativeQuery("ALTER TABLE " + table + " DROP COLUMN " + column).executeUpdate();
+            log.info("[BrokerAccountBackfill] 레거시 컬럼 제거: {}.{}", table, column);
+        }
+    }
+
+    private void dropIndexIfExists(String table, String index) {
+        Number count = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND INDEX_NAME = :i
+                """)
+                .setParameter("t", table)
+                .setParameter("i", index)
+                .getSingleResult();
+        if (count.intValue() > 0) {
+            em.createNativeQuery("ALTER TABLE " + table + " DROP INDEX " + index).executeUpdate();
+            log.info("[BrokerAccountBackfill] 레거시 인덱스 제거: {}.{}", table, index);
         }
     }
 }
