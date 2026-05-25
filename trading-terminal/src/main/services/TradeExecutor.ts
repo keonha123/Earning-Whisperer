@@ -72,7 +72,7 @@ export const TradeExecutor = {
       // Step 1: 잔고 조회 (+ BUY 시 현재가 조회) → 수량 산출
       const balance = await KisService.getBalance()
       const currentPrice = signal.action === 'BUY'
-        ? await KisService.getCurrentPrice(signal.ticker)
+        ? (await KisService.getCurrentPrice(signal.ticker)).currentPrice
         : 0
       const finalQty = calcQty(signal, balance, currentPrice)
 
