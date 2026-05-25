@@ -75,7 +75,7 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
       totalCash: 1000,
       holdings: [],
     })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({
       orderId: 'ODNO123',
       executedPrice: null,
@@ -110,7 +110,7 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
 
   it('TRADE_EXECUTED IPC 이벤트 발화', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -132,7 +132,7 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
 describe('TradeExecutor.execute — qty=0 결과', () => {
   it('placeOrder 미호출 + FAILED 콜백 + 사유 메시지 포함', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 100, totalCash: 100, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(200) // 100 × 0.05 / 200 = 0.025 → 0주
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 200, previousClose: 200 }) // 100 × 0.05 / 200 = 0.025 → 0주
     Backend.sendCallback.mockResolvedValue(undefined)
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.05 }))
@@ -178,7 +178,7 @@ describe('TradeExecutor.execute — 동시 호출 차단', () => {
 describe('TradeExecutor.execute — 예외 처리', () => {
   it('placeOrder 예외 시 catch에서 FAILED 콜백', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockRejectedValue(new Error('KIS 서버 500'))
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -203,7 +203,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
 
   it('finally 락 해제: 정상 흐름에서도 isOrderInProgress=false', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -214,7 +214,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
 
   it('콜백 실패해도 결과 반환 (FAILED 경로)', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 0, totalCash: 0, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Backend.sendCallback.mockRejectedValue(new Error('백엔드 다운'))
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
@@ -227,7 +227,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
   it('EXECUTED 흐름에서 BackendClient.sendCallback이 실패하면 catch 경로로 빠져 FAILED로 보고된다', async () => {
     // KisService mock: 정상 잔고/현재가/주문
     Kis.getBalance.mockResolvedValueOnce({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
     // 첫 sendCallback(EXECUTED용)은 throw → catch로 빠짐
     // 이후 sendFailCallback 내부에서 두 번째 sendCallback(FAILED 보고용) 호출은 성공
@@ -259,7 +259,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
 describe('TradeExecutor.execute — KIS rt_cd 실패 통합', () => {
   it('placeOrder가 KIS rt_cd 실패로 throw하면 FAILED 콜백 + errorMessage에 msg1 포함', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     // KIS가 rt_cd='1'로 거부 → KisService.placeOrder가 throw
     Kis.placeOrder.mockRejectedValue(
       new Error('KIS 주문 거부: 주문가능금액이 부족합니다.'),
@@ -374,7 +374,7 @@ describe('TradeExecutor.execute — 시그널 검증 (validateSignal)', () => {
 
   it('정상 시그널은 검증 통과 — KisService.getBalance 호출됨 (회귀 보호)', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'OK', executedPrice: null, executedQty: 10 })
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
