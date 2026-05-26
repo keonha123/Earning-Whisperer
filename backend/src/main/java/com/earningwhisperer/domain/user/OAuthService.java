@@ -1,6 +1,6 @@
 package com.earningwhisperer.domain.user;
 
-import com.earningwhisperer.domain.portfolio.Broker;
+import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
@@ -74,7 +74,7 @@ public class OAuthService {
         portfolioSettingsRepository.save(defaultSettings);
 
         // 신규 가입 시 KIS 모의 BrokerAccount 자동 생성 + 활성화 — fail-safe HOLD 방지
-        BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), Broker.KIS, true);
+        BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), AccountType.KIS_PAPER);
         brokerAccountService.activateIfFirst(saved.getId(), defaultAccount.getId());
 
         log.info("[OAuthService] 소셜 신규 사용자 생성 — userId={} provider={}",
