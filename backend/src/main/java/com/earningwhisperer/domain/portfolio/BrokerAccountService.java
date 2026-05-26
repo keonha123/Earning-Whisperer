@@ -12,10 +12,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * BrokerAccount CRUD + 활성 전환 + 자동 prov isioning.
+ * BrokerAccount CRUD + 활성 전환 + 자동 provisioning.
  *
  * 사용자가 가입 직후엔 BrokerAccount 가 없을 수 있어, 첫 KIS 키 등록 시점이나 첫 sync 호출 시점에
- * 자동으로 BrokerAccount 가 생성되는 것이 자연스럽다. 본 서비스는 그 ensureXxx 패턴을 제공한다.
+ * 자동으로 BrokerAccount 가 생성되는 것이 자연스럽다. 본 서비스는 그 ensure 패턴을 제공한다.
  */
 @Slf4j
 @Service
@@ -40,26 +40,25 @@ public class BrokerAccountService {
                 .orElse(null);
         if (activeId == null) return Optional.empty();
         return brokerAccountRepository.findById(activeId)
-                .filter(acc -> acc.getUser().getId().equals(userId)); // 소유권 방어
+                .filter(acc -> acc.getUser().getId().equals(userId));
     }
 
     /**
-     * (broker, isPaper) 조합의 BrokerAccount 를 가져오거나, 없으면 자동 생성.
+     * accountType 에 해당하는 BrokerAccount 를 가져오거나, 없으면 자동 생성.
      * 첫 KIS 키 등록 / 첫 sync 시 호출자가 멱등하게 사용.
      */
     @Transactional
-    public BrokerAccount ensure(Long userId, Broker broker, boolean isPaper) {
-        return brokerAccountRepository.findByUserIdAndBrokerAndIsPaper(userId, broker, isPaper)
+    public BrokerAccount ensure(Long userId, AccountType accountType) {
+        return brokerAccountRepository.findByUserIdAndAccountType(userId, accountType)
                 .orElseGet(() -> {
                     User user = userRepository.findById(userId)
                             .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
                     BrokerAccount created = brokerAccountRepository.save(BrokerAccount.builder()
                             .user(user)
-                            .broker(broker)
-                            .isPaper(isPaper)
+                            .accountType(accountType)
                             .build());
-                    log.info("[BrokerAccountService] BrokerAccount 자동 생성 - userId={} broker={} isPaper={} id={}",
-                            userId, broker, isPaper, created.getId());
+                    log.info("[BrokerAccountService] BrokerAccount 자동 생성 - userId={} accountType={} id={}",
+                            userId, accountType, created.getId());
                     return created;
                 });
     }
@@ -84,7 +83,7 @@ public class BrokerAccountService {
     }
 
     /**
-     * 활성 BrokerAccount 가 미설정 상태이고 사용자 broker 계정이 1개뿐이면 그것을 활성으로 set.
+     * 활성 BrokerAccount 가 미설정 상태이고 사용자 계정이 1개뿐이면 그것을 활성으로 set.
      * 첫 sync / 키 등록 후 자동 활성화 헬퍼.
      */
     @Transactional

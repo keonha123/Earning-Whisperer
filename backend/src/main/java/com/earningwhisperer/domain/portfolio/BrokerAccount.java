@@ -9,22 +9,21 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 사용자의 증권사 계정. 한 사용자가 여러 증권사 / 같은 증권사의 모의·실전 계정을 동시에 보유할 수 있다.
+ * 사용자의 증권사(또는 페이퍼) 계정.
  *
- * <p>현재 단계에서는 KIS 모의/실전 두 종류만 활용하지만, unique 제약을 (user, broker, isPaper) 로 두어
- * 추후 같은 broker+isPaper 조합 안에서 다중 계정으로 확장 가능하도록 명시적으로 닫아두지 않았다 (alias 로 구분).
+ * <p>accountType 단일 컬럼으로 계정 종류를 표현한다. unique 제약은 (user_id, account_type) 으로,
+ * 한 사용자가 KIS_REAL / KIS_PAPER / SELF_PAPER 각 1개씩 보유 가능.
  *
- * <p>cashBalance 는 이전에 PortfolioSettings 에 단일 컬럼으로 있던 값을 broker 별로 분리해
- * 본 엔티티로 옮긴 것. RuleEngine 의 maxPositionRatio 검증과 PositionService.computePositionRatio 모두
- * 본 엔티티의 cashBalance 를 기반으로 계산한다.
+ * <p>cashBalance 는 Trading Terminal 의 잔고 sync 가 갱신하며, RuleEngine 의 maxPositionRatio 검증과
+ * PositionService.computePositionRatio 가 이 값을 기반으로 계산한다.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
 @Table(name = "broker_accounts",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_broker_account_user_broker_paper",
-                        columnNames = {"user_id", "broker", "is_paper"})
+                @UniqueConstraint(name = "uk_broker_account_user_type",
+                        columnNames = {"user_id", "account_type"})
         },
         indexes = {
                 @Index(name = "idx_broker_account_user", columnList = "user_id")
@@ -40,13 +39,10 @@ public class BrokerAccount extends BaseEntity {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Broker broker;
+    @Column(name = "account_type", nullable = false, length = 20)
+    private AccountType accountType;
 
-    @Column(name = "is_paper", nullable = false)
-    private Boolean isPaper;
-
-    /** 사용자 표시명. 기본값은 "{broker} {모의|실전}" 형태. */
+    /** 사용자 표시명. 기본값은 accountType 에 따른 한국어 레이블. */
     @Column(nullable = false, length = 50)
     private String alias;
 
@@ -58,11 +54,10 @@ public class BrokerAccount extends BaseEntity {
     private Double cashBalance;
 
     @Builder
-    public BrokerAccount(User user, Broker broker, Boolean isPaper, String alias, Double cashBalance) {
+    public BrokerAccount(User user, AccountType accountType, String alias, Double cashBalance) {
         this.user = user;
-        this.broker = broker;
-        this.isPaper = isPaper;
-        this.alias = alias != null ? alias : defaultAlias(broker, isPaper);
+        this.accountType = accountType;
+        this.alias = alias != null ? alias : defaultAlias(accountType);
         this.cashBalance = cashBalance;
     }
 
@@ -77,7 +72,11 @@ public class BrokerAccount extends BaseEntity {
         this.alias = alias;
     }
 
-    private static String defaultAlias(Broker broker, Boolean isPaper) {
-        return broker.name() + " " + (Boolean.TRUE.equals(isPaper) ? "모의" : "실전");
+    private static String defaultAlias(AccountType accountType) {
+        return switch (accountType) {
+            case KIS_REAL  -> "KIS 실전";
+            case KIS_PAPER -> "KIS 모의";
+            case SELF_PAPER -> "페이퍼 트레이딩";
+        };
     }
 }

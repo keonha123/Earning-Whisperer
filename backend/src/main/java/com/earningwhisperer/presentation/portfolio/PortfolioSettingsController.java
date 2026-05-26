@@ -1,7 +1,7 @@
 package com.earningwhisperer.presentation.portfolio;
 
+import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.AssetSnapshotService;
-import com.earningwhisperer.domain.portfolio.Broker;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
@@ -100,7 +100,7 @@ public class PortfolioSettingsController {
         Long activeId = brokerAccountService.getActive(userId)
                 .map(BrokerAccount::getId)
                 .orElseGet(() -> brokerAccountService
-                        .ensure(userId, Broker.KIS, true).getId()); // 신규 사용자 디폴트
+                        .ensure(userId, AccountType.KIS_PAPER).getId()); // 신규 사용자 디폴트
 
         Long brokerAccountId = request.getBrokerAccountId();
         if (brokerAccountId != null && !brokerAccountId.equals(activeId)) {
@@ -161,11 +161,11 @@ public class PortfolioSettingsController {
     }
 
     public record BrokerAccountResponse(
-            Long id, String broker, Boolean isPaper, String alias, Double cashBalance, boolean active
+            Long id, String accountType, String alias, Double cashBalance, boolean active
     ) {
         static BrokerAccountResponse of(BrokerAccount a, boolean active) {
             return new BrokerAccountResponse(
-                    a.getId(), a.getBroker().name(), a.getIsPaper(),
+                    a.getId(), a.getAccountType().name(),
                     a.getAlias(), a.getCashBalance(), active);
         }
     }
