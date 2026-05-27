@@ -27,6 +27,7 @@ interface SettingsUpdatePayload {
   maxBuyRatio: number
   maxHoldingRatio: number
   cooldownMinutes: number
+  aiScoreThreshold: number
 }
 
 export function registerSettingsHandlers() {
@@ -45,6 +46,7 @@ export function registerSettingsHandlers() {
         max_buy_ratio: settings.maxBuyRatio,
         max_holding_ratio: settings.maxHoldingRatio,
         cooldown_minutes: settings.cooldownMinutes,
+        ai_score_threshold: settings.aiScoreThreshold,
       })
     } catch (e) {
       console.warn('[settingsHandlers] 백엔드 모드 동기화 실패 (로컬 적용 유지):', e)

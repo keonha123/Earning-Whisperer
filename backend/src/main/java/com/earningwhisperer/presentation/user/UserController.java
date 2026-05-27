@@ -39,6 +39,7 @@ public class UserController {
                 request.getMaxBuyRatio(),
                 request.getMaxHoldingRatio(),
                 request.getCooldownMinutes(),
+                request.getAiScoreThreshold(),
                 request.getTradingMode()
         ));
     }
