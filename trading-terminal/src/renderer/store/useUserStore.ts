@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useMarketIndicesStore } from './useMarketIndicesStore'
 
 export type UserPlan = 'FREE' | 'PRO'
+export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
 
 export interface UserSettings {
   tradingMode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
@@ -22,10 +23,12 @@ interface UserState {
   nickname: string | null
   plan: UserPlan
   settings: UserSettings
+  accountType: AccountType | null
 
   setUser: (user: { id: number; email: string; nickname: string; role: string }) => void
   setSettings: (settings: Partial<UserSettings>) => void
   setEmaThreshold: (value: number) => void
+  setAccountType: (accountType: AccountType) => void
   clear: () => void
 }
 
@@ -43,6 +46,7 @@ export const useUserStore = create<UserState>((set) => ({
   nickname: null,
   plan: 'FREE',
   settings: defaultSettings,
+  accountType: null,
 
   setUser: (user) =>
     set({
@@ -58,6 +62,8 @@ export const useUserStore = create<UserState>((set) => ({
   setEmaThreshold: (value) =>
     set((state) => ({ settings: { ...state.settings, emaThreshold: value } })),
 
+  setAccountType: (accountType) => set({ accountType }),
+
   clear: () => {
     set({
       userId: null,
@@ -65,6 +71,7 @@ export const useUserStore = create<UserState>((set) => ({
       nickname: null,
       plan: 'FREE',
       settings: defaultSettings,
+      accountType: null,
     })
     // 로그아웃 시 cross-store reset — 시장 지수는 stale 상태가 남으면 안 됨.
     // (다른 store 도 향후 동일 패턴으로 합류 가능.)

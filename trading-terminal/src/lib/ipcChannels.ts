@@ -190,6 +190,13 @@ export const IPC_CHANNELS = {
    * payload: { cash: number; holdings: { ticker: string; qty: number }[] }
    */
   SELF_PAPER_BALANCE_UPDATED: 'terminal:self-paper:balance-updated',
+
+  /**
+   * 로그인 완료 후 활성 계정 종류 통보 (Main → Renderer push).
+   * Renderer 가 KIS API 호출 여부를 분기하는 데 사용.
+   * payload: { accountType: 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER' }
+   */
+  ACCOUNT_TYPE_CHANGED: 'terminal:account-type:changed',
 } as const
 
 /**

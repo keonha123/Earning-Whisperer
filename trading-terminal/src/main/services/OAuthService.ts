@@ -58,6 +58,7 @@ const PROVIDERS: Record<OAuthProvider, { authUrl: string; scope: string; envClie
 interface OAuthSuccess {
   user: { id: number; email: string; nickname: string; role: string }
   settings: unknown | null
+  accountType: string
 }
 
 /* -------------------------------------------------------------------------- */
@@ -331,7 +332,7 @@ class OAuthServiceImpl {
       win?.show()
       win?.focus()
 
-      this.resolveFlow({ user, settings })
+      this.resolveFlow({ user, settings, accountType: mainState.accountType })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown'
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
