@@ -50,6 +50,13 @@ export const IPC_CHANNELS = {
   WS_DISCONNECT: 'terminal:ws:disconnect',
 
   TRADES_GET: 'terminal:trades:get',
+  /**
+   * CSV 파일 저장 (Renderer → Main, invoke).
+   * payload: { filename: string; csvContent: string }
+   * Main 이 dialog.showSaveDialog 후 fs.writeFile (UTF-8 BOM).
+   * 응답: { saved: boolean; filePath?: string }
+   */
+  SHELL_SAVE_CSV: 'terminal:shell:save-csv',
   TRADE_CANCEL: 'terminal:trade:cancel',
   /** TradingRoom 진입 시 세션 시작. payload: { ticker: string } */
   TRADE_SESSION_START: 'terminal:trade-session:start',

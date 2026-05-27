@@ -71,15 +71,18 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [detailRow, setDetailRow] = useState<HistoryRowMock | null>(null)
 
   const navigate = useNavigate()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
   const clearUser = useUserStore((s) => s.clear)
 
   useEffect(() => {
+    setPage(0)
     loadTrades(0)
+    // period 변경 시 첫 페이지부터 재조회
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [period])
 
   /**
    * @param p          요청할 페이지 번호 (0-base).
@@ -88,13 +91,23 @@ export default function HistoryPage() {
    *                      같은 tick 의 closure 가 옛 pageSize 를 캡처한다.
    *                      sizeOverride 가 주어지면 우선 적용한다.
    */
+  function periodToStartDate(p: PeriodId): string | undefined {
+    if (p === 'all') return undefined
+    const days = p === '7d' ? 7 : p === '30d' ? 30 : 90
+    const d = new Date()
+    d.setDate(d.getDate() - days)
+    // ISO 8601 — 백엔드 @DateTimeFormat(iso = ISO.DATE_TIME) 파싱 형식
+    return d.toISOString().replace('Z', '')
+  }
+
   async function loadTrades(p: number, sizeOverride?: number) {
     setLoading(true)
     try {
       const size = sizeOverride ?? Number(pageSize)
+      const startDate = periodToStartDate(period)
       const data = await ipc.invoke<{ content: Trade[]; totalPages: number }>(
         IPC_CHANNELS.TRADES_GET,
-        { page: p, size },
+        { page: p, size, ...(startDate ? { startDate } : {}) },
       )
       setTrades(data.content ?? [])
       setTotalPages(data.totalPages ?? 0)
@@ -119,6 +132,31 @@ export default function HistoryPage() {
   function handlePageChange(p: number) {
     setPage(p)
     loadTrades(p)
+  }
+
+  async function handleCsvExport() {
+    const rows = filtered
+    if (rows.length === 0) return
+    const headers = ['일시', '종목', '방향', '모드', '수량', '체결가', '체결금액', '상태']
+    const lines = [
+      headers.join(','),
+      ...rows.map((r) =>
+        [
+          r.createdAt,
+          r.ticker,
+          r.side,
+          r.mode,
+          r.executedQty,
+          r.executedPrice ?? '',
+          r.amount ?? '',
+          r.status,
+        ].join(','),
+      ),
+    ]
+    const csvContent = lines.join('\n')
+    const periodLabel = period === 'all' ? 'all' : period
+    const filename = `trades_${periodLabel}_${new Date().toISOString().slice(0, 10)}`
+    await ipc.invoke(IPC_CHANNELS.SHELL_SAVE_CSV, { filename, csvContent })
   }
 
   // 표시 행: DEV 에서는 fixture (mode/AI 컬럼 시연용), PROD 에서는 실제 trades.
@@ -155,8 +193,6 @@ export default function HistoryPage() {
         const q = search.trim().toUpperCase()
         if (!r.ticker.includes(q)) return false
       }
-      // period 필터: dev-mock 은 고정 날짜이므로 UI 만 표시 (실제 필터 효과 없음)
-      // TODO(impl): TRADES_GET 에 period 쿼리 파라미터 추가 후 백엔드 필터링.
       return true
     })
   }, [displayRows, segment, modeFilter, tickerFilter, search])
@@ -290,15 +326,7 @@ export default function HistoryPage() {
 
         <button
           type="button"
-          onClick={() => {
-            // TODO(impl): SHELL_SAVE_CSV IPC 핸들러 추가 후 연결.
-            //   - main 측에서 path traversal 방지 (다운로드 디렉터리 화이트리스트).
-            //   - 파일명 sanitize ([A-Za-z0-9_-]).
-            //   - 사용자 권한 + KIS 토큰 유효성 검증.
-            //   - CSV 인코딩: UTF-8 + BOM (Excel 한글 호환).
-            //   - 민감 데이터(체결가/금액) 포함 — 사용자 확인 다이얼로그 필요.
-            console.warn('[HistoryPage] CSV 내보내기는 다음 PR 에서 구현됩니다.')
-          }}
+          onClick={handleCsvExport}
           className="h-[30px] px-3 inline-flex items-center gap-1.5 rounded-md
                      border border-accent-500/35 text-accent-400 hover:bg-accent-500/10 hover:text-accent-300
                      text-[11px] font-semibold whitespace-nowrap"
@@ -352,7 +380,7 @@ export default function HistoryPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((r) => <Row key={r.id} row={r} />)
+                filtered.map((r) => <Row key={r.id} row={r} onDetail={() => setDetailRow(r)} />)
               )}
             </tbody>
           </table>
@@ -396,6 +424,9 @@ export default function HistoryPage() {
           />
         </div>
       </div>
+      {detailRow && (
+        <TradeDetailModal row={detailRow} onClose={() => setDetailRow(null)} />
+      )}
     </div>
   )
 }
@@ -448,7 +479,7 @@ function SkeletonRow() {
   )
 }
 
-function Row({ row }: { row: HistoryRowMock }) {
+function Row({ row, onDetail }: { row: HistoryRowMock; onDetail: () => void }) {
   const isFailed = row.status === 'FAILED'
   const showAi = import.meta.env.DEV && row.ai_score != null
 
@@ -509,10 +540,7 @@ function Row({ row }: { row: HistoryRowMock }) {
       <td className="px-2 text-center align-middle border-b border-border-subtle">
         <button
           type="button"
-          // TODO(impl): 상세 화면 라우트 도입 후 navigate(`/history/${id}`).
-          onClick={() => {
-            console.warn('[HistoryPage] 상세 화면은 다음 PR 에서 구현됩니다.', row.id)
-          }}
+          onClick={onDetail}
           className="text-[11px] text-text-tertiary hover:text-accent-400
                      inline-flex items-center gap-0.5"
         >
@@ -578,6 +606,53 @@ function StatusBadge({ status, reason }: { status: HistoryStatus; reason?: strin
       </svg>
       실패
     </span>
+  )
+}
+
+function TradeDetailModal({ row, onClose }: { row: HistoryRowMock; onClose: () => void }) {
+  const fields: [string, string][] = [
+    ['일시', formatDateTime(row.createdAt)],
+    ['종목', row.ticker],
+    ['방향', row.side],
+    ['모드', row.mode],
+    ['주문수량', String(row.executedQty)],
+    ['체결가', row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'],
+    ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
+    ['상태', row.status],
+    ...(row.failureReason ? [['거부 사유', row.failureReason] as [string, string]] : []),
+    ...(row.ai_score != null ? [['AI 점수', row.ai_score.toFixed(3)] as [string, string]] : []),
+  ]
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[420px] max-w-[90vw] p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[14px] font-semibold text-text-primary">거래 상세</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-text-tertiary hover:text-text-primary"
+          >
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
+        </div>
+        <dl className="space-y-2.5">
+          {fields.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-4">
+              <dt className="text-[11px] text-text-tertiary whitespace-nowrap">{label}</dt>
+              <dd className="text-[12px] text-text-primary num font-medium truncate text-right">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
   )
 }
 
