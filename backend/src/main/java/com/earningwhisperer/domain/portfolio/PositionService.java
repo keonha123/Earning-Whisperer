@@ -1,5 +1,6 @@
 package com.earningwhisperer.domain.portfolio;
 
+import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.stock.DailyBarRepository;
 import com.earningwhisperer.domain.stock.TickerLatestClose;
 import com.earningwhisperer.domain.user.User;
@@ -175,6 +176,46 @@ public class PositionService {
         double totalAssets = cashBalance + totalMarketValue;
         if (totalAssets <= 0) return 0.0;
         return tickerMarketValue / totalAssets;
+    }
+
+    /**
+     * SELF_PAPER 가상 체결 반영 — BUY 시 upsert(가중평균가), SELL 시 수량 차감(잔량 0이면 삭제).
+     * TradeService.processCallback 이 SELF_PAPER 콜백 수신 시 호출한다.
+     */
+    @Transactional
+    public void applyTrade(Long userId, Long brokerAccountId, String ticker,
+                            TradeAction side, int qty, double price) {
+        if (side == TradeAction.BUY) {
+            positionRepository.findByBrokerAccountIdAndTicker(brokerAccountId, ticker)
+                    .ifPresentOrElse(
+                            p -> {
+                                double newAvg = (p.getAvgPrice() * p.getQuantity() + price * qty)
+                                        / (p.getQuantity() + qty);
+                                p.update(p.getQuantity() + qty, newAvg);
+                            },
+                            () -> {
+                                User user = userRepository.findById(userId)
+                                        .orElseThrow(() -> new EntityNotFoundException(
+                                                "User not found: " + userId));
+                                positionRepository.save(Position.builder()
+                                        .user(user)
+                                        .brokerAccountId(brokerAccountId)
+                                        .ticker(ticker)
+                                        .quantity(qty)
+                                        .avgPrice(price)
+                                        .build());
+                            });
+        } else {
+            positionRepository.findByBrokerAccountIdAndTicker(brokerAccountId, ticker)
+                    .ifPresent(p -> {
+                        int remaining = p.getQuantity() - qty;
+                        if (remaining <= 0) {
+                            positionRepository.delete(p);
+                        } else {
+                            p.update(remaining, p.getAvgPrice());
+                        }
+                    });
+        }
     }
 
     /**

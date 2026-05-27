@@ -4,6 +4,7 @@ import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.AssetSnapshotService;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
+import com.earningwhisperer.domain.portfolio.Position;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
 import com.earningwhisperer.domain.portfolio.PositionService;
@@ -147,6 +148,23 @@ public class PortfolioSettingsController {
         LocalDate from = to.minusDays(days - 1);
         return ResponseEntity.ok(assetSnapshotService.getHistory(userId, from, to));
     }
+
+    /**
+     * 활성 BrokerAccount 의 보유종목 목록 조회.
+     * SELF_PAPER 모드 Terminal 의 잔고 초기화에 사용.
+     */
+    @GetMapping("/positions")
+    public ResponseEntity<List<PositionResponse>> getPositions(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        Long activeId = brokerAccountService.getActive(userId).map(BrokerAccount::getId).orElse(null);
+        if (activeId == null) return ResponseEntity.ok(List.of());
+        List<PositionResponse> body = positionService.getPositions(activeId).stream()
+                .map(p -> new PositionResponse(p.getTicker(), p.getQuantity(), p.getAvgPrice()))
+                .toList();
+        return ResponseEntity.ok(body);
+    }
+
+    public record PositionResponse(String ticker, int quantity, double avgPrice) {}
 
     /**
      * 활성 BrokerAccount 전환.

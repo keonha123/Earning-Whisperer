@@ -1,5 +1,8 @@
 package com.earningwhisperer.domain.trade;
 
+import com.earningwhisperer.domain.portfolio.AccountType;
+import com.earningwhisperer.domain.portfolio.BrokerAccountRepository;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
@@ -41,6 +44,8 @@ public class TradeService {
 
     private final TradeRepository tradeRepository;
     private final UserRepository userRepository;
+    private final BrokerAccountRepository brokerAccountRepository;
+    private final PositionService positionService;
 
     @Value("${app.trade.pending-ttl-seconds:30}")
     private long pendingTtlSeconds;
@@ -207,6 +212,22 @@ public class TradeService {
             } else {
                 log.info("[TradeService] 체결 완료 - tradeId={} brokerOrderId={} qty={}",
                         tradeId, request.getBrokerOrderId(), qty);
+            }
+
+            // SELF_PAPER: 가상 체결 → Position + cashBalance 직접 반영
+            if (qty > 0 && before != TradeStatus.EXECUTED) {
+                brokerAccountRepository.findById(trade.getBrokerAccountId()).ifPresent(account -> {
+                    if (account.getAccountType() == AccountType.SELF_PAPER) {
+                        positionService.applyTrade(
+                                trade.getUser().getId(), account.getId(),
+                                trade.getTicker(), trade.getSide(), qty, price);
+                        double delta = trade.getSide() == TradeAction.BUY
+                                ? -(price * qty) : (price * qty);
+                        account.adjustCashBalance(delta);
+                        log.info("[TradeService] SELF_PAPER 가상 체결 반영 - tradeId={} side={} qty={} price={} cashDelta={}",
+                                tradeId, trade.getSide(), qty, price, delta);
+                    }
+                });
             }
         } else {
             trade.failed();

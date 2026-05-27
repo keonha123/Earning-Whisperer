@@ -236,6 +236,24 @@ export const BackendClient = {
     })
     return Array.isArray(data) ? data : []
   },
+
+  /**
+   * 사용자의 BrokerAccount 목록 중 active 계정을 반환. 없으면 null.
+   * 로그인 후 accountType 및 SELF_PAPER 잔고 초기화에 사용.
+   */
+  async getActiveBrokerAccount(): Promise<{ id: number; accountType: string; alias: string; cashBalance: number | null; active: boolean } | null> {
+    const { data } = await http.get<Array<{ id: number; accountType: string; alias: string; cashBalance: number | null; active: boolean }>>('/api/v1/portfolio/broker-accounts')
+    return Array.isArray(data) ? (data.find((a) => a.active) ?? null) : null
+  },
+
+  /**
+   * 활성 BrokerAccount 의 보유종목 목록 조회.
+   * SELF_PAPER 모드의 mainState 잔고 초기화에 사용.
+   */
+  async getPositions(): Promise<{ ticker: string; quantity: number; avgPrice: number }[]> {
+    const { data } = await http.get<{ ticker: string; quantity: number; avgPrice: number }[]>('/api/v1/portfolio/positions')
+    return Array.isArray(data) ? data : []
+  },
 }
 
 export interface AssetHistoryPoint {
