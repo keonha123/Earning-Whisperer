@@ -88,6 +88,24 @@ function AppRoutes() {
         setPendingConfirm(null)
       }),
 
+      ipc.on(IPC_CHANNELS.SELF_PAPER_BALANCE_UPDATED, (payload: any) => {
+        const { cash, holdings: newHoldings } = payload as {
+          cash: number
+          holdings: { ticker: string; qty: number }[]
+        }
+        const prev = usePortfolioStore.getState().holdings
+        const merged = newHoldings.map((h) => {
+          const existing = prev.find((p) => p.ticker === h.ticker)
+          return {
+            ticker: h.ticker,
+            qty: h.qty,
+            avgPrice: existing?.avgPrice ?? 0,
+            currentPrice: existing?.currentPrice ?? 0,
+          }
+        })
+        setBalance(cash, cash, merged)
+      }),
+
       ipc.on(IPC_CHANNELS.KIS_TOKEN_REFRESHED, (payload: any) => {
         setKisTokenStatus(payload.isValid ? 'VALID' : 'EXPIRED')
       }),
