@@ -141,8 +141,10 @@ export const BackendClient = {
     await http.put('/api/v1/users/settings', settings)
   },
 
-  async getTrades(page = 0, size = 20): Promise<unknown> {
-    const { data } = await http.get('/api/v1/trades', { params: { page, size } })
+  async getTrades(page = 0, size = 20, startDate?: string): Promise<unknown> {
+    const params: Record<string, unknown> = { page, size }
+    if (startDate) params.startDate = startDate
+    const { data } = await http.get('/api/v1/trades', { params })
     return data
   },
 
