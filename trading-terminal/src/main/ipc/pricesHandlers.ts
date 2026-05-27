@@ -1,5 +1,6 @@
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { getCachedPrices, setHoldings } from '../services/PricePoller'
+import { SubscriptionManager } from '../services/SubscriptionManager'
 import { registerHandler } from './registerHandler'
 
 /**
@@ -21,6 +22,7 @@ export function registerPricesHandlers(): void {
     (_e, payload) => {
       const tickers = Array.isArray(payload?.tickers) ? payload.tickers : []
       setHoldings(tickers)
+      SubscriptionManager.setHoldings(tickers)
       return { ok: true }
     },
   )

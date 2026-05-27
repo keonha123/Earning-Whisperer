@@ -3,6 +3,7 @@ import { BackendClient, type WatchlistItem } from '../services/BackendClient'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { IpcError, isIpcError } from '../../lib/types/ipcError'
 import { setWatchlist as setPricePollerWatchlist } from '../services/PricePoller'
+import { SubscriptionManager } from '../services/SubscriptionManager'
 import { registerHandler } from './registerHandler'
 
 /**
@@ -38,7 +39,9 @@ async function fetchAndCache(): Promise<WatchlistItem[]> {
   // PricePoller 통보를 broadcast 보다 먼저 수행 — renderer 가 WATCHLIST_UPDATE 수신 직후
   // PRICES_GET 으로 가격을 묻는 시점에 PricePoller 가 신규 ticker 를 이미 폴링 대상에 포함하고
   // 있어야 빈 가격 노출이 줄어든다. 두 호출 모두 동기지만 향후 비동기화 가능성 대비.
-  setPricePollerWatchlist(cachedWatchlist.map((i) => i.ticker))
+  const tickerList = cachedWatchlist.map((i) => i.ticker)
+  setPricePollerWatchlist(tickerList)
+  SubscriptionManager.setWatchlist(tickerList)
   pushToRenderer(IPC_CHANNELS.WATCHLIST_UPDATE, cachedWatchlist)
   return cachedWatchlist
 }
@@ -86,9 +89,9 @@ export function registerWatchlistHandlers(): void {
         cachedWatchlist = [...cachedWatchlist, item]
       }
       lastFetchAt = Date.now()
-      // PricePoller 통보 → broadcast 순서. 신규 ticker 가 폴링 대상에 등록된 후에
-      // renderer 가 WATCHLIST_UPDATE 를 받도록 보장.
-      setPricePollerWatchlist(cachedWatchlist.map((i) => i.ticker))
+      const tickerListAdd = cachedWatchlist.map((i) => i.ticker)
+      setPricePollerWatchlist(tickerListAdd)
+      SubscriptionManager.setWatchlist(tickerListAdd)
       pushToRenderer(IPC_CHANNELS.WATCHLIST_UPDATE, cachedWatchlist)
       return item
     },
@@ -112,8 +115,9 @@ export function registerWatchlistHandlers(): void {
 
       cachedWatchlist = cachedWatchlist.filter((w) => w.ticker !== ticker)
       lastFetchAt = Date.now()
-      // PricePoller 통보 → broadcast 순서로 일관성 유지 (add/refresh 와 동일 패턴).
-      setPricePollerWatchlist(cachedWatchlist.map((i) => i.ticker))
+      const tickerListRemove = cachedWatchlist.map((i) => i.ticker)
+      setPricePollerWatchlist(tickerListRemove)
+      SubscriptionManager.setWatchlist(tickerListRemove)
       pushToRenderer(IPC_CHANNELS.WATCHLIST_UPDATE, cachedWatchlist)
     },
   )
@@ -160,6 +164,7 @@ export function stop(): void {
   cachedWatchlist = []
   lastFetchAt = 0
   setPricePollerWatchlist([])
+  SubscriptionManager.setWatchlist([])
 }
 
 /** 테스트 전용 — 캐시 상태 노출 (production 코드에서는 사용 금지). */

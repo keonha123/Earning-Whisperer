@@ -1,6 +1,7 @@
 import { StompService } from '../services/StompService'
 import { BackendClient } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
+import { SubscriptionManager } from '../services/SubscriptionManager'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { registerHandler } from './registerHandler'
 
@@ -45,12 +46,16 @@ export function registerWsHandlers() {
     (_e, payload) => {
       if (!payload || typeof payload.ticker !== 'string' || !payload.ticker) return
       mainState.setTradeSession(true, payload.ticker)
+      SubscriptionManager.setActiveSession(payload.ticker)
     },
   )
 
   registerHandler<undefined, void>(
     IPC_CHANNELS.TRADE_SESSION_END,
-    () => { mainState.setTradeSession(false) },
+    () => {
+      mainState.setTradeSession(false)
+      SubscriptionManager.setActiveSession(null)
+    },
   )
 
   registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_SUBSCRIBE, (_e, payload) => {
