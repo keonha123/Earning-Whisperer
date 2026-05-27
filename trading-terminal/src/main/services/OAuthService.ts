@@ -28,6 +28,7 @@ import { KisService } from './KisService'
 import { start as startWatchlist } from '../ipc/watchlistHandlers'
 import { start as startEarnings } from '../ipc/earningsHandlers'
 import { start as startPricePoller } from './PricePoller'
+import { KisWebSocketService } from './KisWebSocketService'
 
 export type OAuthProvider = 'google' | 'kakao'
 
@@ -319,6 +320,8 @@ class OAuthServiceImpl {
       startEarnings()
       // 시세 폴링 시작 — ticker 들은 watchlist/holdings 통보로 채워진다.
       startPricePoller()
+      // KIS WebSocket 실시간 시세 연결 (실전 appKey 미등록 시 silent skip).
+      void KisWebSocketService.connectWithStoredKey()
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       res.end(renderResultHtml('로그인이 완료되었습니다'))

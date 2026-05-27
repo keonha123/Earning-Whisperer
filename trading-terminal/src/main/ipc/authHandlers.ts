@@ -9,6 +9,8 @@ import { start as startWatchlist, stop as stopWatchlist } from './watchlistHandl
 import { clearCache as clearStockDetailCache } from './stockDetailHandlers'
 import { start as startEarnings, stop as stopEarnings } from './earningsHandlers'
 import { start as startPricePoller, stop as stopPricePoller } from '../services/PricePoller'
+import { KisWebSocketService } from '../services/KisWebSocketService'
+import { SubscriptionManager } from '../services/SubscriptionManager'
 import { registerHandler } from './registerHandler'
 
 export function registerAuthHandlers() {
@@ -62,6 +64,8 @@ export function registerAuthHandlers() {
       startEarnings()
       // 시세 폴링 시작 — ticker 들은 watchlist 동기화/Renderer holdings 통보로 채워진다.
       startPricePoller()
+      // KIS WebSocket 실시간 시세 연결 (실전 appKey 미등록 시 silent skip).
+      void KisWebSocketService.connectWithStoredKey()
 
       return { user, settings }
     },
@@ -69,6 +73,8 @@ export function registerAuthHandlers() {
 
   registerHandler<undefined, void>(IPC_CHANNELS.AUTH_LOGOUT, () => {
     StompService.disconnect()
+    KisWebSocketService.disconnect()
+    SubscriptionManager.reset()
     stopWatchlist()
     stopEarnings()
     stopPricePoller()
