@@ -256,7 +256,36 @@ async function executeSelfPaper(signal: TradeSignal): Promise<TradeResult> {
     error_message: null,
   })
 
+  // 체결 후 로컬 상태 즉시 갱신 — 다음 매매의 수량 계산이 최신 잔고를 기준으로 하도록 보장
+  const updatedCash = signal.action === 'BUY'
+    ? cash - currentPrice * finalQty
+    : cash + currentPrice * finalQty
+  const updatedHoldings = applyHoldingsDelta(holdings, signal.ticker, signal.action, finalQty)
+  mainState.setSelfPaperBalance(updatedCash, updatedHoldings)
+  pushToRenderer(IPC_CHANNELS.SELF_PAPER_BALANCE_UPDATED, {
+    cash: updatedCash,
+    holdings: updatedHoldings,
+  })
+
   NotificationService.notifyTradeExecuted(signal.ticker, signal.action, finalQty, currentPrice)
   pushToRenderer(IPC_CHANNELS.TRADE_EXECUTED, result)
   return result
+}
+
+function applyHoldingsDelta(
+  holdings: { ticker: string; qty: number }[],
+  ticker: string,
+  action: 'BUY' | 'SELL',
+  qty: number,
+): { ticker: string; qty: number }[] {
+  if (action === 'BUY') {
+    const existing = holdings.find((h) => h.ticker === ticker)
+    if (existing) {
+      return holdings.map((h) => h.ticker === ticker ? { ...h, qty: h.qty + qty } : h)
+    }
+    return [...holdings, { ticker, qty }]
+  }
+  return holdings
+    .map((h) => h.ticker === ticker ? { ...h, qty: h.qty - qty } : h)
+    .filter((h) => h.qty > 0)
 }

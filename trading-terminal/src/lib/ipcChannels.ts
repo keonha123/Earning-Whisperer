@@ -183,6 +183,13 @@ export const IPC_CHANNELS = {
    * 응답: StockPriceEntry[] (ticker, currentPrice, previousClose, changePercent, updatedAt)
    */
   STOCK_PRICES_SNAPSHOT_GET: 'terminal:stocks:prices-snapshot-get',
+
+  /**
+   * SELF_PAPER 체결 후 잔고/보유종목 즉시 반영 (Main → Renderer push).
+   * executeSelfPaper() 성공 시 mainState 갱신과 동시에 발신.
+   * payload: { cash: number; holdings: { ticker: string; qty: number }[] }
+   */
+  SELF_PAPER_BALANCE_UPDATED: 'terminal:self-paper:balance-updated',
 } as const
 
 /**
