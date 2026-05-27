@@ -5,6 +5,7 @@
  */
 
 export type TradingMode = 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
+export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
 
 interface MainState {
   /** EarningWhisperer 백엔드 JWT 액세스 토큰 */
@@ -27,6 +28,13 @@ interface MainState {
   isOrderInProgress: boolean
   /** 모의투자(true) / 실전투자(false) 환경 — 토큰/baseURL/rate limit 분기 */
   isPaperTrading: boolean
+  /** 활성 BrokerAccount 의 계정 유형 — 로그인 후 백엔드에서 로드 */
+  accountType: AccountType
+  /** STOMP /topic/prices 에서 수신한 최신 현재가 캐시 (ticker → price) */
+  pricesCache: Record<string, number>
+  /** SELF_PAPER 모드 잔고 — cashBalance + 보유종목. 로그인 시 초기화, 매매 후 갱신. */
+  selfPaperCash: number | null
+  selfPaperHoldings: { ticker: string; qty: number }[]
   /** TradingRoom 세션 활성 여부 — 진입 시 true, 명시적 나가기 시 false */
   isTradeSessionActive: boolean
   /** 현재 세션의 ticker — 이 ticker의 신호만 처리 */
@@ -42,6 +50,10 @@ const state: MainState = {
   tradingMode: 'MANUAL',
   isOrderInProgress: false,
   isPaperTrading: true,
+  accountType: 'KIS_PAPER',
+  pricesCache: {},
+  selfPaperCash: null,
+  selfPaperHoldings: [],
   isTradeSessionActive: false,
   activeSessionTicker: null,
 }
@@ -92,6 +104,23 @@ export const mainState = {
   get isPaperTrading() { return state.isPaperTrading },
   setPaperTrading(value: boolean) { state.isPaperTrading = value },
 
+  get accountType() { return state.accountType },
+  setAccountType(t: AccountType) { state.accountType = t },
+
+  updatePricesCache(updates: Record<string, number>) {
+    Object.assign(state.pricesCache, updates)
+  },
+  getPriceFromCache(ticker: string): number | null {
+    return state.pricesCache[ticker] ?? null
+  },
+
+  get selfPaperCash() { return state.selfPaperCash },
+  get selfPaperHoldings() { return state.selfPaperHoldings },
+  setSelfPaperBalance(cash: number | null, holdings: { ticker: string; qty: number }[]) {
+    state.selfPaperCash = cash
+    state.selfPaperHoldings = holdings
+  },
+
   get isTradeSessionActive() { return state.isTradeSessionActive },
   get activeSessionTicker() { return state.activeSessionTicker },
   setTradeSession(active: boolean, ticker?: string) {
@@ -111,6 +140,10 @@ export const mainState = {
     state.kisTokenLifetimeSec = null
     state.tradingMode = 'MANUAL'
     state.isOrderInProgress = false
+    state.accountType = 'KIS_PAPER'
+    state.pricesCache = {}
+    state.selfPaperCash = null
+    state.selfPaperHoldings = []
     state.isTradeSessionActive = false
     state.activeSessionTicker = null
   },

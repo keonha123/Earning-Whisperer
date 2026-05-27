@@ -1,4 +1,4 @@
-import { mainState, TradingMode } from '../store/mainState'
+import { mainState, TradingMode, AccountType } from '../store/mainState'
 import { BackendClient } from '../services/BackendClient'
 import { StompService } from '../services/StompService'
 import { KisService } from '../services/KisService'
@@ -30,6 +30,23 @@ export function registerAuthHandlers() {
         }
       } catch (e) {
         console.warn('[Auth] 설정 로드 실패, 기본값 사용:', e instanceof Error ? e.message : 'unknown error')
+      }
+
+      // 활성 BrokerAccount 조회 → accountType + SELF_PAPER 잔고 초기화 (선택)
+      try {
+        const activeAccount = await BackendClient.getActiveBrokerAccount()
+        if (activeAccount) {
+          mainState.setAccountType(activeAccount.accountType as AccountType)
+          if (activeAccount.accountType === 'SELF_PAPER') {
+            const positions = await BackendClient.getPositions()
+            mainState.setSelfPaperBalance(
+              activeAccount.cashBalance,
+              positions.map((p) => ({ ticker: p.ticker, qty: p.quantity })),
+            )
+          }
+        }
+      } catch (e) {
+        console.warn('[Auth] BrokerAccount 조회 실패, 기본값 사용:', e instanceof Error ? e.message : 'unknown error')
       }
 
       // KIS 토큰 복원 (선택 — 실패해도 로그인 진행)

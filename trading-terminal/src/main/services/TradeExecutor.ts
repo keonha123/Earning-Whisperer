@@ -69,6 +69,10 @@ export const TradeExecutor = {
     mainState.setOrderInProgress(true)
 
     try {
+      if (mainState.accountType === 'SELF_PAPER') {
+        return await executeSelfPaper(signal)
+      }
+
       // Step 1: 잔고 조회 (+ BUY 시 현재가 조회) → 수량 산출
       const balance = await KisService.getBalance()
       const currentPrice = signal.action === 'BUY'
@@ -208,4 +212,51 @@ function failResult(tradeId: string, reason: string): TradeResult {
     executedQty: 0,
     errorMessage: reason,
   }
+}
+
+/**
+ * SELF_PAPER 가상 체결 — KIS API 미경유, pricesCache 현재가 기준 즉시 체결.
+ * 수량 계산은 KIS 경로와 동일한 calcQty 를 사용하되 잔고를 mainState 에서 읽는다.
+ * 콜백 전송 → 백엔드가 Position + cashBalance 를 권위적으로 업데이트한다.
+ */
+async function executeSelfPaper(signal: TradeSignal): Promise<TradeResult> {
+  const cash = mainState.selfPaperCash ?? 0
+  const holdings = mainState.selfPaperHoldings
+
+  const currentPrice = signal.action === 'BUY'
+    ? (mainState.getPriceFromCache(signal.ticker) ?? 0)
+    : 0
+
+  const selfBalance: BalanceLite = {
+    orderableCash: cash,
+    holdings,
+  }
+
+  const finalQty = calcQty(signal, selfBalance, currentPrice)
+
+  if (finalQty <= 0) {
+    const reason = failureReason(signal, selfBalance, currentPrice)
+    return await sendFailCallback(signal.trade_id, reason)
+  }
+
+  const result: TradeResult = {
+    tradeId: signal.trade_id,
+    status: 'EXECUTED',
+    orderId: null,
+    executedPrice: currentPrice,
+    executedQty: finalQty,
+    errorMessage: null,
+  }
+
+  await BackendClient.sendCallback(signal.trade_id, {
+    status: 'EXECUTED',
+    broker_order_id: null,
+    executed_price: currentPrice,
+    executed_qty: finalQty,
+    error_message: null,
+  })
+
+  NotificationService.notifyTradeExecuted(signal.ticker, signal.action, finalQty, currentPrice)
+  pushToRenderer(IPC_CHANNELS.TRADE_EXECUTED, result)
+  return result
 }

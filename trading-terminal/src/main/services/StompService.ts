@@ -180,6 +180,9 @@ export const StompService = {
                 lastUpdated: u.updatedAt,
               }))
               markStompCovered(batch.map((u) => u.ticker))
+              const priceUpdate: Record<string, number> = {}
+              for (const u of batch) priceUpdate[u.ticker] = u.currentPrice
+              mainState.updatePricesCache(priceUpdate)
               pushToRenderer(IPC_CHANNELS.PRICES_UPDATE, batch)
             } catch (e) {
               console.error('[StompService] 주가 업데이트 파싱 실패:', e)

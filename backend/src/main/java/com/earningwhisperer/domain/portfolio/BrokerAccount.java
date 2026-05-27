@@ -65,6 +65,10 @@ public class BrokerAccount extends BaseEntity {
         this.cashBalance = cashBalance;
     }
 
+    public void adjustCashBalance(double delta) {
+        this.cashBalance = (this.cashBalance != null ? this.cashBalance : 0.0) + delta;
+    }
+
     public void renameAlias(String alias) {
         if (alias == null || alias.isBlank()) {
             throw new IllegalArgumentException("alias 는 비어 있을 수 없습니다.");
