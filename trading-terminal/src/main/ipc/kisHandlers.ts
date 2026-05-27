@@ -29,6 +29,72 @@ function pushToRenderer(channel: string, payload: unknown) {
  * `config.headers` 에 KIS appkey/appsecret/Bearer token 이 평문 보존되며 toJSON 으로
  * 자동 직렬화된다. sanitizeAxiosErrorDetails 로 status/data/code 만 추출해 사용.
  */
+async function executeSelfPaperManual(req: ManualOrderRequest) {
+  const cash = mainState.selfPaperCash ?? 0
+  const holdings = mainState.selfPaperHoldings
+  const currentPrice = mainState.getPriceFromCache(req.ticker) ?? 0
+  const executedPrice = req.price ?? currentPrice
+
+  if (executedPrice <= 0) {
+    throw new IpcError('KIS_ERROR', '현재가 정보를 찾을 수 없습니다.')
+  }
+
+  if (req.side === 'BUY') {
+    if (cash < executedPrice * req.qty) {
+      throw new IpcError('KIS_ERROR', '잔고가 부족합니다.')
+    }
+  } else {
+    const holding = holdings.find((h) => h.ticker === req.ticker)
+    if (!holding || holding.qty < req.qty) {
+      throw new IpcError('KIS_ERROR', '보유 수량이 부족합니다.')
+    }
+  }
+
+  const updatedCash = req.side === 'BUY'
+    ? cash - executedPrice * req.qty
+    : cash + executedPrice * req.qty
+
+  const updatedHoldings = req.side === 'BUY'
+    ? (() => {
+        const existing = holdings.find((h) => h.ticker === req.ticker)
+        return existing
+          ? holdings.map((h) => h.ticker === req.ticker ? { ...h, qty: h.qty + req.qty } : h)
+          : [...holdings, { ticker: req.ticker, qty: req.qty }]
+      })()
+    : holdings
+        .map((h) => h.ticker === req.ticker ? { ...h, qty: h.qty - req.qty } : h)
+        .filter((h) => h.qty > 0)
+
+  mainState.setSelfPaperBalance(updatedCash, updatedHoldings)
+  pushToRenderer(IPC_CHANNELS.SELF_PAPER_BALANCE_UPDATED, {
+    cash: updatedCash,
+    holdings: updatedHoldings,
+  })
+
+  BackendClient.recordManualTrade({
+    ticker: req.ticker,
+    side: req.side,
+    order_type: req.price != null ? 'LIMIT' : 'MARKET',
+    order_qty: req.qty,
+    price: executedPrice,
+    executed_qty: req.qty,
+    executed_price: executedPrice,
+    broker_order_id: null,
+    status: 'EXECUTED',
+    error_message: null,
+  }).catch((e) => console.error('[kisHandlers] SELF_PAPER 수동 주문 기록 실패:', e))
+
+  const result = {
+    status: 'EXECUTED' as const,
+    orderId: null,
+    executedPrice,
+    executedQty: req.qty,
+    errorMessage: null,
+  }
+  pushToRenderer(IPC_CHANNELS.TRADE_EXECUTED, result)
+  return result
+}
+
 function toKisError(e: unknown, fallbackMessage: string): IpcError {
   if (e instanceof IpcError) return e
   const message = e instanceof Error ? e.message : fallbackMessage
@@ -50,6 +116,19 @@ export function registerKisHandlers() {
   })
 
   registerHandler(IPC_CHANNELS.KIS_GET_BALANCE, async () => {
+    if (mainState.accountType === 'SELF_PAPER') {
+      const cash = mainState.selfPaperCash ?? 0
+      return {
+        orderableCash: cash,
+        totalCash: cash,
+        holdings: mainState.selfPaperHoldings.map((h) => ({
+          ticker: h.ticker,
+          qty: h.qty,
+          avgPrice: 0,
+          currentPrice: mainState.getPriceFromCache(h.ticker) ?? 0,
+        })),
+      }
+    }
     try {
       return await KisService.getBalance()
     } catch (e) {
@@ -74,6 +153,11 @@ export function registerKisHandlers() {
     }
     if (mainState.isOrderInProgress) {
       throw new IpcError('ORDER_IN_PROGRESS', '이미 주문이 진행 중입니다.')
+    }
+
+    // SELF_PAPER 수동 주문 — KIS API 미경유, pricesCache 현재가 기준 즉시 가상 체결
+    if (mainState.accountType === 'SELF_PAPER') {
+      return executeSelfPaperManual(req)
     }
 
     mainState.setOrderInProgress(true)

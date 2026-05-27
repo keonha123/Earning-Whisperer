@@ -67,7 +67,7 @@ export function registerAuthHandlers() {
       // KIS WebSocket 실시간 시세 연결 (실전 appKey 미등록 시 silent skip).
       void KisWebSocketService.connectWithStoredKey()
 
-      return { user, settings }
+      return { user, settings, accountType: mainState.accountType }
     },
   )
 

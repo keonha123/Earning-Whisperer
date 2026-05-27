@@ -20,9 +20,9 @@ export default function AuthPage() {
   const [step, setStep] = useState<Step>('login')
   const navigate = useNavigate()
   const { setAuthenticated, setHasCredentials } = useConnectionStore()
-  const { setUser, setSettings } = useUserStore()
+  const { setUser, setSettings, setAccountType } = useUserStore()
 
-  async function handleLoginSuccess(user: any, settings: any) {
+  async function handleLoginSuccess(user: any, settings: any, accountType?: string) {
     setUser(user)
     if (settings) {
       setSettings({
@@ -32,6 +32,7 @@ export default function AuthPage() {
         cooldownMinutes: settings.cooldownMinutes,
       })
     }
+    if (accountType) setAccountType(accountType as any)
     setAuthenticated(true)
     const hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
     const anyRegistered = hasCredentials.paper || hasCredentials.real
@@ -121,7 +122,7 @@ export default function AuthPage() {
 /* -------------------------------------------------------------------------- */
 /* LoginForm — 디자인 캔버스 기준 마크업 + 기존 IPC 호출 보존                 */
 /* -------------------------------------------------------------------------- */
-function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => void }) {
+function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accountType?: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
@@ -134,11 +135,11 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
     setError(null)
     setLoading(true)
     try {
-      const result = await ipc.invoke<{ user: any; settings: any }>(
+      const result = await ipc.invoke<{ user: any; settings: any; accountType?: string }>(
         IPC_CHANNELS.AUTH_LOGIN,
         { email, password },
       )
-      onSuccess(result.user, result.settings)
+      onSuccess(result.user, result.settings, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드의 "이메일 없음"/"비밀번호 틀림" 구분
       // 메시지를 그대로 노출하지 않고 generic 메시지로 통일.
@@ -168,11 +169,11 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any) => voi
     try {
       // Main 프로세스가 RFC 8252 Loopback 흐름으로 PKCE+state+localhost:9000 서버를 띄우고
       // 사용자의 기본 브라우저로 provider 인증 페이지를 연다. 콜백 수신 → 백엔드 교환 → 결과 반환.
-      const result = await ipc.invoke<{ user: any; settings: any }>(
+      const result = await ipc.invoke<{ user: any; settings: any; accountType?: string }>(
         IPC_CHANNELS.AUTH_OAUTH_START,
         { provider },
       )
-      onSuccess(result.user, result.settings)
+      onSuccess(result.user, result.settings, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드 메시지를 그대로 노출하지 않고 generic 메시지로 통일
       setError('소셜 로그인에 실패했습니다. 다시 시도해 주세요.')
