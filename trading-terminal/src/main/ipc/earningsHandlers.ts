@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { BackendClient, type EarningsTimelineItem } from '../services/BackendClient'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { registerHandler } from './registerHandler'
+import { SubscriptionManager } from '../services/SubscriptionManager'
 import type {
   EarningsTimelineData,
   EarningsEvent,
@@ -15,6 +16,10 @@ const KST_OFFSET_SEC = 9 * 3600
 /** LIVE 판정 윈도우: 시작 기준 최대 3시간 경과 / 30분 이내 예정 */
 const LIVE_LOOKBACK_SEC = 3 * 3600
 const LIVE_LOOKAHEAD_SEC = 30 * 60
+
+/** Tier 2 KIS WebSocket 구독 윈도우: T-30분 ~ T+60분 */
+const TIER2_LOOKAHEAD_SEC = 30 * 60
+const TIER2_LOOKBACK_SEC = 60 * 60
 
 let pollTimer: NodeJS.Timeout | null = null
 
@@ -149,10 +154,31 @@ export function groupEarnings(items: EarningsTimelineItem[]): EarningsTimelineDa
   return { live, groups }
 }
 
+// ─── Tier 2 구독 ─────────────────────────────────────────────────────────────
+
+/**
+ * 어닝콜 T-30분 ~ T+60분 구간에 해당하는 ticker 목록 추출.
+ * 5분 폴링마다 호출되어 SubscriptionManager.setEarningsTickers 를 갱신한다.
+ */
+function extractTier2Tickers(items: EarningsTimelineItem[]): string[] {
+  const nowSec = Math.floor(Date.now() / 1000)
+  const windowStart = nowSec - TIER2_LOOKBACK_SEC   // T+60 이후는 제외
+  const windowEnd = nowSec + TIER2_LOOKAHEAD_SEC     // T-30 이전은 제외
+  return items
+    .filter((item) => item.scheduledAt >= windowStart && item.scheduledAt <= windowEnd)
+    .map((item) => item.ticker)
+}
+
 // ─── fetch + 그룹핑 ─────────────────────────────────────────────────────────
 
 async function fetchAndGroup(): Promise<EarningsTimelineData> {
   const raw = await BackendClient.getEarningsTimeline(90)
+  // Tier 2 구독 갱신 — 5분 폴링마다 T-30~T+60 구간 ticker 를 WebSocket 에 등록/해제
+  const tier2 = extractTier2Tickers(raw)
+  SubscriptionManager.setEarningsTickers(tier2)
+  if (tier2.length > 0) {
+    console.info('[EarningsHandlers] Tier2 구독 갱신:', tier2.join(', '))
+  }
   return groupEarnings(raw)
 }
 
@@ -208,4 +234,5 @@ export function stop(): void {
     clearInterval(pollTimer)
     pollTimer = null
   }
+  SubscriptionManager.setEarningsTickers([])
 }
