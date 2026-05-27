@@ -51,8 +51,11 @@ public class TradeService {
     private long pendingTtlSeconds;
 
     @Transactional(readOnly = true)
-    public Page<TradeResponse> getMyTrades(Long userId, Pageable pageable) {
-        return tradeRepository.findByUserId(userId, pageable)
+    public Page<TradeResponse> getMyTrades(Long userId, Pageable pageable, LocalDateTime startDate) {
+        if (startDate == null) {
+            return tradeRepository.findByUserId(userId, pageable).map(TradeResponse::new);
+        }
+        return tradeRepository.findByUserIdAndCreatedAtGreaterThanEqual(userId, startDate, pageable)
                 .map(TradeResponse::new);
     }
 

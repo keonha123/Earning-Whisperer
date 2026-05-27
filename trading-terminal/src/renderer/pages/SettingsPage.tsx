@@ -51,12 +51,12 @@ const SETTINGS_DEFAULT = {
   maxBuyRatio: 0.1,
   maxHoldingRatio: 0.3,
   cooldownMinutes: 5,
-  emaThreshold: 0.6,
+  aiScoreThreshold: 0.6,
 }
 
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const { settings, setSettings, setEmaThreshold, accountType } = useUserStore()
+  const { settings, setSettings, setAiScoreThreshold, accountType } = useUserStore()
   const isSelfPaper = accountType === 'SELF_PAPER'
   const {
     kisTokenStatus,
@@ -158,16 +158,15 @@ export default function SettingsPage() {
     setSaving(true)
     setSaveError(null)
     try {
-      // 주의: emaThreshold 는 IPC 페이로드에 포함하지 않음 — store 에만 반영.
-      // TODO: emaThreshold 백엔드 영속화 (SETTINGS_UPDATE 시그니처 확장 필요, 별도 PR)
       await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
         tradingMode: form.tradingMode,
         maxBuyRatio: form.maxBuyRatio,
         maxHoldingRatio: form.maxHoldingRatio,
         cooldownMinutes: form.cooldownMinutes,
+        aiScoreThreshold: form.aiScoreThreshold,
       })
       setSettings(form)
-      setEmaThreshold(form.emaThreshold)
+      setAiScoreThreshold(form.aiScoreThreshold)
       setSaved(true)
       if (savedTimerRef.current !== null) {
         clearTimeout(savedTimerRef.current)
@@ -192,7 +191,7 @@ export default function SettingsPage() {
       maxBuyRatio: SETTINGS_DEFAULT.maxBuyRatio,
       maxHoldingRatio: SETTINGS_DEFAULT.maxHoldingRatio,
       cooldownMinutes: SETTINGS_DEFAULT.cooldownMinutes,
-      emaThreshold: SETTINGS_DEFAULT.emaThreshold,
+      aiScoreThreshold: SETTINGS_DEFAULT.aiScoreThreshold,
     })
   }
 
@@ -478,22 +477,22 @@ export default function SettingsPage() {
               }
             />
 
-            {/* Row 4 — 매매 Threshold (EMA) */}
+            {/* Row 4 — AI 신호 임계치 */}
             <SettingsRow
-              label="매매 Threshold"
+              label="AI 신호 임계치"
               description="AI 점수가 이 값 이상일 때만 신호 발동 (0.0 ~ 1.0)"
               control={
                 <Slider
-                  value={form.emaThreshold}
+                  value={form.aiScoreThreshold}
                   min={0}
                   max={1}
                   step={0.05}
-                  onChange={(v) => setForm({ ...form, emaThreshold: v })}
+                  onChange={(v) => setForm({ ...form, aiScoreThreshold: v })}
                   formatValue={(v) => v.toFixed(2)}
-                  ariaLabel="매매 Threshold"
+                  ariaLabel="AI 신호 임계치"
                 />
               }
-              valueDisplay={form.emaThreshold.toFixed(2)}
+              valueDisplay={form.aiScoreThreshold.toFixed(2)}
               isLast
             />
           </div>

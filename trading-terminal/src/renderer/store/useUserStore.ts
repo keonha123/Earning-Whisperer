@@ -9,12 +9,8 @@ export interface UserSettings {
   maxBuyRatio: number
   maxHoldingRatio: number
   cooldownMinutes: number
-  /**
-   * AI 매매 신호 임계치 (0.0 ~ 1.0). 점수가 이 값 이상일 때만 신호 발동.
-   * TODO: emaThreshold 백엔드 영속화 (SETTINGS_UPDATE 확장 + BackendClient 수정).
-   *       현재는 로컬 zustand 상태로만 유지되며 IPC 페이로드에 포함되지 않음.
-   */
-  emaThreshold: number
+  /** AI 매매 신호 임계치 (0.0 ~ 1.0). 점수가 이 값 이상일 때만 신호 발동. */
+  aiScoreThreshold: number
 }
 
 interface UserState {
@@ -27,7 +23,7 @@ interface UserState {
 
   setUser: (user: { id: number; email: string; nickname: string; role: string }) => void
   setSettings: (settings: Partial<UserSettings>) => void
-  setEmaThreshold: (value: number) => void
+  setAiScoreThreshold: (value: number) => void
   setAccountType: (accountType: AccountType) => void
   clear: () => void
 }
@@ -37,7 +33,7 @@ const defaultSettings: UserSettings = {
   maxBuyRatio: 0.1,
   maxHoldingRatio: 0.3,
   cooldownMinutes: 5,
-  emaThreshold: 0.6,
+  aiScoreThreshold: 0.6,
 }
 
 export const useUserStore = create<UserState>((set) => ({
@@ -59,8 +55,8 @@ export const useUserStore = create<UserState>((set) => ({
   setSettings: (partial) =>
     set((state) => ({ settings: { ...state.settings, ...partial } })),
 
-  setEmaThreshold: (value) =>
-    set((state) => ({ settings: { ...state.settings, emaThreshold: value } })),
+  setAiScoreThreshold: (value) =>
+    set((state) => ({ settings: { ...state.settings, aiScoreThreshold: value } })),
 
   setAccountType: (accountType) => set({ accountType }),
 
