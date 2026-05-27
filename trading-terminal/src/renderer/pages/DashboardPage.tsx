@@ -101,7 +101,7 @@ export default function DashboardPage() {
       console.error('잔고 조회 실패:', e)
       // 기존 인라인 에러 배지(setError) 는 유지 + toast 추가.
       // AUTH_EXPIRED 의 경우 "다시 로그인" 액션으로 라우팅 정리.
-      setError('잔고 조회에 실패했습니다. KIS 토큰 상태를 확인해주세요.')
+      setError('잔고 조회에 실패했습니다.')
       // F-2: store 에 IpcError 정규화 기록 → PortfolioCard / HoldingsTable 의
       // stale overlay 가 자동으로 mount. 성공 응답 도착 시 setBalance 가 자동 clear.
       setBalanceFetchError(e)

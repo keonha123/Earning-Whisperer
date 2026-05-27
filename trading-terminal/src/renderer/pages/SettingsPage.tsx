@@ -56,7 +56,8 @@ const SETTINGS_DEFAULT = {
 
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const { settings, setSettings, setEmaThreshold } = useUserStore()
+  const { settings, setSettings, setEmaThreshold, accountType } = useUserStore()
+  const isSelfPaper = accountType === 'SELF_PAPER'
   const {
     kisTokenStatus,
     hasCredentials,
@@ -350,7 +351,7 @@ export default function SettingsPage() {
     },
   ]
 
-  const isKisHealthy = activeModeRegistered && kisTokenStatus === 'VALID'
+  const isKisHealthy = isSelfPaper || (activeModeRegistered && kisTokenStatus === 'VALID')
 
   return (
     <div className="max-w-2xl mx-auto py-8 flex flex-col gap-6">
@@ -520,7 +521,32 @@ export default function SettingsPage() {
         </form>
       </section>
 
-      {/* 카드 2 — KIS Open API 연동 */}
+      {/* 카드 2 — 연동 섹션: SELF_PAPER 는 간략 상태 카드, KIS 는 전체 연동 섹션 */}
+      {isSelfPaper ? (
+        <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
+              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 1v14M1 8h14" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="text-text-primary text-base font-semibold tracking-tight">페이퍼 트레이딩</div>
+            <span
+              className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider"
+              style={{ background: 'rgba(16,185,129,0.10)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)' }}
+            >
+              <span className="w-[5px] h-[5px] rounded-full bg-[#10b981]" />
+              준비됨
+            </span>
+          </div>
+          <div className="text-sm text-text-secondary leading-[1.55] bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5">
+            KIS API 없이 가상 자금으로 자동매매를 시뮬레이션합니다. 잔고 및 체결 내역은 서버에 기록됩니다.
+          </div>
+        </section>
+      ) : (
       <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
         <div className="flex items-center gap-2.5">
           <div
@@ -685,6 +711,7 @@ export default function SettingsPage() {
           </button>
         </div>
       </section>
+      )}
     </div>
   )
 }
