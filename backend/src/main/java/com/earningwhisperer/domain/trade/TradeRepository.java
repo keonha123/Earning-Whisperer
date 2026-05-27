@@ -23,6 +23,8 @@ public interface TradeRepository extends JpaRepository<Trade, Long> {
 
     Page<Trade> findByUserId(Long userId, Pageable pageable);
 
+    Page<Trade> findByUserIdAndCreatedAtGreaterThanEqual(Long userId, LocalDateTime startDate, Pageable pageable);
+
     /**
      * Trade 콜백 처리용 비관적 쓰기 락 조회 (SELECT ... FOR UPDATE).
      *

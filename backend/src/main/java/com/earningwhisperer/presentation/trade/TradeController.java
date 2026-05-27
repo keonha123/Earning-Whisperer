@@ -15,6 +15,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -39,10 +42,12 @@ public class TradeController {
     public ResponseEntity<Page<TradeResponse>> getMyTrades(
             Authentication auth,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate) {
         Long userId = (Long) auth.getPrincipal();
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<TradeResponse> result = tradeService.getMyTrades(userId, pageable);
+        Page<TradeResponse> result = tradeService.getMyTrades(userId, pageable, startDate);
         return ResponseEntity.ok(result);
     }
 
