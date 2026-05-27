@@ -13,9 +13,59 @@ const TR_HDFSCNT0 = 'HDFSCNT0'
 
 const RECONNECT_DELAY_MS = 5_000
 const MAX_SLOTS = 41
-// Each ticker requires 2 subscriptions: regular (DNAS) + day market (RBAQ)
+// Each ticker requires 2 subscriptions: regular (night) + day market
 const SLOTS_PER_TICKER = 2
 export const MAX_TICKERS = Math.floor(MAX_SLOTS / SLOTS_PER_TICKER)  // 20
+
+// --------------------------------------------------------------------------
+// Exchange routing
+// --------------------------------------------------------------------------
+
+export type KisExchange = 'NAS' | 'NYS' | 'AMS'
+
+// tr_key 접두사 매핑 (아키텍처 결정 문서 §2 검증 완료 항목 기준)
+// 정규장(야간): D + {NAS|NYS|AMS} + ticker
+// 데이마켓:     R + {BAQ|BAY|BAA} + ticker
+const NIGHT_PREFIX: Record<KisExchange, string> = { NAS: 'DNAS', NYS: 'DNYS', AMS: 'DAMS' }
+const DAY_PREFIX:   Record<KisExchange, string> = { NAS: 'RBAQ', NYS: 'RBAY', AMS: 'RBAA' }
+
+// 알려진 NYSE 상장 종목. 목록 미포함 ticker는 NASDAQ 으로 fallback.
+// AMEX 개별 종목은 현재 대상 없음 (ETF/소형주 위주) — 필요 시 exchangeOverrides 로 주입.
+const STATIC_NYSE: ReadonlySet<string> = new Set([
+  // Financials
+  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BX', 'KKR',
+  // Consumer / Retail
+  'WMT', 'TGT', 'HD', 'MCD', 'NKE', 'DIS', 'KO', 'PEP', 'PG', 'MO', 'PM',
+  // Energy
+  'XOM', 'CVX', 'COP',
+  // Healthcare
+  'JNJ', 'PFE', 'MRK', 'ABT', 'BMY', 'UNH',
+  // Industrials / Defense / Telecom
+  'IBM', 'GE', 'BA', 'CAT', 'MMM', 'F', 'GM', 'T', 'VZ', 'UPS', 'FDX', 'LMT', 'RTX',
+  // Payments
+  'V', 'MA',
+  // Tech / Internet on NYSE
+  'UBER', 'SNAP', 'CRM', 'TWLO', 'DASH',
+  // Chinese ADRs on NYSE
+  'NIO', 'XPEV',
+])
+
+// 런타임 override — setExchangeHints() 로 주입. 정적 맵보다 우선.
+const exchangeOverrides = new Map<string, KisExchange>()
+
+/**
+ * 외부에서 exchange 정보를 주입할 때 사용.
+ * 백엔드가 WatchlistItem 에 exchange 필드를 추가하는 시점에 watchlistHandlers 에서 호출.
+ */
+export function setExchangeHints(hints: Record<string, KisExchange>): void {
+  for (const [ticker, exchange] of Object.entries(hints)) {
+    exchangeOverrides.set(ticker, exchange)
+  }
+}
+
+function resolveExchange(ticker: string): KisExchange {
+  return exchangeOverrides.get(ticker) ?? (STATIC_NYSE.has(ticker) ? 'NYS' : 'NAS')
+}
 
 type WsState = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'
 
@@ -57,13 +107,11 @@ function buildMessage(trKey: string, trType: '1' | '2'): string {
 
 /**
  * tr_key 포맷: {D|R}{exchange 3chars}{ticker}
- * - 정규장(야간): DNAS{ticker}
- * - 데이마켓:     RBAQ{ticker}
- *
- * TODO: exchange 다양화 (NYSE: NYS/BAY, AMEX: AMS/BAA). 현재는 NASDAQ 단일 가정.
+ * exchange 는 resolveExchange() 로 결정 (override → 정적 NYSE 맵 → NASDAQ 기본).
  */
 function trKeysFor(ticker: string): [string, string] {
-  return [`DNAS${ticker}`, `RBAQ${ticker}`]
+  const ex = resolveExchange(ticker)
+  return [`${NIGHT_PREFIX[ex]}${ticker}`, `${DAY_PREFIX[ex]}${ticker}`]
 }
 
 function sendSubscribe(ticker: string) {
