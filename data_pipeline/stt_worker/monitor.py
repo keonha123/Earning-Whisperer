@@ -14,7 +14,7 @@ class EarningsAgent:
         self.ticker = ticker
         self.ir_url = ir_url
         self.sequence_counter = 0
-        self.ai_engine_url = "http://192.168.0.22:8000/api/v1/analyze"
+        self.ai_engine_url = "http://172.100.3.184:8005/api/v1/analyze"
         
         # 💡 [Q4 계정 설정] 본인의 실제 Q4 마스터 계정 정보를 주입하세요.
         self.investor_profile = {
