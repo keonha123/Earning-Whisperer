@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Iterable
 
 try:
@@ -15,6 +17,7 @@ try:
         EvidenceRetrievalResult,
         EvidenceSourceType,
     )
+    from db.postgres_executor import SQLExecutor
 except ImportError:  # pragma: no cover
     from ..models.evidence_models import (
         EvidenceBackend,
@@ -24,6 +27,7 @@ except ImportError:  # pragma: no cover
         EvidenceRetrievalResult,
         EvidenceSourceType,
     )
+    from ..db.postgres_executor import SQLExecutor
 
 
 _STOPWORDS = {
@@ -146,28 +150,47 @@ class EvidenceStoreRepository:
     def __init__(
         self,
         *,
-        backend: EvidenceBackend = EvidenceBackend.PGVECTOR,
+        backend: EvidenceBackend = EvidenceBackend.LOCAL_SPARSE,
         documents: Iterable[EvidenceDocument] | None = None,
+        executor: SQLExecutor | None = None,
+        schema_path: str | Path | None = None,
     ) -> None:
         self.backend = backend
+        self.executor = executor
+        self.schema_path = Path(schema_path) if schema_path else None
         self._documents: dict[str, EvidenceDocument] = {}
+        self._last_persistence_warning = ""
         self.add_documents(list(documents or []))
+
+    def bootstrap_schema(self) -> bool:
+        if self.executor is None or self.schema_path is None:
+            return False
+        self.executor.execute_script(self.schema_path.read_text(encoding="utf-8"))
+        return True
 
     def add_documents(self, documents: Iterable[EvidenceDocument]) -> int:
         added = 0
+        accepted: list[EvidenceDocument] = []
         for document in documents:
             if not document.content.strip():
                 continue
             doc_id = _document_id(document)
             payload = document.model_copy(update={"document_id": doc_id})
             self._documents[doc_id] = payload
+            accepted.append(payload)
             added += 1
+        self._persist_documents(accepted)
         return added
 
     def search(self, request: EvidenceRetrievalRequest) -> EvidenceRetrievalResult:
         scoped_documents = list(self._documents.values())
+        seen = {item.document_id for item in scoped_documents}
+        for document in self._load_persistent_documents(request):
+            doc_id = _document_id(document)
+            if doc_id not in seen:
+                scoped_documents.append(document.model_copy(update={"document_id": doc_id}))
+                seen.add(doc_id)
         if request.documents:
-            seen = {item.document_id for item in scoped_documents}
             for document in request.documents:
                 doc_id = _document_id(document)
                 if doc_id not in seen and document.content.strip():
@@ -197,6 +220,8 @@ class EvidenceStoreRepository:
             warnings.append("no_retrieved_evidence")
         elif coverage < 0.35:
             warnings.append("weak_retrieved_evidence")
+        if self._last_persistence_warning:
+            warnings.append(self._last_persistence_warning)
 
         return EvidenceRetrievalResult(
             ticker=ticker or request.ticker,
@@ -210,6 +235,109 @@ class EvidenceStoreRepository:
             warnings=warnings,
         )
 
+    def _persist_documents(self, documents: list[EvidenceDocument]) -> None:
+        if self.executor is None or not documents:
+            return
+        statements = []
+        for document in documents:
+            statements.append(
+                (
+                    """
+                    insert into ai_evidence_documents
+                        (document_id, ticker, source_type, source_name, title, published_at,
+                         source_url, content, reliability_score, metadata_json, updated_at)
+                    values
+                        (%(document_id)s, %(ticker)s, %(source_type)s, %(source_name)s, %(title)s,
+                         %(published_at)s, %(source_url)s, %(content)s, %(reliability_score)s,
+                         %(metadata_json)s::jsonb, now())
+                    on conflict (document_id) do update set
+                        ticker = excluded.ticker,
+                        source_type = excluded.source_type,
+                        source_name = excluded.source_name,
+                        title = excluded.title,
+                        published_at = excluded.published_at,
+                        source_url = excluded.source_url,
+                        content = excluded.content,
+                        reliability_score = excluded.reliability_score,
+                        metadata_json = excluded.metadata_json,
+                        updated_at = now()
+                    """,
+                    {
+                        "document_id": document.document_id,
+                        "ticker": (document.ticker or "").upper() or None,
+                        "source_type": document.source_type.value,
+                        "source_name": document.source,
+                        "title": document.title,
+                        "published_at": document.published_at,
+                        "source_url": document.source_url,
+                        "content": document.content,
+                        "reliability_score": document.reliability_score,
+                        "metadata_json": json.dumps(document.metadata, ensure_ascii=False),
+                    },
+                )
+            )
+        try:
+            self.executor.execute_transaction(statements)
+            self._last_persistence_warning = ""
+        except Exception as exc:
+            self._last_persistence_warning = f"postgres_evidence_fallback:{type(exc).__name__}"
+
+    def _load_persistent_documents(self, request: EvidenceRetrievalRequest) -> list[EvidenceDocument]:
+        if self.executor is None:
+            return []
+        source_types = [item.value for item in request.source_types]
+        try:
+            rows = self.executor.fetch_all(
+                """
+                select document_id, ticker, source_type, source_name, title, published_at,
+                       source_url, content, reliability_score, metadata_json,
+                       ts_rank_cd(
+                           to_tsvector('english', coalesce(title, '') || ' ' || content),
+                           plainto_tsquery('english', %(query)s)
+                       ) as rank
+                from ai_evidence_documents
+                where (%(ticker)s = '' or ticker = %(ticker)s)
+                  and (cardinality(%(source_types)s::text[]) = 0 or source_type = any(%(source_types)s::text[]))
+                  and to_tsvector('english', coalesce(title, '') || ' ' || content)
+                      @@ plainto_tsquery('english', %(query)s)
+                order by rank desc, published_at desc nulls last
+                limit %(limit)s
+                """,
+                {
+                    "ticker": request.ticker.upper(),
+                    "query": request.query,
+                    "source_types": source_types,
+                    "limit": max(request.top_k * 4, 20),
+                },
+            )
+            self._last_persistence_warning = ""
+        except Exception as exc:
+            self._last_persistence_warning = f"postgres_evidence_fallback:{type(exc).__name__}"
+            return []
+        documents: list[EvidenceDocument] = []
+        for row in rows:
+            metadata = row.get("metadata_json") or {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            try:
+                source_type = EvidenceSourceType(str(row.get("source_type") or EvidenceSourceType.OTHER.value))
+            except ValueError:
+                source_type = EvidenceSourceType.OTHER
+            documents.append(
+                EvidenceDocument(
+                    document_id=str(row.get("document_id") or ""),
+                    ticker=row.get("ticker"),
+                    source_type=source_type,
+                    source=str(row.get("source_name") or "postgres"),
+                    title=row.get("title"),
+                    published_at=row.get("published_at"),
+                    source_url=row.get("source_url"),
+                    content=str(row.get("content") or ""),
+                    reliability_score=float(row.get("reliability_score") or 0.6),
+                    metadata=dict(metadata),
+                )
+            )
+        return documents
     def _score_document(self, document: EvidenceDocument, *, query_tokens: set[str], ticker: str) -> float:
         text = " ".join(
             [

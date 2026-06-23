@@ -9,7 +9,7 @@ try:
     from core.gemini_client import gemini_client
     from core.llm_router import decide_route
     from core.external_retriever import external_retriever
-    from core.phase1_scorer import score_phase1
+    from core.phase1_scorer import Phase1Scorer
     from core.prompt_builder import build_prompt
     from core.signal_data_hub import SignalDataHub
     from core.token_budgeter import TokenBudgeter, TokenUsageEvent, estimate_tokens
@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
     from .gemini_client import gemini_client
     from .llm_router import decide_route
     from .external_retriever import external_retriever
-    from .phase1_scorer import score_phase1
+    from .phase1_scorer import Phase1Scorer
     from .prompt_builder import build_prompt
     from .signal_data_hub import SignalDataHub
     from .token_budgeter import TokenBudgeter, TokenUsageEvent, estimate_tokens
@@ -43,12 +43,22 @@ logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
-    def __init__(self, **_: object) -> None:
+    def __init__(
+        self,
+        *,
+        settings: object | None = None,
+        evidence_service: EvidenceRetrievalService | None = None,
+        external_retriever_service: object | None = None,
+        phase1_scorer_service: Phase1Scorer | None = None,
+        **_: object,
+    ) -> None:
+        self.settings = settings or get_settings()
+        self.phase1_scorer = phase1_scorer_service or Phase1Scorer(settings=self.settings)
         self.context_manager = RollingContextManager(max_chunks=5)
         self.transcript_enhancer = TranscriptSignalEnhancer()
         self.canonical_bundle_service = CanonicalBundleService()
-        self.evidence_service = EvidenceRetrievalService()
-        self.external_retriever = external_retriever
+        self.evidence_service = evidence_service or EvidenceRetrievalService()
+        self.external_retriever = external_retriever_service or external_retriever
         self.route_counts: dict[str, int] = {}
         self.source_health_telemetry = SourceHealthTelemetry()
         self.signal_data_hub = SignalDataHub()
@@ -140,7 +150,7 @@ class AnalysisService:
         evidence_context = evidence_result.evidence_context
         if external_context:
             evidence_context = f"{external_context}\n\n{evidence_context}" if evidence_context else external_context
-        phase1 = score_phase1(
+        phase1 = self.phase1_scorer.score(
             current_chunk=current_chunk,
             market_data=market_data,
             section_type=section_type,
@@ -206,7 +216,17 @@ class AnalysisService:
         parsed.chunk_sequence = chunk_sequence
         parsed.metadata.update(
             {
-                "phase1": {"raw_score": phase1.raw_score, "confidence": phase1.confidence, "label": phase1.label, "provider": phase1.provider, "rationale_hint": phase1.rationale_hint},
+                "phase1": {
+                    "raw_score": phase1.raw_score,
+                    "confidence": phase1.confidence,
+                    "label": phase1.label,
+                    "provider": phase1.provider,
+                    "rationale_hint": phase1.rationale_hint,
+                    "heuristic_score": phase1.heuristic_score,
+                    "finbert_score": phase1.finbert_score,
+                    "finbert_confidence": phase1.finbert_confidence,
+                    "degraded": phase1.degraded,
+                },
                 "router": {
                     "context_policy": route_decision.context_policy,
                     "novelty": round(route_decision.novelty, 4),

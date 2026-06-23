@@ -54,10 +54,10 @@ class InvestmentProfile:
 _PROFILES: dict[str, InvestmentProfile] = {
     "NASDAQ100_AGGRESSIVE": InvestmentProfile(
         code="NASDAQ100_AGGRESSIVE",
-        label_ko="??? ???",
+        label_ko="나스닥 공격형",
         universe_profile=UniverseName.NASDAQ100.value,
         risk_style=RiskStyleName.AGGRESSIVE.value,
-        description_ko="???100 ????? ???? ??? ???? ? ?? ?? ??? ?? ?????.",
+        description_ko="나스닥100 성장주에서 높은 변동성을 감수하고 단기 수익 기회를 추구합니다.",
         redis_output_profile="nasdaq100_aggressive_signal_v1",
         redis_channel_hint="trading-signals:nasdaq100:aggressive",
         action_threshold_abs=0.04,
@@ -66,10 +66,10 @@ _PROFILES: dict[str, InvestmentProfile] = {
     ),
     "NASDAQ100_CONSERVATIVE": InvestmentProfile(
         code="NASDAQ100_CONSERVATIVE",
-        label_ko="??? ???",
+        label_ko="나스닥 안정형",
         universe_profile=UniverseName.NASDAQ100.value,
         risk_style=RiskStyleName.CONSERVATIVE.value,
-        description_ko="???100 ???? ??? continuation? ?? ?? sleeve? ???? ?? ?????.",
+        description_ko="나스닥100 핵심 성장주의 실적 지속성과 제한된 품질 반전 전략을 선별합니다.",
         redis_output_profile="nasdaq100_conservative_signal_v1",
         redis_channel_hint="trading-signals:nasdaq100:conservative",
         action_threshold_abs=0.12,
@@ -78,10 +78,10 @@ _PROFILES: dict[str, InvestmentProfile] = {
     ),
     "SP500_AGGRESSIVE": InvestmentProfile(
         code="SP500_AGGRESSIVE",
-        label_ko="S&P ???",
+        label_ko="S&P500 공격형",
         universe_profile=UniverseName.SP500.value,
         risk_style=RiskStyleName.AGGRESSIVE.value,
-        description_ko="S&P500 ????? PEAD? ??? breakout? ? ????? ???? ?????.",
+        description_ko="S&P500 종목에서 선별된 PEAD와 뉴스 돌파 전략을 적극적으로 활용합니다.",
         redis_output_profile="sp500_aggressive_signal_v1",
         redis_channel_hint="trading-signals:sp500:aggressive",
         action_threshold_abs=0.06,
@@ -90,10 +90,10 @@ _PROFILES: dict[str, InvestmentProfile] = {
     ),
     "SP500_CONSERVATIVE": InvestmentProfile(
         code="SP500_CONSERVATIVE",
-        label_ko="S&P ???",
+        label_ko="S&P500 안정형",
         universe_profile=UniverseName.SP500.value,
         risk_style=RiskStyleName.CONSERVATIVE.value,
-        description_ko="S&P500?? ?? ???? ??? ?? ??? ???? ?? ?????.",
+        description_ko="S&P500의 실적 지속성과 낮은 실행 비용을 우선해 보수적으로 진입합니다.",
         redis_output_profile="sp500_conservative_signal_v1",
         redis_channel_hint="trading-signals:sp500:conservative",
         action_threshold_abs=0.10,
@@ -187,12 +187,15 @@ def _normalize_profile_key(value: str | None) -> str | None:
         return None
     compact = raw.replace("&", "").replace(".", "")
     lower = compact.lower()
-    if "???" in raw:
-        return "NASDAQ100_AGGRESSIVE" if "??" in raw else "NASDAQ100_CONSERVATIVE" if ("??" in raw or "??" in raw) else None
-    if "snp" in lower or "s&p" in lower or "sp500" in lower or "snp500" in lower:
-        if "??" in raw or "aggressive" in lower or "attack" in lower:
+    if "나스닥" in raw:
+        if "공격" in raw or "aggressive" in lower or "attack" in lower:
+            return "NASDAQ100_AGGRESSIVE"
+        if "안정" in raw or "보수" in raw or "conservative" in lower or "stable" in lower:
+            return "NASDAQ100_CONSERVATIVE"
+    if "snp" in lower or "s&p" in lower or "sp500" in lower or "snp500" in lower or "에스앤피" in raw:
+        if "공격" in raw or "aggressive" in lower or "attack" in lower:
             return "SP500_AGGRESSIVE"
-        if "??" in raw or "??" in raw or "conservative" in lower or "stable" in lower:
+        if "안정" in raw or "보수" in raw or "conservative" in lower or "stable" in lower:
             return "SP500_CONSERVATIVE"
     normalized = re.sub(r"[^A-Za-z0-9]+", "_", compact).strip("_").upper()
     normalized = normalized.replace("S_P_500", "SP500").replace("SNP500", "SP500").replace("SNP", "SP500")

@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class LegacyAnalyzeRequest(BaseModel):
@@ -43,6 +43,12 @@ class LegacySignalMessage(BaseModel):
     timestamp: int
     is_session_end: bool = False
 
+    @computed_field(return_type=float)
+    @property
+    def ai_score(self) -> float:
+        """Signed score alias required by the Spring backend contract."""
+        return self.raw_score
+
     # Optional v9 enrichments. Existing Java consumers can ignore them.
     action: str | None = None
     confidence: float | None = None
@@ -67,6 +73,9 @@ class LegacyAnalyzeResponse(LegacySignalMessage):
 
     redis_published: bool = False
     enriched_published: bool = False
+    profile_published: bool = False
+    profile_channel: str | None = None
+    retry_queued: int = 0
     publish_error: str | None = None
     engine_envelope: dict[str, Any] | None = None
 
@@ -76,6 +85,9 @@ class LegacyPublishResult(BaseModel):
 
     legacy_published: bool = False
     enriched_published: bool = False
+    profile_published: bool = False
+    profile_channel: str | None = None
+    retry_queued: int = 0
     error: str | None = None
 
 

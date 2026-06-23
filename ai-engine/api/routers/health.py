@@ -19,6 +19,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 async def health(request: Request) -> dict[str, Any]:
     settings = get_settings(request.app)
+    phase1 = get_analysis_service(request.app).phase1_scorer.status_snapshot()
     return {
         "status": "ok",
         "primary_model": settings.gemini_primary_model or "",
@@ -27,6 +28,7 @@ async def health(request: Request) -> dict[str, Any]:
             "primary": settings.gemini_primary_model or "",
             "review": settings.gemini_review_model or "",
         },
+        "phase1": phase1,
     }
 
 
@@ -63,6 +65,24 @@ async def health_ready(request: Request) -> JSONResponse:
         ready = False
         checks["database"] = "error"
         detail_messages.append(str(exc))
+    vector_stats = get_analysis_service(request.app).external_retriever.get_stats()
+    checks["vector_store"] = str(vector_stats.get("effective_backend") or "unknown")
+    if str(getattr(settings, "vector_store_backend", "memory")).lower() == "qdrant" and checks["vector_store"] != "qdrant":
+        ready = False
+        detail_messages.append("Qdrant is configured but the engine is using memory fallback")
+    checks["redis_retry_spool"] = str(request.app.state.redis_signal_publisher.retry_spool.count())
+    evidence_bootstrap_status = str(getattr(request.app.state, "evidence_bootstrap_status", "unknown"))
+    checks["evidence_schema"] = evidence_bootstrap_status
+    evidence_bootstrap_required = bool(
+        getattr(settings, "evidence_postgres_enabled", False)
+        and getattr(settings, "evidence_auto_bootstrap", False)
+    )
+    if evidence_bootstrap_required and evidence_bootstrap_status != "ready":
+        ready = False
+        bootstrap_error = getattr(request.app.state, "evidence_bootstrap_error", None)
+        detail_messages.append(str(bootstrap_error or f"Evidence schema bootstrap is {evidence_bootstrap_status}"))
+    phase1_status = get_analysis_service(request.app).phase1_scorer.status_snapshot()
+    checks["phase1"] = str(phase1_status["effective_provider"])
     status_code = 200 if ready else 503
     return JSONResponse(
         status_code=status_code,
@@ -86,6 +106,9 @@ async def stats(request: Request) -> dict[str, Any]:
     route_total = max(1, sum(route_counts.values()))
     route_rates = {key: value / route_total for key, value in route_counts.items()}
     source_health_stats = analysis_service.source_health_telemetry.snapshot()
+    vector_store_stats = analysis_service.external_retriever.get_stats()
+    phase1_stats = analysis_service.phase1_scorer.status_snapshot()
+    redis_retry_pending = request.app.state.redis_signal_publisher.retry_spool.count()
     signal_data_hub_stats = (
         analysis_service.signal_data_hub.snapshot()
         if hasattr(analysis_service, "signal_data_hub")
@@ -122,6 +145,9 @@ async def stats(request: Request) -> dict[str, Any]:
         "source_health_rate": source_health_stats["source_health_rate"],
         "stale_source_rate": source_health_stats["stale_source_rate"],
         "source_health": source_health_stats,
+        "vector_store": vector_store_stats,
+        "phase1": phase1_stats,
+        "redis_retry_pending": redis_retry_pending,
         "signal_data_hub": signal_data_hub_stats,
         "datahub_topic_count": signal_data_hub_stats["total_topics"],
         "datahub_cache_hit_rate": signal_data_hub_stats["cache_hit_rate"],

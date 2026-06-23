@@ -71,3 +71,24 @@ def test_health_ready_succeeds_when_key_and_database_are_ready() -> None:
     assert payload["checks"]["gemini_api_key"] == "configured"
     assert payload["checks"]["database"] == "ready"
     assert payload["detail"] == "ready"
+
+def test_health_ready_reports_evidence_schema_bootstrap_failure() -> None:
+    app = create_app()
+    app.state.settings = SimpleNamespace(
+        gemini_api_key="configured",
+        gemini_primary_model="gemini-3.1-flash-preview",
+        gemini_review_model="gemini-3.1-pro-preview",
+        evidence_postgres_enabled=True,
+        evidence_auto_bootstrap=True,
+    )
+    app.state.event_store_repository = SimpleNamespace(executor=_ReadyExecutor())
+    app.state.evidence_bootstrap_status = "error"
+    app.state.evidence_bootstrap_error = "RuntimeError: evidence schema mismatch"
+
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["checks"]["evidence_schema"] == "error"
+    assert "evidence schema mismatch" in payload["detail"]

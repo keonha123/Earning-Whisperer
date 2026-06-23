@@ -1,0 +1,16 @@
+{
+  "relationships": [
+    {"source_ticker":"NVDA","target_ticker":"TSMC","relationship":"supplier/foundry","strength":0.82,"beta":1.15,"reason_ko":"GPU 수요 변화가 파운드리 물량 기대에 영향을 줄 수 있습니다.","confidence":0.78},
+    {"source_ticker":"NVDA","target_ticker":"AMD","relationship":"peer/competitor","strength":0.68,"beta":1.25,"reason_ko":"AI 가속기 수요 전망이 경쟁사 밸류에이션에도 반영될 수 있습니다.","confidence":0.72},
+    {"source_ticker":"NVDA","target_ticker":"AVGO","relationship":"peer/custom silicon","strength":0.62,"beta":1.12,"reason_ko":"AI 네트워킹과 커스텀 반도체 수요에 대한 연쇄 신호입니다.","confidence":0.70},
+    {"source_ticker":"NVDA","target_ticker":"SMCI","relationship":"customer/server supply chain","strength":0.64,"beta":1.40,"reason_ko":"AI 서버 출하 기대에 연쇄적으로 영향을 줄 수 있습니다.","confidence":0.68},
+    {"source_ticker":"NVDA","target_ticker":"MU","relationship":"supplier/memory","strength":0.54,"beta":1.35,"reason_ko":"HBM과 고성능 메모리 수요 기대에 영향을 줄 수 있습니다.","confidence":0.66},
+    {"source_ticker":"NVDA","target_ticker":"QQQ","relationship":"ETF/mega-cap weight","strength":0.58,"beta":1.0,"etf_weight_pct":7.0,"reason_ko":"대형 성장주 지수의 AI 익스포저에 영향을 줄 수 있습니다.","confidence":0.70},
+    {"source_ticker":"META","target_ticker":"GOOGL","relationship":"digital advertising peer","strength":0.63,"reason_ko":"디지털 광고 수요와 가격 추세가 동종업체에 전달될 수 있습니다.","confidence":0.68},
+    {"source_ticker":"META","target_ticker":"NVDA","relationship":"AI infrastructure supplier","strength":0.58,"reason_ko":"AI 인프라 투자 계획이 GPU와 서버 수요 기대에 영향을 줄 수 있습니다.","confidence":0.67},
+    {"source_ticker":"MSFT","target_ticker":"AMZN","relationship":"cloud peer","strength":0.58,"reason_ko":"클라우드 성장률과 AI 사용량이 경쟁사 기대에 반영될 수 있습니다.","confidence":0.65},
+    {"source_ticker":"AAPL","target_ticker":"QCOM","relationship":"component supplier","strength":0.55,"reason_ko":"기기 출하 전망이 통신 반도체 수요 기대에 영향을 줄 수 있습니다.","confidence":0.64}
+  ],
+  "executives": [],
+  "speakers": []
+}

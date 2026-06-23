@@ -39,7 +39,7 @@ def test_phase1_highlights_material_earnings_language() -> None:
     )
 
     assert result.raw_score > 0
-    assert result.provider == 'heuristic'
+    assert result.provider in {'hybrid', 'hybrid:heuristic_fallback', 'heuristic'}
     assert result.label in {'pass', 'review', 'drop'}
 
 

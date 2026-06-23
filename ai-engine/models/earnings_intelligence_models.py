@@ -151,6 +151,7 @@ class EarningsIntelligenceResponse(BaseModel):
     claim_diffs: list[ClaimDiff] = Field(default_factory=list)
     omission_evasion: OmissionEvasionAnalysis
     impact_chain: list[ImpactNode] = Field(default_factory=list)
+    company_intelligence: dict[str, Any] = Field(default_factory=dict)
     risk_plan: RiskPlan
     summary_ko: str
     warnings: list[str] = Field(default_factory=list)

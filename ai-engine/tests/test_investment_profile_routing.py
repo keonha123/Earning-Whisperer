@@ -69,7 +69,7 @@ def test_legacy_redis_output_is_profile_specific() -> None:
 
     assert signal.action == "BUY"
     assert signal.investment_profile == "NASDAQ100_AGGRESSIVE"
-    assert signal.investment_profile_label_ko == "??? ???"
+    assert signal.investment_profile_label_ko == "나스닥 공격형"
     assert signal.universe_profile == "NASDAQ100"
     assert signal.risk_style == "AGGRESSIVE"
     assert signal.redis_output_profile == "nasdaq100_aggressive_signal_v1"

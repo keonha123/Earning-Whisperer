@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "EarningWhisperer AI Engine"
-    app_version: str = "9.5.9"
+    app_version: str = "9.6.0"
     environment: Literal["dev", "staging", "prod"] = "dev"
     log_level: str = "INFO"
 
@@ -74,10 +74,14 @@ class Settings(BaseSettings):
     llm_router_high_priority: int = Field(default=8, alias="LLM_ROUTER_HIGH_PRIORITY")
     llm_router_review_confidence_threshold: float = Field(default=0.68, alias="LLM_ROUTER_REVIEW_CONFIDENCE_THRESHOLD")
 
-    phase1_provider: Literal["finbert", "mock"] = Field(default="finbert", alias="PHASE1_PROVIDER")
+    phase1_provider: Literal["hybrid", "heuristic", "finbert", "mock"] = Field(default="hybrid", alias="PHASE1_PROVIDER")
     phase1_finbert_model_name: str = Field(default="ProsusAI/finbert", alias="PHASE1_FINBERT_MODEL_NAME")
     phase1_finbert_device: str = Field(default="auto", alias="PHASE1_FINBERT_DEVICE")
     phase1_finbert_max_length: int = Field(default=256, alias="PHASE1_FINBERT_MAX_LENGTH")
+    phase1_finbert_local_files_only: bool = Field(default=False, alias="PHASE1_FINBERT_LOCAL_FILES_ONLY")
+    phase1_heuristic_weight: float = Field(default=0.55, ge=0.0, alias="PHASE1_HEURISTIC_WEIGHT")
+    phase1_finbert_weight: float = Field(default=0.45, ge=0.0, alias="PHASE1_FINBERT_WEIGHT")
+    phase1_conflict_penalty: float = Field(default=0.18, ge=0.0, le=1.0, alias="PHASE1_CONFLICT_PENALTY")
     phase1_max_chars: int = Field(default=3000, alias="PHASE1_MAX_CHARS")
     phase1_cache_size: int = Field(default=1024, alias="PHASE1_CACHE_SIZE")
     phase1_warmup_on_startup: bool = Field(default=True, alias="PHASE1_WARMUP_ON_STARTUP")
@@ -134,7 +138,24 @@ class Settings(BaseSettings):
     vector_store_backend: str = Field(default="memory", alias="VECTOR_STORE_BACKEND")
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
     qdrant_path: str = Field(default="", alias="QDRANT_PATH")
+    qdrant_api_key: str = Field(default="", alias="QDRANT_API_KEY")
     qdrant_collection_name: str = Field(default="earningwhisperer_evidence", alias="QDRANT_COLLECTION_NAME")
+    qdrant_reconnect_interval_seconds: int = Field(default=30, alias="QDRANT_RECONNECT_INTERVAL_SECONDS")
+    evidence_postgres_enabled: bool = Field(default=False, alias="EVIDENCE_POSTGRES_ENABLED")
+    evidence_auto_bootstrap: bool = Field(default=False, alias="EVIDENCE_AUTO_BOOTSTRAP")
+    evidence_schema_path: str = Field(default="sql/ai_engine_evidence_schema.sql", alias="EVIDENCE_SCHEMA_PATH")
+    company_intelligence_store_path: str = Field(default="data/runtime/company_intelligence.json", alias="COMPANY_INTELLIGENCE_STORE_PATH")
+    live_session_store_path: str = Field(default="data/runtime/live_sessions", alias="LIVE_SESSION_STORE_PATH")
+    live_session_retention_hours: int = Field(default=168, alias="LIVE_SESSION_RETENTION_HOURS")
+    live_session_max_sessions: int = Field(default=500, alias="LIVE_SESSION_MAX_SESSIONS")
+    live_session_max_fact_checks_per_chunk: int = Field(default=3, alias="LIVE_SESSION_MAX_FACT_CHECKS_PER_CHUNK")
+    live_session_redis_publish_enabled: bool = Field(default=True, alias="LIVE_SESSION_REDIS_PUBLISH_ENABLED")
+    evidence_sec_user_agent: str = Field(default="", alias="EVIDENCE_SEC_USER_AGENT")
+    evidence_http_user_agent: str = Field(default="EarningWhisperer/9.6 evidence-ingestion", alias="EVIDENCE_HTTP_USER_AGENT")
+    evidence_http_timeout_seconds: float = Field(default=15.0, alias="EVIDENCE_HTTP_TIMEOUT_SECONDS")
+    evidence_sync_enabled: bool = Field(default=False, alias="EVIDENCE_SYNC_ENABLED")
+    evidence_sync_interval_seconds: int = Field(default=21600, alias="EVIDENCE_SYNC_INTERVAL_SECONDS")
+    evidence_sync_tickers: str = Field(default="", alias="EVIDENCE_SYNC_TICKERS")
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
     embedding_dimension: int = Field(default=256, alias="EMBEDDING_DIMENSION")
@@ -149,6 +170,11 @@ class Settings(BaseSettings):
     redis_backup_queue_size: int = Field(default=100, alias="REDIS_BACKUP_QUEUE_SIZE")
     redis_reconnect_delay: float = Field(default=2.0, alias="REDIS_RECONNECT_DELAY")
     redis_socket_timeout_seconds: float = Field(default=1.0, alias="REDIS_SOCKET_TIMEOUT_SECONDS")
+    redis_profile_publish_enabled: bool = Field(default=True, alias="REDIS_PROFILE_PUBLISH_ENABLED")
+    redis_profile_enriched_suffix: str = Field(default=":enriched", alias="REDIS_PROFILE_ENRICHED_SUFFIX")
+    redis_retry_spool_path: str = Field(default="data/redis_retry_spool.jsonl", alias="REDIS_RETRY_SPOOL_PATH")
+    redis_retry_max_entries: int = Field(default=5000, alias="REDIS_RETRY_MAX_ENTRIES")
+    redis_retry_auto_flush_limit: int = Field(default=20, alias="REDIS_RETRY_AUTO_FLUSH_LIMIT")
 
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
@@ -188,6 +214,10 @@ class Settings(BaseSettings):
     @property
     def review_model_candidates_list(self) -> list[str]:
         return [part.strip() for part in self.gemini_review_model_candidates.split(",") if part.strip()]
+
+    @property
+    def evidence_sync_tickers_list(self) -> list[str]:
+        return [part.strip().upper() for part in self.evidence_sync_tickers.split(",") if part.strip()]
 
     @model_validator(mode="before")
     @classmethod

@@ -286,19 +286,209 @@ class InMemoryExternalRetriever(BaseExternalRetriever):
             self._record_retrieval(latency_ms=(time.monotonic() - start) * 1000, hit_count=len(scored), error=error)
 
 
-class QdrantExternalRetriever(InMemoryExternalRetriever):
-    """Optional Qdrant seam.
-
-    The current engine falls back to the memory implementation unless a project
-    explicitly installs/configures Qdrant.  This preserves runtime safety while
-    keeping the hyeongyu backend boundary.
-    """
+class QdrantExternalRetriever(BaseExternalRetriever):
+    """Persistent Qdrant retriever with hybrid dense, lexical, and business scoring."""
 
     backend_name = "qdrant"
 
     def __init__(self, *, requested_backend: str = "qdrant") -> None:
-        super().__init__(requested_backend=requested_backend)
-        self._stats.effective_backend = "memory_fallback"
+        super().__init__(requested_backend=requested_backend, effective_backend=self.backend_name)
+        settings = get_settings()
+        try:
+            qdrant_module = importlib.import_module("qdrant_client")
+            self._models = importlib.import_module("qdrant_client.models")
+        except ImportError as exc:  # pragma: no cover - validated through facade fallback
+            raise RuntimeError("qdrant-client is required when VECTOR_STORE_BACKEND=qdrant") from exc
+        kwargs: dict[str, Any] = {}
+        if settings.qdrant_url.strip():
+            kwargs["url"] = settings.qdrant_url.strip()
+            if getattr(settings, "qdrant_api_key", "").strip():
+                kwargs["api_key"] = settings.qdrant_api_key.strip()
+        else:
+            kwargs["path"] = settings.qdrant_path.strip()
+        self._client = qdrant_module.QdrantClient(**kwargs)
+        self._collection_name = settings.qdrant_collection_name
+        self._embedding_provider = _build_embedding_provider()
+        self._ensure_collection()
+
+    def _ensure_collection(self) -> None:
+        exists = False
+        try:
+            exists = bool(self._client.collection_exists(self._collection_name))
+        except AttributeError:  # pragma: no cover - older qdrant-client
+            try:
+                self._client.get_collection(self._collection_name)
+                exists = True
+            except Exception:
+                exists = False
+        if exists:
+            return
+        self._client.create_collection(
+            collection_name=self._collection_name,
+            vectors_config=self._models.VectorParams(
+                size=self._embedding_provider.dimension,
+                distance=self._models.Distance.COSINE,
+            ),
+        )
+
+    def upsert_documents(self, documents: Sequence[ExternalDocument]) -> None:
+        chunks: list[ExternalDocument] = []
+        for document in documents:
+            chunks.extend(_chunk_document(document))
+        if not chunks:
+            return
+        vectors = self._embedding_provider.embed_texts([f"{item.title}\n{item.text}" for item in chunks])
+        points = []
+        for document, vector in zip(chunks, vectors):
+            points.append(
+                self._models.PointStruct(
+                    id=str(uuid5(NAMESPACE_URL, document.doc_id)),
+                    vector=vector,
+                    payload={
+                        "doc_id": document.doc_id,
+                        "ticker": document.ticker.upper(),
+                        "text": document.text,
+                        "title": document.title,
+                        "published_at": int(document.published_at or 0),
+                        "source_type": document.source_type.lower(),
+                        "url": document.url,
+                        "form_type": document.form_type,
+                        "importance": float(document.importance),
+                        "metadata": dict(document.metadata),
+                    },
+                )
+            )
+        self._client.upsert(collection_name=self._collection_name, points=points, wait=True)
+        self._record_upsert(len(points))
+
+    def clear(self) -> None:
+        try:
+            self._client.delete_collection(self._collection_name)
+        except Exception:
+            pass
+        self._ensure_collection()
+
+    def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
+        settings = get_settings()
+        current_timestamp = int(now if now is not None else time.time())
+        cutoff = max(0, current_timestamp - max(1, settings.external_evidence_retention_days) * 86400)
+        query_filter = self._models.Filter(
+            must=[self._models.FieldCondition(key="published_at", range=self._models.Range(gt=0, lt=cutoff))]
+        )
+        points, _ = self._client.scroll(
+            collection_name=self._collection_name,
+            scroll_filter=query_filter,
+            limit=10000,
+            with_payload=False,
+            with_vectors=False,
+        )
+        point_ids = [item.id for item in points]
+        if point_ids:
+            self._client.delete(collection_name=self._collection_name, points_selector=point_ids, wait=True)
+        return {"status": "completed", "cutoff_timestamp": cutoff, "deleted_count": len(point_ids)}
+
+    def retrieve(
+        self,
+        *,
+        query: str,
+        ticker: str,
+        chunk_timestamp: int,
+        preferred_sources: Sequence[str] | None = None,
+        lookback_days: int = 7,
+        limit: int | None = None,
+    ) -> list[ExternalRetrievedDocument]:
+        start = time.monotonic()
+        error: Exception | None = None
+        output: list[ExternalRetrievedDocument] = []
+        try:
+            settings = get_settings()
+            top_k = limit or settings.rag_top_k
+            if not query.strip() or not ticker.strip():
+                return []
+            must = [
+                self._models.FieldCondition(
+                    key="ticker",
+                    match=self._models.MatchValue(value=ticker.upper()),
+                )
+            ]
+            lower_bound = _lower_bound_timestamp(chunk_timestamp=chunk_timestamp, lookback_days=lookback_days)
+            if chunk_timestamp:
+                must.append(
+                    self._models.FieldCondition(
+                        key="published_at",
+                        range=self._models.Range(gte=lower_bound, lte=chunk_timestamp),
+                    )
+                )
+            preferred = [str(item).strip().lower() for item in (preferred_sources or []) if item]
+            if preferred:
+                must.append(
+                    self._models.FieldCondition(
+                        key="source_type",
+                        match=self._models.MatchAny(any=preferred),
+                    )
+                )
+            query_filter = self._models.Filter(must=must)
+            vector = self._embedding_provider.embed_texts([query])[0]
+            candidate_limit = max(top_k * 5, 20)
+            if hasattr(self._client, "query_points"):
+                response = self._client.query_points(
+                    collection_name=self._collection_name,
+                    query=vector,
+                    query_filter=query_filter,
+                    limit=candidate_limit,
+                    with_payload=True,
+                )
+                points = list(getattr(response, "points", response))
+            else:  # pragma: no cover - older qdrant-client
+                points = list(
+                    self._client.search(
+                        collection_name=self._collection_name,
+                        query_vector=vector,
+                        query_filter=query_filter,
+                        limit=candidate_limit,
+                        with_payload=True,
+                    )
+                )
+            documents: list[ExternalDocument] = []
+            dense_scores: dict[str, float] = {}
+            for point in points:
+                payload = dict(point.payload or {})
+                document = ExternalDocument(
+                    doc_id=str(payload.get("doc_id") or point.id),
+                    ticker=str(payload.get("ticker") or ticker),
+                    text=str(payload.get("text") or ""),
+                    title=str(payload.get("title") or ""),
+                    published_at=int(payload.get("published_at") or 0),
+                    source_type=str(payload.get("source_type") or "news"),
+                    url=str(payload.get("url") or ""),
+                    form_type=str(payload.get("form_type") or ""),
+                    importance=float(payload.get("importance") or 0.5),
+                    metadata=dict(payload.get("metadata") or {}),
+                )
+                documents.append(document)
+                dense_scores[document.doc_id] = max(0.0, min(1.0, float(point.score or 0.0)))
+            query_tokens = _significant_tokens(query)
+            lexical_scores = _bm25_lexical_scores(query=query, query_tokens=query_tokens, documents=documents)
+            for document in documents:
+                dense = dense_scores.get(document.doc_id, 0.0)
+                lexical = lexical_scores.get(document.doc_id, 0.0)
+                business = _business_signal_score(document=document, chunk_timestamp=chunk_timestamp, lookback_days=lookback_days)
+                score = _weighted_score(dense=dense, lexical=lexical, business=business)
+                if score >= settings.rag_min_relevance_score:
+                    output.append(_retrieved_document_from_source(document=document, score=score))
+            output.sort(key=lambda item: (-item.score, -item.published_at, item.doc_id))
+            return output[:top_k]
+        except Exception as exc:
+            error = exc
+            logger.warning("Qdrant retrieval failed: %s", exc)
+            return []
+        finally:
+            self._record_retrieval(latency_ms=(time.monotonic() - start) * 1000, hit_count=len(output), error=error)
+
+    def close(self) -> None:
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
 
 
 class ExternalRetrieverFacade:
@@ -307,6 +497,7 @@ class ExternalRetrieverFacade:
     def __init__(self) -> None:
         self._backend: BaseExternalRetriever | None = None
         self._signature: tuple[Any, ...] | None = None
+        self._last_build_attempt = 0.0
         self._lock = threading.Lock()
 
     def upsert_documents(self, documents: Sequence[ExternalDocument]) -> None:
@@ -346,13 +537,32 @@ class ExternalRetrieverFacade:
                 self._backend.close()
             self._backend = None
             self._signature = None
+            self._last_build_attempt = 0.0
 
     def _get_backend(self) -> BaseExternalRetriever:
         signature = self._settings_signature()
+        now = time.monotonic()
         with self._lock:
-            if self._backend is None or self._signature != signature:
-                self._backend = self._build_backend()
-                self._signature = signature
+            fallback_expired = False
+            if self._backend is not None and self._backend.get_stats().get("effective_backend") == "memory_fallback":
+                fallback_expired = now - self._last_build_attempt >= max(1, get_settings().qdrant_reconnect_interval_seconds)
+            if self._backend is None or self._signature != signature or fallback_expired:
+                previous = self._backend
+                candidate = self._build_backend()
+                keep_previous_fallback = (
+                    fallback_expired
+                    and previous is not None
+                    and previous.get_stats().get("effective_backend") == "memory_fallback"
+                    and candidate.get_stats().get("effective_backend") == "memory_fallback"
+                )
+                if keep_previous_fallback:
+                    candidate.close()
+                else:
+                    if previous is not None:
+                        previous.close()
+                    self._backend = candidate
+                    self._signature = signature
+                self._last_build_attempt = now
             return self._backend
 
     @staticmethod
@@ -373,7 +583,15 @@ class ExternalRetrieverFacade:
         settings = get_settings()
         requested = settings.vector_store_backend.lower().strip()
         if requested == "qdrant" and (settings.qdrant_url.strip() or settings.qdrant_path.strip()):
-            return QdrantExternalRetriever(requested_backend=requested)
+            try:
+                return QdrantExternalRetriever(requested_backend=requested)
+            except Exception as exc:
+                logger.warning("Qdrant backend unavailable; using memory fallback: %s", exc)
+                fallback = InMemoryExternalRetriever(requested_backend=requested)
+                fallback._stats.effective_backend = "memory_fallback"
+                fallback._stats.last_error = str(exc)
+                fallback._stats.error_count = 1
+                return fallback
         return InMemoryExternalRetriever(requested_backend=requested or "memory")
 
 

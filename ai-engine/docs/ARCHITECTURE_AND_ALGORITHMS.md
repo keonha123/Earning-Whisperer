@@ -45,7 +45,7 @@ AnalyzeRequest
 ## Core Algorithms
 
 - LLM routing: fast route first, review route for higher uncertainty or requested review.
-- Phase-1 scoring: deterministic sentiment/keyword heuristic provides low-cost early signal context.
+- Phase-1 scoring: a configurable hybrid combines deterministic earnings/market features with local FinBERT sentiment; direction conflicts reduce confidence and missing model runtimes fall back to the heuristic path.
 - Strategy selection: rule-based strategy router maps event state into PEAD, news breakout, momentum carry, gap, reversal, squeeze, IV decay, or sentiment fallback.
 - Track-specific guardrails: Nasdaq100 conservative now separates continuation setups from a constrained mega-cap quality-reversal sleeve and blocks out-of-scope reversals before promotion.
 - Research risk governor: the offline approval path applies loss-streak and drawdown cooldown logic for Nasdaq100 conservative before computing promotion metrics.

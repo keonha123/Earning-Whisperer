@@ -61,6 +61,7 @@ def test_legacy_analyze_endpoint_accepts_original_payload_and_publishes(monkeypa
     payload = response.json()
     assert payload["ticker"] == "TSLA"
     assert payload["raw_score"] == -0.62
+    assert payload["ai_score"] == -0.62
     assert payload["rationale"] == "Demand softened and margin pressure increased."
     assert payload["text_chunk"] == "Margins compressed and demand was softer than expected."
     assert payload["timestamp"] == 1778600000
@@ -69,6 +70,7 @@ def test_legacy_analyze_endpoint_accepts_original_payload_and_publishes(monkeypa
     assert payload["enriched_published"] is True
     assert payload["engine_envelope"]["request_metadata"]["original_timestamp"] == 1778600000
     assert publisher.legacy_signal.raw_score == -0.62
+    assert publisher.legacy_signal.ai_score == -0.62
     assert publisher.enriched_message["legacy_signal"]["ticker"] == "TSLA"
 
 

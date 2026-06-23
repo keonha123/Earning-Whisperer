@@ -50,3 +50,8 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+data/redis_retry_spool.jsonl
+data/runtime/*.json
+!data/runtime/.gitkeep
+
+data/runtime/live_sessions/

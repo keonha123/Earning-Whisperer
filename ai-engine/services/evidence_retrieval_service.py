@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Iterable
 
 try:
@@ -33,6 +34,7 @@ try:
     )
     from models.request_models import MarketData, SourceType
     from models.signal_models import GeminiAnalysisResult, StrategyDecision, StrategyName
+    from repositories.company_intelligence_repository import CompanyIntelligenceRepository
     from repositories.evidence_store_repository import EvidenceStoreRepository
 except ImportError:  # pragma: no cover
     from ..core.trade_plan import build_trade_exit_plan
@@ -63,6 +65,7 @@ except ImportError:  # pragma: no cover
     )
     from ..models.request_models import MarketData, SourceType
     from ..models.signal_models import GeminiAnalysisResult, StrategyDecision, StrategyName
+    from ..repositories.company_intelligence_repository import CompanyIntelligenceRepository
     from ..repositories.evidence_store_repository import EvidenceStoreRepository
 
 
@@ -116,32 +119,6 @@ _TOPIC_KEYWORDS = {
     "supply": {"supply", "inventory", "capacity", "foundry", "memory"},
 }
 
-_DEFAULT_IMPACT_GRAPH: dict[str, list[ImpactRelationship]] = {
-    "NVDA": [
-        ImpactRelationship(ticker="TSMC", relationship="supplier/foundry", strength=0.82, beta=1.15, reason="GPU demand changes foundry volume expectations."),
-        ImpactRelationship(ticker="AMD", relationship="peer/competitor", strength=0.68, beta=1.25, reason="AI accelerator demand reprices peers."),
-        ImpactRelationship(ticker="AVGO", relationship="peer/custom silicon", strength=0.62, beta=1.12, reason="AI networking and ASIC read-through."),
-        ImpactRelationship(ticker="SMCI", relationship="customer/server supply chain", strength=0.64, beta=1.4, reason="AI server demand read-through."),
-        ImpactRelationship(ticker="MU", relationship="supplier/memory", strength=0.54, beta=1.35, reason="HBM and memory demand read-through."),
-        ImpactRelationship(ticker="ARM", relationship="ecosystem/IP", strength=0.48, beta=1.2, reason="AI compute ecosystem sentiment."),
-        ImpactRelationship(ticker="ASML", relationship="semicap supplier", strength=0.45, beta=1.05, reason="Leading-edge capacity demand."),
-        ImpactRelationship(ticker="QQQ", relationship="ETF/mega-cap weight", strength=0.58, beta=1.0, etf_weight_pct=7.0, reason="Index-level AI mega-cap exposure."),
-    ],
-    "AMD": [
-        ImpactRelationship(ticker="NVDA", relationship="peer/competitor", strength=0.70, beta=1.15),
-        ImpactRelationship(ticker="TSMC", relationship="supplier/foundry", strength=0.62, beta=1.10),
-        ImpactRelationship(ticker="MU", relationship="supplier/memory", strength=0.42, beta=1.25),
-        ImpactRelationship(ticker="QQQ", relationship="ETF/semiconductor exposure", strength=0.36, beta=1.0),
-    ],
-    "TSMC": [
-        ImpactRelationship(ticker="NVDA", relationship="customer", strength=0.76, beta=1.15),
-        ImpactRelationship(ticker="AMD", relationship="customer", strength=0.58, beta=1.25),
-        ImpactRelationship(ticker="ASML", relationship="supplier/semicap", strength=0.50, beta=1.05),
-        ImpactRelationship(ticker="QQQ", relationship="ETF/supply chain exposure", strength=0.32, beta=1.0),
-    ],
-}
-
-
 def _clip(text: str, limit: int = 360) -> str:
     normalized = " ".join(str(text or "").split())
     return normalized if len(normalized) <= limit else normalized[: limit - 3].rstrip() + "..."
@@ -188,8 +165,15 @@ def _as_date_text(value: datetime | date | None) -> str | None:
 
 
 class EvidenceRetrievalService:
-    def __init__(self, repository: EvidenceStoreRepository | None = None) -> None:
-        self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.PGVECTOR)
+    def __init__(
+        self,
+        repository: EvidenceStoreRepository | None = None,
+        company_repository: CompanyIntelligenceRepository | None = None,
+    ) -> None:
+        self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.LOCAL_SPARSE)
+        self.company_repository = company_repository or CompanyIntelligenceRepository(
+            store_path=Path(__file__).resolve().parents[1] / "data" / "company_intelligence_seed.json"
+        )
 
     def retrieve(self, request: EvidenceRetrievalRequest) -> EvidenceRetrievalResult:
         return self.repository.search(request)
@@ -210,6 +194,7 @@ class EvidenceRetrievalService:
         documents: list[EvidenceDocument] = []
         documents.extend(evidence_documents or [])
         documents.extend(self._documents_from_canonical_bundle(ticker=ticker, bundle=canonical_bundle))
+        documents.extend(self._documents_from_company_intelligence(ticker=ticker))
         documents.extend(self._documents_from_metadata(ticker=ticker, metadata=request_metadata or {}))
         query = self._analysis_query(ticker=ticker, current_chunk=current_chunk, source_type=source_type, market_data=market_data)
         result = self.retrieve(
@@ -349,7 +334,8 @@ class EvidenceRetrievalService:
 
     def impact_chain(self, request: ImpactChainRequest) -> ImpactChainResponse:
         source = request.source_ticker.upper()
-        relationships = request.relationships or _DEFAULT_IMPACT_GRAPH.get(source, [])
+        stored_relationships = [item.to_impact_relationship() for item in self.company_repository.get_relationships(source)]
+        relationships = request.relationships or stored_relationships
         direction = request.source_direction
         if direction == ImpactDirection.NEUTRAL and request.catalyst:
             direction = self._direction_from_polarity(_polarity(request.catalyst))
@@ -392,7 +378,7 @@ class EvidenceRetrievalService:
                 )
             )
         impacted.sort(key=lambda item: item.impact_score, reverse=True)
-        return ImpactChainResponse(source_ticker=source, impacted=impacted[: request.top_k])
+        return ImpactChainResponse(source_ticker=source, impacted=impacted[: request.top_k], graph_version="2026-06-20.company-intelligence.v2")
 
     def generate_trade_exit_plan(self, request: TradeExitPlanRequest) -> TradeExitPlanResponse:
         market_data = MarketData.model_validate(request.market_data)
@@ -485,6 +471,48 @@ class EvidenceRetrievalService:
             )
         return documents
 
+    def _documents_from_company_intelligence(self, *, ticker: str) -> list[EvidenceDocument]:
+        documents: list[EvidenceDocument] = []
+        for executive in self.company_repository.get_executives(ticker):
+            content_parts = [
+                f"{executive.name} serves as {executive.current_role}.",
+                "Career: " + "; ".join(executive.career_history) if executive.career_history else "",
+                "Achievements: " + "; ".join(executive.achievements) if executive.achievements else "",
+                "Leadership traits: " + "; ".join(executive.leadership_traits) if executive.leadership_traits else "",
+                "Communication traits: " + "; ".join(executive.communication_traits) if executive.communication_traits else "",
+            ]
+            documents.append(
+                EvidenceDocument(
+                    document_id=f"executive:{executive.executive_id}",
+                    ticker=ticker.upper(),
+                    source_type=EvidenceSourceType.OTHER,
+                    source="company_intelligence.executive_profile",
+                    title=f"Executive profile: {executive.name}",
+                    published_at=executive.as_of_date,
+                    source_url=executive.source_urls[0] if executive.source_urls else None,
+                    content=" ".join(item for item in content_parts if item),
+                    reliability_score=executive.confidence,
+                    metadata={"is_ceo": executive.is_ceo, "role": executive.current_role},
+                )
+            )
+        for relationship in self.company_repository.get_relationships(ticker):
+            documents.append(
+                EvidenceDocument(
+                    document_id=f"impact:{relationship.source_ticker}:{relationship.target_ticker}:{relationship.relationship}",
+                    ticker=ticker.upper(),
+                    source_type=EvidenceSourceType.SUPPLY_CHAIN,
+                    source="company_intelligence.impact_graph",
+                    title=f"{relationship.source_ticker} to {relationship.target_ticker}",
+                    content=relationship.reason_ko or relationship.relationship,
+                    reliability_score=relationship.confidence,
+                    metadata={
+                        "target_ticker": relationship.target_ticker,
+                        "relationship": relationship.relationship,
+                        "strength": relationship.strength,
+                    },
+                )
+            )
+        return documents
     def _documents_from_metadata(self, *, ticker: str, metadata: dict[str, Any]) -> list[EvidenceDocument]:
         documents: list[EvidenceDocument] = []
         raw_documents = metadata.get("evidence_documents") or metadata.get("documents") or []

@@ -11,6 +11,15 @@ EarningWhisperer is the AI-engine layer for event-driven trading decisions. This
 - decision assistant: convert signals into sell-first guidance, no-trade explanations, replay confidence badges, execution-cost badges, and counter-thesis cards
 - legacy compatibility: accept the original GitHub data-pipeline payload and publish raw Redis signals for the Spring backend
 
+## Hybrid Phase1 FinBERT Runtime
+
+The default Phase1 mode is `hybrid`: deterministic earnings/market features are combined with local FinBERT sentiment before Gemini and RAG processing. FinBERT is an optional heavyweight runtime so the base API and test environment remain lightweight.
+
+```powershell
+pip install -r requirements-finbert.txt
+```
+
+With `PHASE1_PROVIDER=hybrid`, missing model dependencies or model-load failures automatically degrade to the deterministic heuristic scorer. Runtime state is exposed under `/health`, `/health/ready`, and `/stats` in the `phase1` field. Use `PHASE1_FINBERT_LOCAL_FILES_ONLY=true` in locked-down deployments after pre-caching the model.
 ## Scope
 
 Included:
@@ -20,18 +29,21 @@ Included:
 - feature extraction, routing, strategy scoring, explanation payloads
 - canonical bundle normalization and source-health observability
 - in-process signal data hub with TTL freshness, source health, and cache-efficiency telemetry
-- PostgreSQL event-store persistence
+- PostgreSQL event/evidence persistence and Qdrant-backed evidence retrieval
 - replay, metrics, drift, scorecard, leaderboard
 - gate patch, rollout, emergency control, calibration, regression
 - offline research CLI for proxy/replay/hybrid backtests
 - frontend-ready structured equity report API
+- SEC/news/IR/transcript evidence ingestion with scheduled synchronization
+- data-driven company impact graph, executive profiles, and speaker metadata
+- profile-specific Redis channels with a durable retry spool
 
 Excluded:
 
 - frontend UI
 - auth and user management
 - payment or billing
-- upstream STT ingestion infrastructure
+- upstream live audio capture and STT infrastructure
 - broker execution layer
 
 ## Current Structure
@@ -129,7 +141,8 @@ Legacy analyze input:
 Legacy Redis output on `trading-signals`:
 
 - `ticker`
-- `raw_score`
+- `raw_score` (canonical signed score)
+- `ai_score` (same signed value; Spring Backend compatibility alias)
 - `rationale`
 - `text_chunk`
 - `timestamp`
@@ -402,10 +415,71 @@ python -m pytest -q
 
 Latest local result:
 
-- `130 passed`
+- `164 passed`
 
 ## Notes
 
 - proxy backtest and replay validation are intentionally separate outputs
 - additive-only API changes remain the rule for existing `/v1/engine/*` clients
 - the current production candidate is proxy-validated; persisted event replay validation is still required before real-money deployment
+## Production Evidence And Intelligence
+
+The v9.6 evidence path supports persistent and offline-safe operation:
+
+```text
+SEC filings / yfinance news / IR URLs / transcript PDF
+  -> EvidenceIngestionService
+  -> PostgreSQL evidence store
+  -> Qdrant vector index
+  -> evidence-grounded analysis and earnings intelligence
+  -> profile-specific Redis channels
+  -> durable JSONL retry spool on publish failure
+```
+
+Key endpoints:
+
+- `POST /v1/engine/evidence/ingest`
+- `POST /v1/engine/evidence/sync`
+- `POST /v1/engine/transcripts/ingest`
+- `POST /v1/engine/transcripts/upload`
+- `GET /v1/engine/evidence/ingestion/status`
+- `GET /v1/engine/company-intelligence/{ticker}`
+- `POST /v1/engine/company-intelligence/upsert`
+- `POST /v1/engine/redis/retry`
+- `GET /v1/engine/redis/retry/status`
+
+Run PostgreSQL, Qdrant, Redis, and MySQL from the repository root:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+```
+
+For SEC ingestion, set `EVIDENCE_SEC_USER_AGENT` to an application name and monitored contact email. Scheduled synchronization remains disabled until `EVIDENCE_SYNC_ENABLED=true` and `EVIDENCE_SYNC_TICKERS` are configured.
+
+The AI engine creates order drafts and risk plans only. Broker order execution remains the Trading Terminal responsibility.
+
+## Live Earnings Session API
+
+The live-session layer turns independent chunk analysis into a reconnectable earnings-call workflow:
+
+```text
+start session
+  -> ingest timestamped speaker chunks
+  -> signed AI score per chunk
+  -> RAG fact-check ledger and historical claim diff
+  -> omission/evasion and speaker telemetry
+  -> rolling earnings scorecard
+  -> finalize BUY/HOLD/SELL signal
+  -> advisory order draft + impact chain + risk plan
+  -> persist state and publish one final Redis signal
+```
+
+Endpoints:
+
+- `POST /v1/engine/live-sessions`
+- `GET /v1/engine/live-sessions`
+- `GET /v1/engine/live-sessions/{session_id}`
+- `POST /v1/engine/live-sessions/{session_id}/chunks`
+- `POST /v1/engine/live-sessions/{session_id}/finalize`
+
+Session state is written atomically under `LIVE_SESSION_STORE_PATH` and mirrored to PostgreSQL when evidence persistence is enabled. Final signals use deterministic IDs (`live-session:{session_id}`), allowing Trading Terminal consumers to deduplicate Redis redelivery. `MANUAL`, `SEMI_AUTO`, and `AUTO_PILOT` are execution-policy hints only; the AI engine never calls a broker. Legacy request values `ONE_CLICK` and `AUTO` are accepted and normalized to the Terminal contract.

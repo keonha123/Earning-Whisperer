@@ -37,6 +37,9 @@ async def analyze_legacy(payload: LegacyAnalyzeRequest, request: Request) -> Leg
         {
             "redis_published": publish_result.legacy_published,
             "enriched_published": publish_result.enriched_published,
+            "profile_published": publish_result.profile_published,
+            "profile_channel": publish_result.profile_channel,
+            "retry_queued": publish_result.retry_queued,
             "publish_error": publish_result.error,
             "engine_envelope": envelope,
         }

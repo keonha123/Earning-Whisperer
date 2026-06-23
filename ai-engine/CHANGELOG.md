@@ -1,3 +1,15 @@
+
+## v9.6.0 - 2026-06-20
+
+- Implemented real Qdrant upsert/search with deterministic hash embeddings and memory fallback.
+- Added PostgreSQL evidence persistence, schema bootstrap, and full-text candidate retrieval.
+- Added SEC filing, yfinance news, IR URL, text transcript, and PDF transcript ingestion.
+- Added optional scheduled evidence synchronization.
+- Replaced hard-coded impact mappings with a durable company-intelligence repository.
+- Added executive profile and transcript speaker metadata APIs.
+- Added real investment-profile Redis channels and a durable JSONL retry spool.
+- Added PostgreSQL/pgvector to `infra/docker-compose.yml`.
+- Repaired Korean investment-profile and earnings-intelligence output strings.
 # Changelog
 
 ## v9.6.2 - 2026-05-17
@@ -98,7 +110,8 @@
   - `sell_first_action`
   - `recommended_change_pct`
   - `position_intent_ko`
-  - `no_trade_summary_ko`
+  -
+o_trade_summary_ko`
   - `replay_confidence_badge`
   - `execution_badge`
   - `counter_thesis_ko`
@@ -180,8 +193,10 @@
 ### Added
 
 - Added a Nasdaq100 conservative quality-reversal sleeve:
-  - `REVERSAL_CATALYST` is allowed only for mega-cap `TECHNOLOGY` / `COMMUNICATION_SERVICES` events in `normal` regime.
-  - Non-scope reversal setups are blocked with `nasdaq_conservative_quality_reversal_scope`.
+  - `REVERSAL_CATALYST` is allowed only for mega-cap `TECHNOLOGY` / `COMMUNICATION_SERVICES` events in
+ormal` regime.
+  - Non-scope reversal setups are blocked with
+asdaq_conservative_quality_reversal_scope`.
 - Added a Nasdaq100 conservative research risk governor:
   - skips the next candidate after `2` consecutive net losing trades
   - pauses candidates for `30` days after an `-8%` realized track drawdown trigger
@@ -207,14 +222,17 @@
   - MDD `-11.4037%`
   - total return `31.2770%`
   - production state `prod_candidate`
-- Full 2017-2026 acceptance matrix selected `nasdaq100_conservative` as the production candidate.
+- Full 2017-2026 acceptance matrix selected
+asdaq100_conservative` as the production candidate.
 
 ## v9.5.4 - 2026-04-26
 
 ### Fixed
 
 - Retuned Nasdaq100 conservative approval logic after the 2017-2026 backtest showed weak expectancy from non-core sectors and high-volatility news breakouts.
-- Added `nasdaq_conservative_non_core_sector` and `nasdaq_conservative_high_vol_news_breakout` blockers.
+- Added
+asdaq_conservative_non_core_sector` and
+asdaq_conservative_high_vol_news_breakout` blockers.
 - Kept missing sector metadata graceful: unknown sector does not block live analysis by itself.
 
 ### Changed
@@ -242,7 +260,8 @@
   - MDD `-29.5416% -> -19.1754%`
   - total return `2.4619% -> 20.7492%`
 - Full acceptance matrix rerun completed normally:
-  - selected production candidate became `nasdaq100_conservative`
+  - selected production candidate became
+asdaq100_conservative`
   - no production promotion yet because conservative MDD still exceeds the `-12%` limit
 - Full local test suite: `python -m pytest -q` -> `120 passed`
 - Compile/import validation: `python -m compileall .` -> success, with only existing temp-directory listing warnings
@@ -513,7 +532,8 @@
 - Local test suite: `100 passed`
 - Nasdaq aggressive probe rerun completed for `2020-01-01` through `2025-12-31`
 - Full exact-range acceptance matrix rerun completed again for `2020-01-01` through `2025-12-31`
-- `nasdaq100_aggressive` improved from the prior v9.4.6 result:
+-
+asdaq100_aggressive` improved from the prior v9.4.6 result:
   - `47` trades / `70.2128%` win rate / `0.6610%` avg trade / `1.9117` PF / `3.0099` Sharpe / `-9.4087%` MDD / `34.1377%` total return
 - To:
   - `60` trades / `71.6667%` win rate / `0.7885%` avg trade / `2.1743` PF / `3.7544` Sharpe / `-9.4087%` MDD / `57.1358%` total return
@@ -548,7 +568,8 @@
 
 - Local test suite: `99 passed`
 - Exact-range acceptance matrix rerun completed again for `2020-01-01` through `2025-12-31`
-- `nasdaq100_aggressive` improved from:
+-
+asdaq100_aggressive` improved from:
   - `1034` trades / `47.6789%` win rate / `-0.0230%` avg trade / `0.9866` PF / `-0.0615` Sharpe / `-90.5782%` MDD / `-67.4772%` total return
 - To:
   - `47` trades / `70.2128%` win rate / `0.6610%` avg trade / `1.9117` PF / `3.0099` Sharpe / `-9.4087%` MDD / `34.1377%` total return
@@ -558,7 +579,8 @@
   - `62` trades / `62.9032%` win rate / `1.1112%` avg trade / `2.0738` PF / `2.5019` Sharpe / `-13.8193%` MDD / `91.1128%` total return
 - Promotion result:
   - `sp500_aggressive` now clears aggressive research thresholds but remains `research_canary_only` by design
-  - `nasdaq100_aggressive` now clears every aggressive quality threshold except the `trade_count >= 50` sample floor
+  -
+asdaq100_aggressive` now clears every aggressive quality threshold except the `trade_count >= 50` sample floor
   - conservative production candidates remained unchanged
 ## v9.4.5 - 2026-04-22
 
@@ -585,14 +607,16 @@
 
 - Local test suite: `93 passed`
 - Exact-range acceptance matrix rerun completed again for `2020-01-01` through `2025-12-31`
-- `nasdaq100_conservative` improved from:
+-
+asdaq100_conservative` improved from:
   - `145` trades / `48.9655%` win rate / `0.2219%` avg trade / `1.1263` PF / `0.4412` Sharpe / `-40.8479%` MDD
 - To:
   - `40` trades / `57.5%` win rate / `0.6346%` avg trade / `1.5052` PF / `1.5914` Sharpe / `-9.9275%` MDD
 - `sp500_conservative` remained stable at:
   - `51` trades / `58.8235%` win rate / `0.7349%` avg trade / `1.7775` PF / `2.6416` Sharpe / `-10.4207%` MDD
 - Promotion result:
-  - `nasdaq100_conservative` now passes all conservative production thresholds and is marked `prod_candidate`
+  -
+asdaq100_conservative` now passes all conservative production thresholds and is marked `prod_candidate`
   - `sp500_conservative` remains `prod_candidate`
 
 ## v9.4.4 - 2026-04-22
@@ -651,7 +675,8 @@
 - Local test suite: `87 passed`
 - Exact-range acceptance matrix run completed for `2020-01-01` through `2025-12-31`
 - Acceptance summary:
-  - `nasdaq100_conservative`: `145` trades, win rate `48.9655%`, avg trade `0.2219%`, Sharpe `0.4412`, MDD `-40.8479%`
+  -
+asdaq100_conservative`: `145` trades, win rate `48.9655%`, avg trade `0.2219%`, Sharpe `0.4412`, MDD `-40.8479%`
   - `sp500_conservative`: `109` trades, win rate `55.9633%`, avg trade `0.2383%`, Sharpe `0.9477`, MDD `-20.6825%`
   - Aggressive tracks remained non-promotable with materially worse drawdown and expectancy
   - Selected conservative candidate: `sp500_conservative`, but still below production thresholds
@@ -678,7 +703,8 @@
 
 - Local test suite: `82 passed`
 - 10-year acceptance rerun highlights versus the original baseline:
-  - `nasdaq100_conservative`: avg trade `-0.1692% -> +0.0349%`, Sharpe `-0.4052 -> +0.0726`, MDD `-91.5271% -> -76.3252%`
+  -
+asdaq100_conservative`: avg trade `-0.1692% -> +0.0349%`, Sharpe `-0.4052 -> +0.0726`, MDD `-91.5271% -> -76.3252%`
   - `sp500_conservative`: avg trade `-0.4082% -> -0.1708%`, Sharpe `-0.9854 -> -0.7483`, MDD `-99.9978% -> -64.6129%`
   - Aggressive tracks improved modestly but remain non-promotable
   - Final rerun matched the final artifact exactly on scenario metrics
