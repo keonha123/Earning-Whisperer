@@ -6,3 +6,4 @@ pandas>=2.0.0
 SQLAlchemy>=2.0.0
 PyMySQL>=1.1.0
 requests>=2.31.0
+trafilatura>=2.1.0,<3.0

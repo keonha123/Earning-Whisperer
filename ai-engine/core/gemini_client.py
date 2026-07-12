@@ -107,7 +107,12 @@ class GeminiClient:
             raise RuntimeError("Gemini client unavailable")
         try:
             response = client.models.generate_content(model=model, contents=prompt, config=self._build_modern_config(config, include_thinking=True))
-        except TypeError:
+        except Exception as exc:
+            if not config.get("thinking_level"):
+                raise
+            message = f"{type(exc).__name__}: {exc}".lower()
+            if "thinking" not in message:
+                raise
             response = client.models.generate_content(model=model, contents=prompt, config=self._build_modern_config(config, include_thinking=False))
         text = getattr(response, "text", response)
         usage = getattr(response, "usage_metadata", None)

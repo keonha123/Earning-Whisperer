@@ -34,6 +34,21 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     return max(minimum, value)
 
 
+def _float_env(name: str, default: float, *, minimum: float = 0.1) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, value)
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 @dataclass(frozen=True)
 class NewsCollectorSettings:
     finnhub_api_key: str
@@ -43,6 +58,9 @@ class NewsCollectorSettings:
     interval_minutes: int
     state_path: Path
     request_timeout_seconds: float
+    full_text_enabled: bool
+    full_text_timeout_seconds: float
+    full_text_user_agent: str
 
 
 def get_news_settings() -> NewsCollectorSettings:
@@ -60,5 +78,9 @@ def get_news_settings() -> NewsCollectorSettings:
         lookback_days=_int_env("FINNHUB_NEWS_LOOKBACK_DAYS", 1),
         interval_minutes=_int_env("FINNHUB_NEWS_INTERVAL_MINUTES", 10),
         state_path=state_path,
-        request_timeout_seconds=float(os.getenv("FINNHUB_NEWS_TIMEOUT_SECONDS", "30")),
+        request_timeout_seconds=_float_env("FINNHUB_NEWS_TIMEOUT_SECONDS", 30.0),
+        full_text_enabled=_bool_env("NEWS_FULL_TEXT_ENABLED", True),
+        full_text_timeout_seconds=_float_env("NEWS_FULL_TEXT_TIMEOUT_SECONDS", 10.0),
+        full_text_user_agent=os.getenv("NEWS_FULL_TEXT_USER_AGENT", "EarningWhispererNewsCollector/0.1").strip()
+        or "EarningWhispererNewsCollector/0.1",
     )

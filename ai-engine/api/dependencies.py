@@ -13,7 +13,7 @@ try:
     from models.request_models import AnalyzeRequest
     from models.storage_models import PersistEnvelopeResponse
     from repositories.event_store_repository import EventStoreRepository
-    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService
+    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService, TranscriptDiffService
     from services.equity_report_service import EquityResearchReportService
     from services.evidence_retrieval_service import EvidenceRetrievalService
     from services.redis_signal_publisher import RedisSignalPublisher
@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover
     from ..models.request_models import AnalyzeRequest
     from ..models.storage_models import PersistEnvelopeResponse
     from ..repositories.event_store_repository import EventStoreRepository
-    from ..services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService
+    from ..services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService, TranscriptDiffService
     from ..services.equity_report_service import EquityResearchReportService
     from ..services.evidence_retrieval_service import EvidenceRetrievalService
     from ..services.redis_signal_publisher import RedisSignalPublisher
@@ -69,6 +69,10 @@ def get_earnings_intelligence_service(app: FastAPI) -> EarningsIntelligenceServi
     return app.state.earnings_intelligence_service
 
 
+def get_transcript_diff_service(app: FastAPI) -> TranscriptDiffService:
+    return app.state.transcript_diff_service
+
+
 def get_control_service(app: FastAPI) -> ControlPlaneService:
     return ControlPlaneService(get_repository(app))
 
@@ -96,4 +100,5 @@ __all__ = [
     "get_regression_service",
     "get_repository",
     "get_settings",
+    "get_transcript_diff_service",
 ]
