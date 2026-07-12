@@ -189,7 +189,7 @@ def _as_date_text(value: datetime | date | None) -> str | None:
 
 class EvidenceRetrievalService:
     def __init__(self, repository: EvidenceStoreRepository | None = None) -> None:
-        self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.PGVECTOR)
+        self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.LOCAL_SPARSE)
 
     def retrieve(self, request: EvidenceRetrievalRequest) -> EvidenceRetrievalResult:
         return self.repository.search(request)

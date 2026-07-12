@@ -43,11 +43,11 @@ logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
-    def __init__(self, **_: object) -> None:
+    def __init__(self, **kwargs: object) -> None:
         self.context_manager = RollingContextManager(max_chunks=5)
         self.transcript_enhancer = TranscriptSignalEnhancer()
         self.canonical_bundle_service = CanonicalBundleService()
-        self.evidence_service = EvidenceRetrievalService()
+        self.evidence_service = kwargs.get("evidence_service") or EvidenceRetrievalService()
         self.external_retriever = external_retriever
         self.route_counts: dict[str, int] = {}
         self.source_health_telemetry = SourceHealthTelemetry()

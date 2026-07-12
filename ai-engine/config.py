@@ -135,12 +135,30 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
     qdrant_path: str = Field(default="", alias="QDRANT_PATH")
     qdrant_collection_name: str = Field(default="earningwhisperer_evidence", alias="QDRANT_COLLECTION_NAME")
+    qdrant_transcript_collection_name: str = Field(default="earningwhisperer_transcripts", alias="QDRANT_TRANSCRIPT_COLLECTION_NAME")
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
     embedding_dimension: int = Field(default=256, alias="EMBEDDING_DIMENSION")
+    external_embedding_provider: str = Field(default="", alias="EXTERNAL_EMBEDDING_PROVIDER")
+    external_embedding_model: str = Field(default="", alias="EXTERNAL_EMBEDDING_MODEL")
+    external_embedding_dimension: int = Field(default=0, alias="EXTERNAL_EMBEDDING_DIMENSION")
+    external_embedding_version: str = Field(default="external-v1", alias="EXTERNAL_EMBEDDING_VERSION")
     external_chunk_size_chars: int = Field(default=1200, alias="EXTERNAL_CHUNK_SIZE_CHARS")
     external_chunk_overlap_chars: int = Field(default=160, alias="EXTERNAL_CHUNK_OVERLAP_CHARS")
     external_evidence_retention_days: int = Field(default=365, alias="EXTERNAL_EVIDENCE_RETENTION_DAYS")
+    fact_check_news_lookback_days: int = Field(default=30, alias="FACT_CHECK_NEWS_LOOKBACK_DAYS")
+    fact_check_top_k: int = Field(default=8, alias="FACT_CHECK_TOP_K")
+    fact_check_max_evidence: int = Field(default=5, alias="FACT_CHECK_MAX_EVIDENCE")
+    fact_check_strong_relevance_score: float = Field(default=0.42, alias="FACT_CHECK_STRONG_RELEVANCE_SCORE")
+    fact_check_moderate_relevance_score: float = Field(default=0.34, alias="FACT_CHECK_MODERATE_RELEVANCE_SCORE")
+    fact_check_retrieval_timeout_seconds: float = Field(default=3.0, alias="FACT_CHECK_RETRIEVAL_TIMEOUT_SECONDS")
+    fact_check_llm_timeout_seconds: float = Field(default=8.0, alias="FACT_CHECK_LLM_TIMEOUT_SECONDS")
+    fact_check_max_output_tokens: int = Field(default=1024, alias="FACT_CHECK_MAX_OUTPUT_TOKENS")
+    fact_check_extraction_timeout_seconds: float = Field(default=5.0, alias="FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS")
+    fact_check_extraction_max_output_tokens: int = Field(default=768, alias="FACT_CHECK_EXTRACTION_MAX_OUTPUT_TOKENS")
+    fact_check_max_claims_per_sentence: int = Field(default=2, alias="FACT_CHECK_MAX_CLAIMS_PER_SENTENCE")
+    fact_check_max_claims_per_batch: int = Field(default=6, alias="FACT_CHECK_MAX_CLAIMS_PER_BATCH")
+    fact_check_sentence_buffer_ttl_seconds: int = Field(default=900, alias="FACT_CHECK_SENTENCE_BUFFER_TTL_SECONDS")
 
     redis_channel: str = Field(default="trading-signals", alias="REDIS_CHANNEL")
     redis_enriched_channel: str = Field(default="trading-signals-enriched", alias="REDIS_ENRICHED_CHANNEL")
@@ -209,6 +227,18 @@ class Settings(BaseSettings):
             raise ValueError("CONFIDENCE_THRESHOLD must be between 0 and 1")
         if self.llm_router_max_calls_per_chunk < 1:
             raise ValueError("LLM_ROUTER_MAX_CALLS_PER_CHUNK must be >= 1")
+        if not (0 <= self.fact_check_moderate_relevance_score <= self.fact_check_strong_relevance_score <= 1):
+            raise ValueError("Fact-check relevance thresholds must be ordered between 0 and 1")
+        if self.fact_check_top_k < 1 or self.fact_check_max_evidence < 1:
+            raise ValueError("Fact-check retrieval limits must be positive")
+        if self.fact_check_news_lookback_days < 1:
+            raise ValueError("FACT_CHECK_NEWS_LOOKBACK_DAYS must be positive")
+        if not (1 <= self.fact_check_max_claims_per_sentence <= self.fact_check_max_claims_per_batch):
+            raise ValueError("Fact-check claim limits must be positive and ordered")
+        if self.fact_check_sentence_buffer_ttl_seconds < 1:
+            raise ValueError("FACT_CHECK_SENTENCE_BUFFER_TTL_SECONDS must be positive")
+        if self.external_embedding_dimension < 0:
+            raise ValueError("EXTERNAL_EMBEDDING_DIMENSION cannot be negative")
         if not (self.mdd_warning_threshold > self.mdd_pause_threshold > self.mdd_liquidate_threshold):
             raise ValueError("MDD thresholds must be descending in severity")
         return self

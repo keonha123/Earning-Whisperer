@@ -26,7 +26,6 @@ async def test_analysis_service_injects_external_rag_evidence(monkeypatch) -> No
                 text="NVIDIA raised data center guidance because AI accelerator demand remained strong.",
                 published_at=now - 30,
                 source_type="news",
-                importance=0.9,
             )
         ]
     )

@@ -216,7 +216,6 @@ def _to_external_document(item: ExternalEvidencePayload, *, default_ticker: str,
         source_type=item.source_type,
         url=item.url,
         form_type=item.form_type,
-        importance=item.importance,
         metadata=dict(item.metadata),
     )
 

@@ -13,8 +13,10 @@ try:
     from db.postgres_executor import PsycopgExecutor
     from models.request_models import AnalyzeRequest
     from models.storage_models import PersistEnvelopeResponse
+    from repositories.evidence_store_repository import EvidenceStoreRepository
     from repositories.event_store_repository import EventStoreRepository
-    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, RegressionService
+    from repositories.qdrant_evidence_repository import QdrantEvidenceRepository
+    from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
 except ImportError:  # pragma: no cover
@@ -24,8 +26,10 @@ except ImportError:  # pragma: no cover
     from .db.postgres_executor import PsycopgExecutor
     from .models.request_models import AnalyzeRequest
     from .models.storage_models import PersistEnvelopeResponse
+    from .repositories.evidence_store_repository import EvidenceStoreRepository
     from .repositories.event_store_repository import EventStoreRepository
-    from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, RegressionService
+    from .repositories.qdrant_evidence_repository import QdrantEvidenceRepository
+    from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
 
@@ -74,6 +78,22 @@ def _build_repository(settings: Settings) -> EventStoreRepository:
     return EventStoreRepository(executor=executor, schema_path=_schema_path_from_settings(settings))
 
 
+def _build_evidence_repository(settings: Settings, event_repository: EventStoreRepository):
+    if str(settings.vector_store_backend).lower().strip() == "qdrant":
+        return QdrantEvidenceRepository.from_settings(settings=settings)
+    return EvidenceStoreRepository()
+
+
+def _build_transcript_repository(settings: Settings):
+    if str(settings.vector_store_backend).lower().strip() == "qdrant":
+        return QdrantEvidenceRepository.from_settings(
+            settings=settings,
+            collection_name=settings.qdrant_transcript_collection_name,
+            store_name="transcript",
+        )
+    return EvidenceStoreRepository()
+
+
 def _get_control_service(fastapi_app: FastAPI | None) -> ControlPlaneService | None:
     if fastapi_app is None or not hasattr(fastapi_app.state, "event_store_repository"):
         return None
@@ -119,9 +139,21 @@ def create_app() -> FastAPI:
     }
 
     app.state.settings = settings
-    app.state.analysis_service = AnalysisService(settings=settings)
-    app.state.evidence_service = app.state.analysis_service.evidence_service
     app.state.event_store_repository = _build_repository(settings)
+    app.state.evidence_repository = _build_evidence_repository(settings, app.state.event_store_repository)
+    app.state.transcript_repository = _build_transcript_repository(settings)
+    app.state.evidence_service = EvidenceRetrievalService(repository=app.state.evidence_repository)
+    app.state.transcript_diff_service = TranscriptDiffService(app.state.transcript_repository)
+    app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
+    app.state.analysis_service = AnalysisService(
+        settings=settings,
+        evidence_service=app.state.evidence_service,
+    )
+    app.state.news_ingestion_service = NewsIngestionService(app.state.analysis_service.external_retriever)
+    app.state.live_news_fact_check_service = LiveNewsFactCheckService(
+        retriever=app.state.analysis_service.external_retriever,
+        settings=settings,
+    )
     app.state.redis_signal_publisher = RedisSignalPublisher(settings=settings)
     app.state.equity_report_service = EquityResearchReportService(
         settings=settings,
@@ -148,6 +180,8 @@ app = create_app()
 __all__ = [
     "HealthResponse",
     "_build_repository",
+    "_build_evidence_repository",
+    "_build_transcript_repository",
     "_dispatch_analysis",
     "_get_calibration_service",
     "_get_control_service",
