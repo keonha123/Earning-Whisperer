@@ -14,3 +14,4 @@ ffmpeg-python>=0.2.0
 imageio-ffmpeg>=0.6.0
 lxml>=5.0.0
 playwright>=1.51.0
+trafilatura>=2.1.0,<3.0

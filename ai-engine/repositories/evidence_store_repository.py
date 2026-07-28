@@ -137,16 +137,12 @@ def _best_snippet(content: str, query_tokens: set[str], limit: int = 320) -> str
 
 
 class EvidenceStoreRepository:
-    """pgvector-ready repository contract with deterministic local sparse retrieval.
-
-    The production backend can persist embeddings in pgvector. The local fallback keeps
-    tests and offline runs deterministic without pulling FAISS/Qdrant dependencies.
-    """
+    """Deterministic local sparse evidence repository for tests and offline runs."""
 
     def __init__(
         self,
         *,
-        backend: EvidenceBackend = EvidenceBackend.PGVECTOR,
+        backend: EvidenceBackend = EvidenceBackend.LOCAL_SPARSE,
         documents: Iterable[EvidenceDocument] | None = None,
     ) -> None:
         self.backend = backend

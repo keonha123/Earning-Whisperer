@@ -1,5 +1,8 @@
 # Lessons
 
+- For streaming fact-checking, buffer finalized sentences by an explicit product-level stream key and trigger expensive work only on complete batches; when ticker is the key, sequence zero must reset stale state.
+- Fact-check evidence gating must use pure semantic relevance and source independence; do not let article importance or market materiality indirectly decide whether a factual claim is verifiable.
+
 - Keep new API fields additive so existing clients and tests continue to pass.
 - Product-grade control paths need persisted evidence and audit records; avoid returning success from placeholder IDs or implicit state.
 - Keep the project positioned as `AI engine only`; do not drift into frontend, gateway, auth, payment, or upstream ingestion scope.
