@@ -13,6 +13,8 @@ __pycache__/
 *.pyo
 *$py.class
 .state/
+.artifacts/
+.runtime/
 .venv/
 venv/
 env/

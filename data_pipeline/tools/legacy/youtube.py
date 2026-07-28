@@ -1,6 +1,6 @@
 import os
 from googleapiclient.discovery import build
-from .base import StreamLinkCollector
+from .stream_base import StreamLinkCollector
 from typing import Optional
 
 class YouTubeLiveStrategy(StreamLinkCollector):

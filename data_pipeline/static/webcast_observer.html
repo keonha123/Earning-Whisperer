@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Earning Whisperer | Webcast Observer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --background: #f3f5f7;
+      --surface: #ffffff;
+      --line: #d7dde3;
+      --text: #1a2026;
+      --muted: #63707c;
+      --accent: #1769aa;
+      --success: #1e7a46;
+      --warning: #a96308;
+      --danger: #b62f32;
+      --terminal: #11161b;
+      --terminal-text: #dbe5ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--background);
+      color: var(--text);
+      font-family: Inter, "Noto Sans KR", system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: #9da9b4;
+      background: #f7f9fa;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.danger {
+      color: var(--danger);
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 58px minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .brand {
+      flex: none;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .target {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .ticker {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .target-url {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .phase {
+      flex: none;
+      margin-left: auto;
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: #e8edf1;
+      color: #3a4650;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .phase.success {
+      background: #dcefe3;
+      color: var(--success);
+    }
+
+    .phase.warning {
+      background: #fff0d7;
+      color: var(--warning);
+    }
+
+    .phase.danger {
+      background: #f8e1e2;
+      color: var(--danger);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 390px;
+      min-height: 0;
+    }
+
+    .browser-pane {
+      display: grid;
+      grid-template-rows: 42px minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      background: #1a1d20;
+    }
+
+    .pane-header,
+    .side-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #8b969f;
+    }
+
+    .live-dot.on {
+      background: #2ea461;
+      box-shadow: 0 0 0 3px #d9f0e2;
+    }
+
+    .browser-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      background: #1a1d20;
+    }
+
+    #vnc-frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #1a1d20;
+    }
+
+    .browser-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #aeb8c0;
+      font-size: 13px;
+    }
+
+    .side-pane {
+      display: grid;
+      grid-template-rows: 42px auto minmax(180px, 0.42fr) minmax(220px, 0.58fr) auto;
+      min-height: 0;
+      background: var(--surface);
+    }
+
+    .phase-detail {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .phase-detail strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .phase-detail span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .stage-list {
+      min-height: 0;
+      margin: 0;
+      padding: 4px 0;
+      overflow: auto;
+      list-style: none;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-item {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      gap: 10px;
+      padding: 7px 14px;
+    }
+
+    .stage-marker {
+      width: 10px;
+      height: 10px;
+      margin-top: 4px;
+      border: 2px solid #b7c0c8;
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .stage-item.complete .stage-marker {
+      border-color: var(--success);
+      background: var(--success);
+    }
+
+    .stage-item.active .stage-marker {
+      border-color: var(--accent);
+      background: var(--accent);
+      box-shadow: 0 0 0 3px #dcebf5;
+    }
+
+    .stage-item.failed .stage-marker {
+      border-color: var(--danger);
+      background: var(--danger);
+    }
+
+    .stage-label {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .stage-detail {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .log-wrap {
+      display: grid;
+      grid-template-rows: 32px minmax(0, 1fr);
+      min-height: 0;
+      background: var(--terminal);
+    }
+
+    .log-title {
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      color: #98a9b5;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    #logs {
+      min-height: 0;
+      margin: 0;
+      padding: 0 12px 12px;
+      overflow: auto;
+      color: var(--terminal-text);
+      font: 11px/1.5 "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .connection {
+      align-self: center;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        min-height: 100%;
+        height: auto;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: 62vh 620px;
+      }
+
+      .browser-pane {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .side-pane {
+        min-height: 620px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">Earning Whisperer Observer</div>
+      <div class="target">
+        <span class="ticker" id="ticker">-</span>
+        <span class="target-url" id="target-url">대상 준비 중</span>
+      </div>
+      <span class="phase" id="phase-badge">실행 준비</span>
+    </header>
+
+    <section class="workspace">
+      <section class="browser-pane">
+        <div class="pane-header">
+          <span class="live-dot" id="live-dot"></span>
+          <span>실시간 브라우저</span>
+        </div>
+        <div class="browser-stage">
+          <iframe id="vnc-frame" title="자동화 브라우저 화면"></iframe>
+          <div class="browser-placeholder" id="browser-placeholder">브라우저 화면 연결 중</div>
+        </div>
+      </section>
+
+      <aside class="side-pane">
+        <div class="side-header">자동화 진행 상태</div>
+        <div class="phase-detail">
+          <strong id="phase-label">실행 준비</strong>
+          <span id="phase-detail">컨테이너와 가상 장치를 준비합니다.</span>
+        </div>
+        <ol class="stage-list" id="stage-list"></ol>
+        <section class="log-wrap">
+          <div class="log-title">실행 로그</div>
+          <pre id="logs">로그 연결 중</pre>
+        </section>
+        <div class="controls">
+          <span class="connection" id="connection">상태 확인 중</span>
+          <button class="primary" id="confirm-button" disabled>탐색 계속</button>
+          <button class="danger" id="stop-button">중지</button>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const ticker = document.getElementById("ticker");
+    const targetUrl = document.getElementById("target-url");
+    const phaseBadge = document.getElementById("phase-badge");
+    const phaseLabel = document.getElementById("phase-label");
+    const phaseDetail = document.getElementById("phase-detail");
+    const stageList = document.getElementById("stage-list");
+    const logs = document.getElementById("logs");
+    const confirmButton = document.getElementById("confirm-button");
+    const stopButton = document.getElementById("stop-button");
+    const connection = document.getElementById("connection");
+    const vncFrame = document.getElementById("vnc-frame");
+    const placeholder = document.getElementById("browser-placeholder");
+    const liveDot = document.getElementById("live-dot");
+    let vncLoaded = false;
+    let posting = false;
+
+    function renderStages(stages) {
+      stageList.replaceChildren();
+      for (const stage of stages) {
+        const item = document.createElement("li");
+        item.className = `stage-item ${stage.status}`;
+        const marker = document.createElement("span");
+        marker.className = "stage-marker";
+        const copy = document.createElement("div");
+        const label = document.createElement("div");
+        label.className = "stage-label";
+        label.textContent = stage.label;
+        const detail = document.createElement("div");
+        detail.className = "stage-detail";
+        detail.textContent = stage.detail;
+        copy.append(label, detail);
+        item.append(marker, copy);
+        stageList.append(item);
+      }
+    }
+
+    async function postAction(path) {
+      if (posting) return;
+      posting = true;
+      confirmButton.disabled = true;
+      stopButton.disabled = true;
+      try {
+        await fetch(path, { method: "POST" });
+        await refresh();
+      } finally {
+        posting = false;
+        stopButton.disabled = false;
+      }
+    }
+
+    confirmButton.addEventListener("click", () => postAction("/api/confirm"));
+    stopButton.addEventListener("click", () => postAction("/api/stop"));
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        const data = await response.json();
+        ticker.textContent = data.ticker;
+        targetUrl.textContent = data.url;
+        targetUrl.title = data.url;
+        phaseBadge.textContent = data.phase.label;
+        phaseBadge.className = `phase ${data.phase.tone}`;
+        phaseLabel.textContent = data.phase.label;
+        phaseDetail.textContent = data.phase.detail;
+        renderStages(data.stages);
+
+        const nearBottom = logs.scrollHeight - logs.scrollTop - logs.clientHeight < 48;
+        logs.textContent = data.logs || "아직 출력된 로그가 없습니다.";
+        if (nearBottom) logs.scrollTop = logs.scrollHeight;
+
+        confirmButton.disabled = posting || !data.can_confirm;
+        connection.textContent = `${data.container_status} · ${data.container}`;
+        liveDot.classList.toggle("on", data.running);
+
+        if (data.vnc_ready && !vncLoaded) {
+          vncFrame.src = data.vnc_url;
+          placeholder.hidden = true;
+          vncLoaded = true;
+        }
+        if (!data.running && data.exit_code !== null) {
+          stopButton.disabled = true;
+        }
+      } catch (error) {
+        connection.textContent = "대시보드 연결 오류";
+        liveDot.classList.remove("on");
+      }
+    }
+
+    refresh();
+    window.setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+CREATE TABLE IF NOT EXISTS stocks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    sector VARCHAR(100) NULL,
+    ir_url VARCHAR(1024) NULL,
+    high_52w DECIMAL(18, 4) NULL,
+    avg_volume_20d BIGINT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_stocks_ticker (ticker)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS calls (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    earning_at DATETIME NOT NULL,
+    call_year INT NOT NULL,
+    quarter VARCHAR(8) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'upcoming',
+    video_url VARCHAR(1024) NULL,
+    scheduled_at_utc DATETIME NULL,
+    source_timezone VARCHAR(64) NULL,
+    event_url VARCHAR(2048) NULL,
+    webcast_url VARCHAR(2048) NULL,
+    schedule_source VARCHAR(64) NULL,
+    schedule_evidence TEXT NULL,
+    time_verification_status VARCHAR(32) NOT NULL DEFAULT 'unverified',
+    time_verified_at DATETIME NULL,
+    stream_probe_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    stream_probe_attempts INT NOT NULL DEFAULT 0,
+    last_stream_probe_at DATETIME NULL,
+    last_stream_probe_error TEXT NULL,
+    stream_detected_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_calls_ticker_period (ticker, call_year, quarter),
+    INDEX idx_calls_ticker_status (ticker, status),
+    INDEX idx_calls_status_earning_at (status, earning_at),
+    INDEX idx_calls_status_scheduled_at_utc (status, scheduled_at_utc),
+    INDEX idx_calls_stream_probe (status, earning_at, last_stream_probe_at),
+    INDEX idx_calls_earning_at (earning_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS webcast_recipes (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    recipe_key CHAR(64) NOT NULL,
+    domain VARCHAR(255) NOT NULL,
+    selector_json TEXT NOT NULL,
+    frame_hostname VARCHAR(255) NULL,
+    target_text VARCHAR(500) NULL,
+    target_href_path VARCHAR(1024) NULL,
+    strategy VARCHAR(64) NOT NULL,
+    lifecycle VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    confidence DECIMAL(5, 4) NOT NULL DEFAULT 0,
+    state VARCHAR(32) NOT NULL DEFAULT 'candidate',
+    success_count INT NOT NULL DEFAULT 0,
+    failure_count INT NOT NULL DEFAULT 0,
+    last_verified_at DATETIME NULL,
+    last_error TEXT NULL,
+    evidence_json TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_webcast_recipes_key (recipe_key),
+    INDEX idx_webcast_recipes_domain_state (domain, state, updated_at),
+    INDEX idx_webcast_recipes_lifecycle (domain, lifecycle, state, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS webcast_replay_targets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    target_key CHAR(64) NOT NULL,
+    call_id BIGINT NOT NULL,
+    ticker VARCHAR(20) NOT NULL,
+    call_year INT NULL,
+    quarter VARCHAR(8) NULL,
+    earning_at DATETIME NULL,
+    target_url VARCHAR(2048) NOT NULL,
+    source_kind VARCHAR(32) NOT NULL DEFAULT 'search',
+    source_title VARCHAR(500) NULL,
+    source_snippet TEXT NULL,
+    provider_domain VARCHAR(255) NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'discovered',
+    attempt_count INT NOT NULL DEFAULT 0,
+    audible_count INT NOT NULL DEFAULT 0,
+    last_attempt_at DATETIME NULL,
+    last_audible_at DATETIME NULL,
+    last_error TEXT NULL,
+    last_output TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_webcast_replay_targets_key (target_key),
+    INDEX idx_webcast_replay_targets_status (status, last_attempt_at),
+    INDEX idx_webcast_replay_targets_call (call_id, ticker)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS webcast_learning_targets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    target_key CHAR(64) NOT NULL,
+    call_id BIGINT NULL,
+    ticker VARCHAR(20) NOT NULL,
+    target_url VARCHAR(2048) NOT NULL,
+    target_kind VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    attempt_count INT NOT NULL DEFAULT 0,
+    audible_count INT NOT NULL DEFAULT 0,
+    last_attempt_at DATETIME NULL,
+    last_audible_at DATETIME NULL,
+    last_error TEXT NULL,
+    last_output TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_webcast_learning_targets_key (target_key),
+    INDEX idx_webcast_learning_targets_status (status, last_attempt_at),
+    INDEX idx_webcast_learning_targets_ticker (ticker)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS prices (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    price_at DATETIME NOT NULL,
+    open_price DECIMAL(18, 4) NULL,
+    high_price DECIMAL(18, 4) NULL,
+    low_price DECIMAL(18, 4) NULL,
+    close_price DECIMAL(18, 4) NULL,
+    volume BIGINT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_prices_ticker_price_at (ticker, price_at),
+    INDEX idx_prices_ticker_time (ticker, price_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS financial_statement_items (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    statement_type VARCHAR(32) NOT NULL,
+    fiscal_period_end DATE NOT NULL,
+    frequency VARCHAR(16) NOT NULL,
+    line_item VARCHAR(128) NOT NULL,
+    value DECIMAL(28, 4) NOT NULL,
+    source VARCHAR(32) NOT NULL,
+    collected_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_financial_statement_items (
+        ticker,
+        statement_type,
+        fiscal_period_end,
+        frequency,
+        line_item
+    ),
+    INDEX idx_fsi_ticker_period (ticker, fiscal_period_end),
+    INDEX idx_fsi_statement_type (statement_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS transcript_segments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    call_id VARCHAR(128) NOT NULL,
+    ticker VARCHAR(20) NOT NULL,
+    sequence_no INT NOT NULL,
+    start_ms BIGINT NOT NULL,
+    end_ms BIGINT NOT NULL,
+    text_chunk TEXT NOT NULL,
+    speaker VARCHAR(128) NULL,
+    source_timestamp BIGINT NULL,
+    is_session_end BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_transcript_segments_call_sequence (call_id, sequence_no),
+    INDEX idx_transcript_segments_ticker_created (ticker, created_at),
+    INDEX idx_transcript_segments_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

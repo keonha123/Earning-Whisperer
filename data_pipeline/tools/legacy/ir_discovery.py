@@ -1,9 +1,10 @@
+import argparse
 import os
 import sys
 import requests
 import json
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 try:
     from ... import database
@@ -11,13 +12,23 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     import database
 
-    # Load .env: prefer repository root (project-level) then local data_pipeline/.env
-    root_env = Path(__file__).resolve().parents[2] / '.env'
-    local_env = Path(__file__).resolve().parents[0] / '.env'
-    if root_env.exists():
-        load_dotenv(root_env)
-    if local_env.exists():
-        load_dotenv(local_env)
+
+DATA_PIPELINE_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = DATA_PIPELINE_ROOT.parent
+
+
+def _load_env():
+    # Local .env values override repository defaults, but never Docker/shell values.
+    values = {
+        **dotenv_values(REPO_ROOT / ".env"),
+        **dotenv_values(DATA_PIPELINE_ROOT / ".env"),
+    }
+    for key, value in values.items():
+        if value is not None:
+            os.environ.setdefault(key, value)
+
+
+_load_env()
 
 class IRDiscovery:
     def __init__(self):
@@ -50,12 +61,16 @@ class IRDiscovery:
             print(f"{ticker} 검색 중 오류: {e}")
         return None
 
-    def run_discovery(self):
+    def run_discovery(self, limit: int | None = None, missing_only: bool = False):
         if not self.api_key:
             print("SERPER_API_KEY가 없어 discovery를 실행할 수 없습니다.")
             return
 
         stocks = database.get_all_stocks()
+        if missing_only:
+            stocks = [stock for stock in stocks if not stock.get("ir_url")]
+        if limit is not None:
+            stocks = stocks[:limit]
         
         discovered_count = 0
         for stock in stocks:
@@ -72,5 +87,14 @@ class IRDiscovery:
         print(f"총 {discovered_count}개 기업의 IR 페이지 주소를 확보했습니다.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Discover company IR page URLs.")
+    parser.add_argument("--limit", type=int, default=None, help="Only process the first N stocks.")
+    parser.add_argument(
+        "--missing-only",
+        action="store_true",
+        help="Skip stocks that already have ir_url in the database.",
+    )
+    args = parser.parse_args()
+
     discovery = IRDiscovery()
-    discovery.run_discovery()
+    discovery.run_discovery(limit=args.limit, missing_only=args.missing_only)

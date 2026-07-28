@@ -1,0 +1,25 @@
+FROM mcr.microsoft.com/playwright/python:v1.60.0-noble
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        espeak-ng \
+        pulseaudio \
+        pulseaudio-utils \
+        novnc \
+        websockify \
+        x11vnc \
+        xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY data_pipeline/requirements.txt /tmp/data-pipeline-requirements.txt
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r /tmp/data-pipeline-requirements.txt \
+    && python -m pip install playwright==1.60.0
+
+CMD ["python", "-m", "data_pipeline.collectors.streams.browser_webcast", "--help"]

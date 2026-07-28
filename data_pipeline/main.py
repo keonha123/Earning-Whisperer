@@ -1,5 +1,9 @@
 import asyncio
-import scheduler 
+
+try:
+    from . import scheduler
+except ImportError:  # Allows `python data_pipeline/main.py`.
+    import scheduler
 
 async def main():
     print("🚀 [Earning Whisperer] 시스템 엔진 가동...")
