@@ -25,7 +25,7 @@ import {
   livePriceSeriesDevMock,
   type PricePoint,
 } from '../fixtures/liveSession.dev-mock'
-import { factCheckDevMock } from '../fixtures/factCheck.dev-mock'
+import { factCheckDevMock, type FactCheckItem } from '../fixtures/factCheck.dev-mock'
 import { earningsEvaluationDevMock } from '../fixtures/earningsEvaluation.dev-mock'
 import { rippleNodesDevMock, rippleEdgesDevMock } from '../fixtures/rippleEffect.dev-mock'
 import { speakerProfilesDevMock } from '../fixtures/speakerProfile.dev-mock'
@@ -42,6 +42,7 @@ type Timeframe = (typeof TIMEFRAMES)[number]
 
 const EMPTY_TRANSCRIPT: readonly TranscriptLine[] = []
 const EMPTY_PRICES: readonly PricePoint[] = []
+const EMPTY_FACT_CHECK: readonly FactCheckItem[] = []
 
 export default function TradingRoomPage() {
   const { mode, setMode, signalHistory, activeSignal, setSession } = useTradingStore()
@@ -52,6 +53,7 @@ export default function TradingRoomPage() {
 
   // ── DEV-only fixtures (prod 빌드에서는 null) ─────────────────────────────────
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
+  const factCheckItems = import.meta.env.DEV ? factCheckDevMock : EMPTY_FACT_CHECK
 
   // ticker 우선순위:
   //  1) activeSignal (실시간 어닝콜 신호)
@@ -281,7 +283,7 @@ export default function TradingRoomPage() {
             <div style={{ flex: '55 1 0%' }} className="flex flex-col min-h-0 overflow-hidden">
               <FactCheckPanel
                 key={loopKey}
-                items={[]}
+                items={factCheckItems}
                 sttStep={sttStep}
               />
             </div>
