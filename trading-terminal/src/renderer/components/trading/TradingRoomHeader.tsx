@@ -12,6 +12,10 @@ interface TradingRoomHeaderProps {
   isLive: boolean
   /** Market Screen 복귀 콜백. */
   onExit?: () => void
+  /** 파급효과 모달 열기 콜백. */
+  onRippleEffect?: () => void
+  /** 발화자 프로필 모달 열기 콜백. */
+  onSpeakerProfile?: () => void
 }
 
 /**
@@ -40,6 +44,8 @@ export default function TradingRoomHeader({
   wpm,
   isLive,
   onExit,
+  onRippleEffect,
+  onSpeakerProfile,
 }: TradingRoomHeaderProps) {
   const openDrawer = useDrawerStore((s) => s.open)
 
@@ -86,6 +92,46 @@ export default function TradingRoomHeader({
             </svg>
             종목 정보
           </button>
+
+          {onRippleEffect && (
+            <button
+              type="button"
+              onClick={onRippleEffect}
+              className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded
+                         bg-surface-2 border border-border-subtle text-text-secondary text-[11px] font-medium
+                         hover:bg-surface-3 hover:text-text-primary hover:border-border-strong
+                         transition-colors duration-100"
+              title="서플라이체인 파급효과 분석"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <circle cx="6" cy="6" r="2" />
+                <circle cx="1.5" cy="1.5" r="1.2" />
+                <circle cx="10.5" cy="1.5" r="1.2" />
+                <circle cx="10.5" cy="10.5" r="1.2" />
+                <circle cx="1.5" cy="10.5" r="1.2" />
+                <path d="M4.6 4.6L2.7 2.7M7.4 4.6L9.3 2.7M7.4 7.4L9.3 9.3M4.6 7.4L2.7 9.3" strokeLinecap="round" />
+              </svg>
+              파급효과
+            </button>
+          )}
+
+          {onSpeakerProfile && (
+            <button
+              type="button"
+              onClick={onSpeakerProfile}
+              className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded
+                         bg-surface-2 border border-border-subtle text-text-secondary text-[11px] font-medium
+                         hover:bg-surface-3 hover:text-text-primary hover:border-border-strong
+                         transition-colors duration-100"
+              title="발화자 프로필 및 성향 분석"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <circle cx="6" cy="4" r="2.2" />
+                <path d="M1.5 10.5c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" strokeLinecap="round" />
+              </svg>
+              발화자
+            </button>
+          )}
 
           {(sessionLabel || elapsedLabel || wpm != null) && (
             <>

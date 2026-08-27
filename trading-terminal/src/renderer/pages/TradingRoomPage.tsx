@@ -5,14 +5,19 @@ import { useUserStore } from '../store/useUserStore'
 import { usePortfolioStore } from '../store/usePortfolioStore'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import ModeSelector from '../components/common/ModeSelector'
-import EmaChart from '../components/trading/EmaChart'
 import SignalFeed from '../components/trading/SignalFeed'
 import STTScriptPanel from '../components/trading/STTScriptPanel'
 import OrderBar, { type OrderBarSubmitPayload } from '../components/trading/OrderBar'
 import TradingRoomHeader from '../components/trading/TradingRoomHeader'
+import FactCheckPanel from '../components/trading/FactCheckPanel'
+import EarningsEvaluationCard from '../components/trading/EarningsEvaluationCard'
+import FinalSignalCard from '../components/trading/FinalSignalCard'
+import RippleEffectModal from '../components/trading/RippleEffectModal'
+import SpeakerProfileModal from '../components/trading/SpeakerProfileModal'
 import { showIpcErrorToast } from '../components/common/Toast'
 import {
   sttTranscriptDevMock,
+  PRE_LOADED_STEPS,
   type TranscriptLine,
 } from '../fixtures/sttTranscript.dev-mock'
 import {
@@ -20,13 +25,15 @@ import {
   livePriceSeriesDevMock,
   type PricePoint,
 } from '../fixtures/liveSession.dev-mock'
+import { factCheckDevMock } from '../fixtures/factCheck.dev-mock'
+import { earningsEvaluationDevMock } from '../fixtures/earningsEvaluation.dev-mock'
+import { rippleNodesDevMock, rippleEdgesDevMock } from '../fixtures/rippleEffect.dev-mock'
+import { speakerProfilesDevMock } from '../fixtures/speakerProfile.dev-mock'
 import { useLiveTranscript } from '../hooks/useLiveTranscript'
 import { usePrices } from '../hooks/usePrices'
 import { useCompanyDetail } from '../hooks/useCompanyDetail'
+import { useEarningsDemoPlayback } from '../hooks/useEarningsDemoPlayback'
 import type { TranscriptSegment } from '../store/useTranscriptStore'
-// liveAiScoreSeriesDevMock 은 향후 EmaChart 가 보라색 AI 점수 라인으로 재활용 예정.
-// fixture export 자체는 유지하되, 본 페이지에서는 사용처가 없어 import 하지 않는다
-// (tsconfig 의 noUnusedLocals 가 켜지면 빌드 실패 가능).
 
 type SignalFilter = 'ALL' | 'BUY' | 'SELL' | 'FAILED'
 
@@ -58,6 +65,10 @@ export default function TradingRoomPage() {
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
   const { segments: liveSegments, endedCallIds } = useLiveTranscript(ticker)
 
+  // ── DEV 시연용 재생 엔진 ────────────────────────────────────────────────────
+  // prod 빌드에서는 인터벌 없음 (sttStep=0, loopKey=0 고정).
+  const { sttStep, loopKey } = useEarningsDemoPlayback(sttTranscriptDevMock.length, PRE_LOADED_STEPS)
+
   // ── 실시간 시세 (다른 화면과 동일 소스: PRICES_UPDATE ← PricePoller/STOMP) ──────
   const { prices } = usePrices()
   const livePrice = ticker ? prices[ticker] : undefined
@@ -84,13 +95,9 @@ export default function TradingRoomPage() {
 
   // DEV 환경 + store 가 비어있을 때 fixture 폴백 (안전망 — backend 미가동 시).
   // - prod 빌드: 항상 store 데이터 또는 빈 배열 (fixture 미접근).
-  // - DEV: 실데이터 도착 즉시 fixture 자동 대체.
+  // - DEV: 실데이터 도착 즉시 fixture 자동 대체. fixture 사용 시 sttStep 으로 점진 노출.
   const transcript: readonly TranscriptLine[] =
-    liveTranscript.length > 0
-      ? liveTranscript
-      : import.meta.env.DEV
-        ? sttTranscriptDevMock
-        : EMPTY_TRANSCRIPT
+    liveTranscript.length > 0 ? liveTranscript : EMPTY_TRANSCRIPT
 
   // 활성 callId — 가장 최근 segment 의 callId. 없으면 null.
   const activeCallId =
@@ -101,11 +108,13 @@ export default function TradingRoomPage() {
   // LIVE 판정 (Contract 4.5 반영):
   //  - 활성 트랜스크립트 세션이 있고 (activeCallId 존재),
   //  - 그 callId 가 endedCallIds 에 포함되지 않을 때 LIVE.
-  //  - fallback: 실데이터 없는 DEV 환경에서는 기존 activeSignal 기반 LIVE 판정 유지.
+  //  - DEV fixture 시연 모드: 실데이터 없을 때 LIVE 강제 활성.
   const isLive =
-    activeCallId != null
-      ? !endedCallIds.has(activeCallId)
-      : activeSignal != null
+    import.meta.env.DEV && liveSegments.length === 0
+      ? true
+      : activeCallId != null
+        ? !endedCallIds.has(activeCallId)
+        : activeSignal != null
   const companyName = liveMeta?.companyName ?? null
   // 현재가/변동률: 실시간 시세(PRICES_UPDATE) 우선, 없으면 DEV fixture 폴백.
   // 단 실시세가 있으면 변동치도 실데이터 기준만 사용 — 전일종가 결측(previousClose<=0,
@@ -126,6 +135,25 @@ export default function TradingRoomPage() {
   const sessionLabel = liveMeta?.sessionLabel ?? null
   // 경과 시간 라벨 — fixture 정적값 ("25:14"). 실시간 헬퍼는 본 PR 범위 외.
   const elapsedLabel = liveMeta?.elapsedLabel ?? null
+
+  // ── 모달 상태 ────────────────────────────────────────────────────────────────
+  const [rippleOpen, setRippleOpen] = useState(false)
+  const [speakerOpen, setSpeakerOpen] = useState(false)
+
+  // 현재 발화 중인 화자 — 가장 마지막 transcript 라인의 speaker.
+  const activeSpeakerKey =
+    transcript.length > 0 ? transcript[transcript.length - 1].speaker.toLowerCase() : null
+
+  // ── 어닝콜 종료 후 평가 카드 표시 (DEV 전용) ────────────────────────────────
+  const [evalState, setEvalState] = useState<'idle' | 'analyzing' | 'done'>('idle')
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    if (sttStep < sttTranscriptDevMock.length - 1) return
+    const t1 = setTimeout(() => setEvalState('analyzing'), 3000)
+    const t2 = setTimeout(() => setEvalState('done'), 18000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [sttStep])
 
   // ── 신호 필터 (로컬 state) ────────────────────────────────────────────────────
   const [filter, setFilter] = useState<SignalFilter>('ALL')
@@ -197,11 +225,10 @@ export default function TradingRoomPage() {
         <TradingRoomHeader
           ticker={ticker}
           companyName={companyName}
-          sessionLabel={sessionLabel}
-          elapsedLabel={elapsedLabel}
-          wpm={liveMeta?.wpm}
           isLive={isLive}
           onExit={handleExit}
+          onRippleEffect={import.meta.env.DEV ? () => setRippleOpen(true) : undefined}
+          onSpeakerProfile={import.meta.env.DEV ? () => setSpeakerOpen(true) : undefined}
         />
         <div className="w-72 shrink-0">
           <ModeSelector
@@ -236,112 +263,128 @@ export default function TradingRoomPage() {
           </div>
 
           <div className="flex-1 flex flex-col min-h-0">
-            {/* 가격 pane */}
-            <ChartPane
-              kind="price"
-              priceLabel={priceLabel}
-              changePercent={changePercent}
-              changeAmount={changeAmount}
-              volumeLabel={liveMeta?.volumeLabel}
-              marketSession={liveMeta?.marketSession}
-              series={chartSeries}
-              isLive={isLive}
-            />
+            {/* 가격 pane — 전체의 45% */}
+            <div style={{ flex: '45 1 0%' }} className="flex flex-col min-h-0 overflow-hidden">
+              <ChartPane
+                kind="price"
+                priceLabel={priceLabel}
+                changePercent={changePercent}
+                changeAmount={changeAmount}
+                volumeLabel={liveMeta?.volumeLabel}
+                marketSession={liveMeta?.marketSession}
+                series={chartSeries}
+                isLive={isLive}
+              />
+            </div>
 
-            {/* AI Score pane (기존 EmaChart 재사용 — 신호 마커 포함) */}
-            <div className="flex-1 flex flex-col min-h-0 border-t border-border-subtle bg-surface-1">
-              <div className="h-[34px] px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0 gap-2">
-                <span className="text-[10.5px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
-                  <span
-                    className="w-2 h-2 rounded-sm"
-                    // design-canvas: AI score purple (#a78bfa, violet-400) — 디자인 시스템에
-                    // 등록되지 않은 신규 색. 본 PR 에서는 토큰화 보류 (별도 PR 에서 ai-* 토큰
-                    // 정식 정의 후 일괄 치환 예정).
-                    style={{ background: '#a78bfa', boxShadow: '0 0 8px rgba(167,139,250,.5)' }}
-                  />
-                  AI 점수 차트
-                </span>
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className="num text-sm font-bold tabular-nums"
-                    // design-canvas: AI score purple (violet-400) — 토큰화 보류 사유 위와 동일.
-                    style={{ color: '#a78bfa', letterSpacing: '-0.01em' }}
-                  >
-                    {activeSignal
-                      ? formatSigned(activeSignal.ai_score)
-                      : liveMeta
-                        ? formatSigned(liveMeta.currentAiScore)
-                        : '—'}
-                  </span>
-                  {(activeSignal || liveMeta) && (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-[0.08em] border"
-                      // design-canvas: AI score purple chip (bg/border 는 violet-400 alpha,
-                      // text 는 violet-300 #c4b5fd). 토큰화 보류 사유 위와 동일.
-                      style={{
-                        background: 'rgba(167,139,250,0.14)',
-                        color: '#c4b5fd',
-                        borderColor: 'rgba(167,139,250,0.35)',
-                      }}
-                    >
-                      {activeSignal?.action === 'SELL' || liveMeta?.aiDirection === 'SELL'
-                        ? '▼ SELL'
-                        : '▲ BUY'}
-                      {liveMeta && ` · ${liveMeta.aiStrength}`}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 p-2">
-                <EmaChart signalHistory={signalHistory} />
-              </div>
+            {/* 팩트체크 pane — 전체의 55% */}
+            <div style={{ flex: '55 1 0%' }} className="flex flex-col min-h-0 overflow-hidden">
+              <FactCheckPanel
+                key={loopKey}
+                items={[]}
+                sttStep={sttStep}
+              />
             </div>
           </div>
         </section>
 
-        {/* RIGHT 25% — 신호 피드 + 필터 칩 */}
+        {/* RIGHT 25% — 신호 피드 or 어닝콜 종합 평가 */}
         <section className="card p-0 flex flex-col overflow-hidden min-h-0">
           <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
-              신호 피드 ·{' '}
-              <span className="num text-text-primary tracking-normal normal-case">
-                {signalHistory.length}
+            {evalState !== 'idle' ? (
+              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
+                {evalState === 'analyzing' ? '어닝콜 종료 · AI 분석 중' : '어닝콜 종료 · 분석 완료'}
               </span>
-            </span>
-            <span className="num text-[11px] text-text-tertiary">auto</span>
+            ) : (
+              <>
+                <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
+                  신호 피드 ·{' '}
+                  <span className="num text-text-primary tracking-normal normal-case">
+                    {signalHistory.length}
+                  </span>
+                </span>
+                <span className="num text-[11px] text-text-tertiary">auto</span>
+              </>
+            )}
           </div>
 
-          {/* 필터 칩 4개 */}
-          <div className="flex gap-1 px-2.5 pt-2 pb-1 shrink-0">
-            <FilterChip
-              label="전체"
-              count={counts.total}
-              active={filter === 'ALL'}
-              onClick={() => setFilter('ALL')}
-            />
-            <FilterChip
-              label="BUY"
-              count={counts.buy}
-              active={filter === 'BUY'}
-              onClick={() => setFilter('BUY')}
-            />
-            <FilterChip
-              label="SELL"
-              count={counts.sell}
-              active={filter === 'SELL'}
-              onClick={() => setFilter('SELL')}
-            />
-            <FilterChip
-              label="FAILED"
-              count={counts.failed}
-              active={filter === 'FAILED'}
-              onClick={() => setFilter('FAILED')}
-            />
-          </div>
+          {evalState === 'done' ? (
+            <div className="flex-1 flex flex-col p-2 gap-2 overflow-y-auto">
+              <EarningsEvaluationCard
+                scores={earningsEvaluationDevMock.scores}
+                totalScore={earningsEvaluationDevMock.totalScore}
+              />
+              <FinalSignalCard
+                signal={earningsEvaluationDevMock.signal}
+                buyScore={earningsEvaluationDevMock.buyScore}
+                sellScore={earningsEvaluationDevMock.sellScore}
+                strength={earningsEvaluationDevMock.strength}
+                rationale={earningsEvaluationDevMock.rationale}
+                ticker={ticker}
+              />
+            </div>
+          ) : evalState === 'analyzing' ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 px-4">
+              <div
+                className="w-9 h-9 rounded-full border-2 animate-spin shrink-0"
+                style={{
+                  borderTopColor: '#10b981',
+                  borderRightColor: 'transparent',
+                  borderBottomColor: 'transparent',
+                  borderLeftColor: 'transparent',
+                }}
+              />
+              <div className="flex flex-col items-center gap-1 text-center">
+                <span className="text-[12px] font-semibold text-text-secondary">AI 종합 분석 중</span>
+                <span className="text-[10px] text-text-tertiary leading-relaxed">
+                  어닝콜 전체 발언을 교차 검증하고 있습니다
+                </span>
+              </div>
+              <div className="flex gap-1.5">
+                {[0, 200, 400].map((delay) => (
+                  <span
+                    key={delay}
+                    className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse"
+                    style={{ animationDelay: `${delay}ms` }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* 필터 칩 4개 */}
+              <div className="flex gap-1 px-2.5 pt-2 pb-1 shrink-0">
+                <FilterChip
+                  label="전체"
+                  count={counts.total}
+                  active={filter === 'ALL'}
+                  onClick={() => setFilter('ALL')}
+                />
+                <FilterChip
+                  label="BUY"
+                  count={counts.buy}
+                  active={filter === 'BUY'}
+                  onClick={() => setFilter('BUY')}
+                />
+                <FilterChip
+                  label="SELL"
+                  count={counts.sell}
+                  active={filter === 'SELL'}
+                  onClick={() => setFilter('SELL')}
+                />
+                <FilterChip
+                  label="FAILED"
+                  count={counts.failed}
+                  active={filter === 'FAILED'}
+                  onClick={() => setFilter('FAILED')}
+                />
+              </div>
 
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <SignalFeed items={filteredSignals} />
-          </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <SignalFeed items={filteredSignals} />
+              </div>
+            </>
+          )}
         </section>
       </div>
 
@@ -356,6 +399,24 @@ export default function TradingRoomPage() {
         isLoading={isOrderLoading}
       />
 
+      {/* ── DEV 전용 모달 ────────────────────────────────────────────────────── */}
+      {import.meta.env.DEV && (
+        <>
+          <RippleEffectModal
+            open={rippleOpen}
+            onClose={() => setRippleOpen(false)}
+            nodes={rippleNodesDevMock}
+            edges={rippleEdgesDevMock}
+            centerTicker={ticker}
+          />
+          <SpeakerProfileModal
+            open={speakerOpen}
+            onClose={() => setSpeakerOpen(false)}
+            profiles={speakerProfilesDevMock}
+            activeSpeakerKey={activeSpeakerKey}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -631,11 +692,6 @@ function countByCategory(items: SignalFeedItem[]): SignalCounts {
     if (s.status === 'FAILED') failed++
   }
   return { total: items.length, buy, sell, failed }
-}
-
-function formatSigned(v: number): string {
-  if (!Number.isFinite(v)) return '—'
-  return (v >= 0 ? '+' : '') + v.toFixed(2)
 }
 
 /**
