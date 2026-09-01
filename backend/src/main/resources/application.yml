@@ -8,7 +8,7 @@ spring:
     time-zone: UTC
 
   datasource:
-    url: jdbc:mysql://localhost:3306/earningwhisperer?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8
+    url: ${DB_URL:jdbc:mysql://localhost:3306/earning_whisperer?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:password}
     driver-class-name: com.mysql.cj.jdbc.Driver
