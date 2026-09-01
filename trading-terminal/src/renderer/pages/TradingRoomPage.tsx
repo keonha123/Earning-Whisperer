@@ -40,7 +40,6 @@ type SignalFilter = 'ALL' | 'BUY' | 'SELL' | 'FAILED'
 const TIMEFRAMES = ['1m', '5m', '1H', '1D', '1W', '1M'] as const
 type Timeframe = (typeof TIMEFRAMES)[number]
 
-const EMPTY_TRANSCRIPT: readonly TranscriptLine[] = []
 const EMPTY_PRICES: readonly PricePoint[] = []
 const EMPTY_FACT_CHECK: readonly FactCheckItem[] = []
 
@@ -53,7 +52,6 @@ export default function TradingRoomPage() {
 
   // ── DEV-only fixtures (prod 빌드에서는 null) ─────────────────────────────────
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
-  const factCheckItems = import.meta.env.DEV ? factCheckDevMock : EMPTY_FACT_CHECK
 
   // ticker 우선순위:
   //  1) activeSignal (실시간 어닝콜 신호)
@@ -66,6 +64,13 @@ export default function TradingRoomPage() {
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
   const { segments: liveSegments, endedCallIds } = useLiveTranscript(ticker)
+
+  // ── 시연 모드 판정 ──────────────────────────────────────────────────────────
+  // prod 빌드에서는 상수 false — 번들러가 fixture 참조를 tree-shake 한다.
+  // DEV 라도 실데이터가 도착하면 즉시 false. fixture 가 실연동 디버깅을 덮지
+  // 않게 하는 것이 이 플래그의 존재 이유다. (isLive 판정이 쓰던 조건과 동일)
+  const demoActive = import.meta.env.DEV && liveSegments.length === 0
+  const factCheckItems = demoActive ? factCheckDevMock : EMPTY_FACT_CHECK
 
   // ── DEV 시연용 재생 엔진 ────────────────────────────────────────────────────
   // prod 빌드에서는 인터벌 없음 (sttStep=0, loopKey=0 고정).
@@ -98,8 +103,9 @@ export default function TradingRoomPage() {
   // DEV 환경 + store 가 비어있을 때 fixture 폴백 (안전망 — backend 미가동 시).
   // - prod 빌드: 항상 store 데이터 또는 빈 배열 (fixture 미접근).
   // - DEV: 실데이터 도착 즉시 fixture 자동 대체. fixture 사용 시 sttStep 으로 점진 노출.
-  const transcript: readonly TranscriptLine[] =
-    liveTranscript.length > 0 ? liveTranscript : EMPTY_TRANSCRIPT
+  const transcript: readonly TranscriptLine[] = demoActive
+    ? sttTranscriptDevMock.slice(0, sttStep + 1)
+    : liveTranscript
 
   // 활성 callId — 가장 최근 segment 의 callId. 없으면 null.
   const activeCallId =
@@ -112,7 +118,7 @@ export default function TradingRoomPage() {
   //  - 그 callId 가 endedCallIds 에 포함되지 않을 때 LIVE.
   //  - DEV fixture 시연 모드: 실데이터 없을 때 LIVE 강제 활성.
   const isLive =
-    import.meta.env.DEV && liveSegments.length === 0
+    demoActive
       ? true
       : activeCallId != null
         ? !endedCallIds.has(activeCallId)
@@ -150,12 +156,12 @@ export default function TradingRoomPage() {
   const [evalState, setEvalState] = useState<'idle' | 'analyzing' | 'done'>('idle')
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!demoActive) return
     if (sttStep < sttTranscriptDevMock.length - 1) return
     const t1 = setTimeout(() => setEvalState('analyzing'), 3000)
     const t2 = setTimeout(() => setEvalState('done'), 18000)
     return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [sttStep])
+  }, [sttStep, demoActive])
 
   // ── 신호 필터 (로컬 state) ────────────────────────────────────────────────────
   const [filter, setFilter] = useState<SignalFilter>('ALL')
