@@ -218,3 +218,54 @@ journalctl -u earning-whisperer-backend -f
 - **서버 STOMP heartbeat가 꺼져 있다.** `enableSimpleBroker`에 `TaskScheduler`가
   없어 죽은 커넥션 탐지가 TCP에 맡겨져 있다.
 - **재시작하면 DemoReplay가 처음부터 시작한다.** 무한 반복이므로 시연에는 무해하다.
+
+---
+
+## 부록 · VM 없이 시연하기 (로컬 + Cloudflare quick tunnel)
+
+VM 확보가 막히거나 웹 프론트가 필요 없을 때 쓰는 경로다. 백엔드를 개발 PC 에서
+띄우고 Cloudflare quick tunnel 로 공개한다. **계정이 전혀 필요 없다** — quick
+tunnel 은 가입 없이 임시 공개 URL 을 발급한다.
+
+```bash
+./infra/demo-up.sh     # 컨테이너 + 백엔드 + 터널 기동, 공개 URL 출력
+./infra/demo-down.sh   # 종료 (컨테이너는 stop 만, DB 데이터 보존)
+```
+
+### 언제 터널이 필요한가
+
+| 상황 | 설정 |
+|---|---|
+| 백엔드와 데스크탑 앱이 **같은 PC** | 터널 불필요. `BACKEND_URL` 을 비우고 기본값(`localhost:8082`) 사용 |
+| 데스크탑 앱이 **다른 PC** | `trading-terminal/.env.local` 에 `BACKEND_URL=<터널 URL>` |
+
+### 제약
+
+- **quick tunnel URL 은 일회용이다.** cloudflared 를 재시작하면 주소가 바뀌고
+  `BACKEND_URL` 을 다시 넣어야 한다. 고정 주소가 필요하면 Cloudflare 계정과
+  도메인을 등록해 named tunnel 을 만들어야 한다.
+- PC 가 켜져 있는 동안만 접속된다.
+- 웹 프론트를 함께 공개하려면 터널을 하나 더 열고 `NEXT_PUBLIC_API_URL` 을
+  백엔드 터널로 지정한다. 단 이때 프론트와 백엔드가 서로 다른 사이트가 되어
+  **refresh 쿠키(`SameSite=Strict`)가 전송되지 않는다** — access token 만료 시
+  세션이 끊긴다. 데모 길이가 짧으면 문제되지 않는다.
+
+### 데스크탑 앱 시연 시 유의
+
+- 어닝콜 시연 UI 4종(팩트체크·파급효과·발화자·종합평가)은
+  `import.meta.env.DEV` 게이팅이라 **`npm run dev` 에서만 표시된다.**
+  패키징한 인스톨러에서는 보이지 않는다.
+- 백엔드의 `DemoReplayService` 는 웹 프론트용(`/topic/live/demo`)이며
+  데스크탑 앱은 이 토픽을 구독하지 않는다. 앱에서 백엔드가 담당하는 것은
+  로그인·포트폴리오·시세·거래내역이다.
+- 앱의 OAuth 는 loopback(`http://localhost:9000/auth/callback`)을 쓰므로
+  터널 주소와 무관하다. 백엔드 `GOOGLE_REDIRECT_URIS` / `KAKAO_REDIRECT_URIS`
+  에 이 loopback 주소가 포함돼 있어야 한다.
+
+### 트러블슈팅
+
+| 증상 | 원인 |
+|---|---|
+| 백엔드 기동 직후 DB 연결 실패 | `.env` 값에 따옴표가 없으면 `DB_URL` 의 `&` 를 셸이 백그라운드 연산자로 해석해 URL 이 잘린다. 값을 `'...'` 로 감쌀 것 |
+| 터널 URL 로 502 | 백엔드가 아직 기동 중이거나 죽음. `/tmp/ew-backend.log` 확인 |
+| WebSocket 연결 실패 | `BACKEND_URL` 이 `https://` 여야 `wss://` 로 변환된다 (`StompService.ts` 가 `^http` → `ws` 치환) |
