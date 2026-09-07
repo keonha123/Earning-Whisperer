@@ -769,7 +769,7 @@ async function inquireOrderFill(
           ORD_END_DT: yyyymmdd,
           SLL_BUY_DVSN: '00',     // 전체
           CCLD_NCCS_DVSN: '00',   // 전체
-          OVRS_EXCG_CD: 'NASD',
+          OVRS_EXCG_CD: REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
           SORT_SQN: 'DS',
           ORD_DT: '',
           ORD_GNO_BRNO: '',

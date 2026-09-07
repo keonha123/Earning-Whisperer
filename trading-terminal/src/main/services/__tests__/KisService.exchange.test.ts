@@ -83,3 +83,47 @@ describe('거래소 코드 티커별 해석', () => {
     expect(body.PDNO).toBe('AAPL')
   })
 })
+
+describe('체결 조회(inquire-ccnl) 거래소 코드', () => {
+  function ccnlResponse(odno: string, ticker: string) {
+    return {
+      data: {
+        rt_cd: '0',
+        msg1: '정상',
+        output: [{ odno, tot_ccld_qty: '1', avg_prvs: '100.00', pdno: ticker }],
+      },
+    }
+  }
+
+  it('NYSE 종목(JPM) 주문 후 체결 조회 → OVRS_EXCG_CD=NYSE', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-CCNL-NYS') })
+    kisHttpMock.get.mockResolvedValueOnce(ccnlResponse('OD-CCNL-NYS', 'JPM'))
+
+    const result = await KisService.placeOrder('BUY', 'JPM', 1)
+
+    expect(result.executedQty).toBe(1)
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({
+        params: expect.objectContaining({ OVRS_EXCG_CD: 'NYSE', PDNO: 'JPM' }),
+      }),
+    )
+  })
+
+  it('NASDAQ 종목(AAPL) 주문 후 체결 조회 → OVRS_EXCG_CD=NASD', async () => {
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-CCNL-NAS') })
+    kisHttpMock.get.mockResolvedValueOnce(ccnlResponse('OD-CCNL-NAS', 'AAPL'))
+
+    const result = await KisService.placeOrder('BUY', 'AAPL', 1)
+
+    expect(result.executedQty).toBe(1)
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({
+        params: expect.objectContaining({ OVRS_EXCG_CD: 'NASD', PDNO: 'AAPL' }),
+      }),
+    )
+  })
+})
