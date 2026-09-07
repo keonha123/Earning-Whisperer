@@ -326,6 +326,60 @@ describe('TradeExecutor.execute — 예외 처리', () => {
   })
 })
 
+describe('TradeExecutor.execute — 주문 락과 EXECUTED 콜백 첫 시도', () => {
+  it('첫 콜백 시도가 pending 인 동안 isOrderInProgress=true, settle 후 false', async () => {
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
+    Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
+
+    let resolveCallback: (() => void) | null = null
+    Backend.sendCallback.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveCallback = () => resolve() }),
+    )
+
+    const pending = TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+    await flushMicrotasks()
+
+    // 첫 콜백 시도가 아직 끝나지 않았으면 두 번째 주문이 통과해선 안 된다
+    expect(resolveCallback).not.toBeNull()
+    expect(mainState.isOrderInProgress).toBe(true)
+
+    resolveCallback!()
+    const result = await pending
+
+    expect(result.status).toBe('EXECUTED')
+    expect(mainState.isOrderInProgress).toBe(false)
+  })
+})
+
+describe('TradeExecutor.execute — SELF_PAPER 콜백 실패 정책', () => {
+  it('EXECUTED 콜백이 throw 해도 FAILED 콜백을 보내지 않고 로컬 잔고는 갱신한다', async () => {
+    vi.useFakeTimers()
+    mainState.setAccountType('SELF_PAPER')
+    mainState.updatePricesCache({ TSLA: 100 })
+    mainState.setSelfPaperBalance(10_000, [])
+    Backend.sendCallback.mockRejectedValue(new Error('백엔드 500'))
+
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+
+    expect(result.status).toBe('EXECUTED')
+    expect(result.executedQty).toBe(10)
+    // 체결이 난 주문이므로 FAILED 로 뒤집지 않는다
+    expect(Backend.sendCallback).not.toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
+    expect(Notify.notifyTradeFailed).not.toHaveBeenCalled()
+    // 로컬 잔고 갱신은 콜백 결과와 무관하게 수행된다
+    expect(mainState.selfPaperCash).toBe(9_000)
+    expect(mainState.selfPaperHoldings).toEqual([{ ticker: 'TSLA', qty: 10 }])
+
+    // 백그라운드 재시도 타이머 소진 (누수 방지)
+    await vi.advanceTimersByTimeAsync(7000)
+    await flushMicrotasks()
+  })
+})
+
 describe('TradeExecutor.execute — 진행 중 신호 통보', () => {
   it('주문 진행 중 두 번째 신호는 FAILED 콜백 + TRADE_FAILED push로 통보된다', async () => {
     mainState.setOrderInProgress(true)

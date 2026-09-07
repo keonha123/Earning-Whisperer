@@ -100,8 +100,9 @@ export const TradeExecutor = {
       }
 
       // Step 3: 백엔드 콜백 — 체결은 이미 성사됐으므로 실패해도 FAILED 로 뒤집지 않는다.
-      // 재시도는 백그라운드에서 진행하고, 주문 락·체결 알림을 지연시키지 않는다.
-      void deliverExecutedCallback(signal.trade_id, result, {
+      // 첫 시도는 락 안에서 await 한다 (콜백이 뜨기 전 두 번째 주문이 통과하지 않도록).
+      // 실패 시 1s·2s·4s 재시도만 백그라운드로 넘어가고 락은 즉시 풀린다.
+      await deliverExecutedCallback(signal.trade_id, result, {
         status: 'EXECUTED',
         broker_order_id: orderResult.orderId,
         executed_price: orderResult.executedPrice,
@@ -230,13 +231,26 @@ async function deliverExecutedCallback(
   result: TradeResult,
   payload: ExecutedCallbackPayload,
 ): Promise<void> {
-  let lastError: unknown = null
+  try {
+    await BackendClient.sendCallback(tradeId, payload)
+  } catch (e) {
+    // 첫 시도 실패 — 재시도만 백그라운드로 넘기고 즉시 resolve 한다.
+    // 예외는 호출자로 전파되지 않는다 (FAILED 로 뒤집지 않기 위해).
+    void retryExecutedCallback(tradeId, result, payload, e)
+  }
+}
 
-  for (let attempt = 0; attempt <= EXECUTED_CALLBACK_RETRY_DELAYS_MS.length; attempt++) {
-    if (attempt > 0) {
-      const delay = EXECUTED_CALLBACK_RETRY_DELAYS_MS[attempt - 1]
-      await new Promise((resolve) => setTimeout(resolve, delay))
-    }
+/** 첫 시도 실패 후의 백오프 재시도. 끝내 실패하면 로그 + 렌더러 통보만 한다. */
+async function retryExecutedCallback(
+  tradeId: string,
+  result: TradeResult,
+  payload: ExecutedCallbackPayload,
+  firstError: unknown,
+): Promise<void> {
+  let lastError: unknown = firstError
+
+  for (const delay of EXECUTED_CALLBACK_RETRY_DELAYS_MS) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
     try {
       await BackendClient.sendCallback(tradeId, payload)
       return
@@ -288,7 +302,8 @@ async function executeSelfPaper(signal: TradeSignal): Promise<TradeResult> {
     errorMessage: null,
   }
 
-  await BackendClient.sendCallback(signal.trade_id, {
+  // KIS 경로와 동일 정책 — 가상 체결은 이미 확정이므로 콜백 실패를 FAILED 로 뒤집지 않는다.
+  await deliverExecutedCallback(signal.trade_id, result, {
     status: 'EXECUTED',
     broker_order_id: null,
     executed_price: currentPrice,
