@@ -32,7 +32,13 @@ export function registerVaultHandlers() {
       assertNonBlankString(payload?.accountNo, 'accountNo')
 
       const { appKey, appSecret, accountNo, isPaperTrading } = payload
-      await KisService.saveCredentials(appKey, appSecret, accountNo, isPaperTrading)
+      // 계좌번호 정규화 — '12345678-01' 처럼 구분자가 섞이면 ACNT_PRDT_CD 가 '-01' 로 나간다.
+      // 숫자만 남긴 뒤 10자리(계좌 8 + 상품코드 2)가 아니면 저장 자체를 거부.
+      const normalizedAccountNo = accountNo.replace(/\D/g, '')
+      if (normalizedAccountNo.length !== 10) {
+        throw new IpcError('VALIDATION', 'accountNo must be 10 digits (계좌번호 8자리 + 상품코드 2자리)')
+      }
+      await KisService.saveCredentials(appKey, appSecret, normalizedAccountNo, isPaperTrading)
       // 저장 대상 모드와 현재 활성 모드가 일치할 때만 토큰 발급 시도.
       // 다른 모드 키 등록(예: paper 활성 상태에서 real 키 등록)은 발급 skip — A3 의 양쪽 등록 UX 지원.
       if (isPaperTrading === mainState.isPaperTrading) {

@@ -89,6 +89,17 @@ describe('KisService.placeOrder', () => {
     expect(body.ACNT_PRDT_CD).toBe('99')
   })
 
+  it('계좌번호에 하이픈/공백이 섞여도 숫자만 뽑아 분해한다', async () => {
+    await seedCredentials(' 12345678-01 ')
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD6') })
+
+    await KisService.placeOrder('BUY', 'TSLA', 1)
+
+    const [, body] = kisHttpMock.post.mock.calls[0]
+    expect(body.CANO).toBe('12345678')
+    expect(body.ACNT_PRDT_CD).toBe('01')
+  })
+
   it('계좌번호 8자리: ACNT_PRDT_CD 기본값 "01"', async () => {
     await seedCredentials('12345678') // 정확히 8자리
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD5') })

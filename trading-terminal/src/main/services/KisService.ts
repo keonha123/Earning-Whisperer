@@ -121,6 +121,16 @@ function modeSwitchError(): Error {
   return new Error(MODE_SWITCH_ERROR_MESSAGE)
 }
 
+/**
+ * 계좌번호 → CANO(앞 8자리) / ACNT_PRDT_CD(뒤 2자리, 없으면 '01') 분해.
+ * vault 저장 시 정규화되지만, 하이픈/공백이 섞인 legacy 값이 남아 있어도
+ * ACNT_PRDT_CD='-01' 같은 잘못된 값이 나가지 않도록 숫자만 추출한다.
+ */
+function parseAccountNo(accountNo: string): { cano: string; acntPrdtCd: string } {
+  const digits = accountNo.replace(/\D/g, '')
+  return { cano: digits.slice(0, 8), acntPrdtCd: digits.slice(8) || '01' }
+}
+
 function isAbortError(e: unknown): boolean {
   const code = (e as { code?: string })?.code
   const name = (e as { name?: string })?.name
@@ -439,8 +449,7 @@ export const KisService = {
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper))
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper))
     if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
-    const cano = accountNo.slice(0, 8)
-    const acntPrdtCd = accountNo.slice(8) || '01'
+    const { cano, acntPrdtCd } = parseAccountNo(accountNo)
 
     // 1. 해외주식 잔고 (보유종목)
     await kisLimiter.acquire('MEDIUM')
@@ -576,8 +585,8 @@ export const KisService = {
     const { data } = await kisHttp.post(
       '/uapi/overseas-stock/v1/trading/order',
       {
-        CANO: accountNo.slice(0, 8),
-        ACNT_PRDT_CD: accountNo.slice(8) || '01',
+        CANO: parseAccountNo(accountNo).cano,
+        ACNT_PRDT_CD: parseAccountNo(accountNo).acntPrdtCd,
         OVRS_EXCG_CD: REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
         PDNO: ticker,
         ORD_DVSN: '00',
@@ -790,8 +799,8 @@ async function inquireOrderFill(
         headers: buildKisHeaders(appKey, appSecret, trId('inquireCcnl')),
         signal: activeAbortController.signal,
         params: {
-          CANO: accountNo.slice(0, 8),
-          ACNT_PRDT_CD: accountNo.slice(8) || '01',
+          CANO: parseAccountNo(accountNo).cano,
+          ACNT_PRDT_CD: parseAccountNo(accountNo).acntPrdtCd,
           PDNO: ticker,
           ORD_STRT_DT: yyyymmdd,
           ORD_END_DT: yyyymmdd,
