@@ -28,6 +28,8 @@ import { stop as stopPricePoller } from './services/PricePoller'
 import { OAuthService } from './services/OAuthService'
 import { kisLimiter } from './services/KisRateLimiter'
 import { migrateLegacyKeysIfNeeded } from './services/KisService'
+import { StompService } from './services/StompService'
+import { KisWebSocketService } from './services/KisWebSocketService'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 const PAPER_TRADING_KEY = 'kis-isPaperTrading'
@@ -49,6 +51,7 @@ async function restorePaperTradingFlag(): Promise<void> {
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let isQuitting = false
 
 
 function createWindow() {
@@ -98,8 +101,9 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // 창 닫기 → 트레이로 최소화
+  // 창 닫기 → 트레이로 최소화 (단, 앱 종료 중이면 그대로 닫히도록 통과시킨다 — macOS Cmd+Q 등)
   mainWindow.on('close', (e) => {
+    if (isQuitting) return
     e.preventDefault()
     mainWindow?.hide()
   })
@@ -151,9 +155,16 @@ app.on('window-all-closed', () => {
   // 트레이 상주 — 앱 종료 안 함
 })
 
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
 app.on('will-quit', () => {
   // OAuth 임시 서버가 살아있다면 강제 종료 (포트 누수 방지)
   OAuthService.shutdown()
+  StompService.disconnect()
+  KisWebSocketService.disconnect()
+  kisLimiter.dispose()
   stopWatchlist()
   stopEarnings()
   stopPricePoller()

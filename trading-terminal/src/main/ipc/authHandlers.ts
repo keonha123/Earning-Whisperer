@@ -97,6 +97,8 @@ export function registerAuthHandlers() {
     stopPricePoller()
     // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
     clearStockDetailCache()
+    // KIS refreshTimer 취소 — 로그아웃 상태에서 타이머가 keytar 를 읽어 토큰을 재발급하는 것을 막는다.
+    KisService.invalidateRuntime()
     mainState.clear()
   })
 

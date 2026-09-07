@@ -82,3 +82,15 @@ describe('AUTH_LOGIN', () => {
     expect(mainState.backendToken).toBeNull()
   })
 })
+
+describe('AUTH_LOGOUT', () => {
+  it('로그아웃 시 KisService.invalidateRuntime 을 호출해 refreshTimer 를 정리한다', () => {
+    const invalidateRuntimeSpy = vi.spyOn(KisService, 'invalidateRuntime').mockImplementation(() => {})
+
+    registerAuthHandlers()
+    const handler = getRegisteredHandler(IPC_CHANNELS.AUTH_LOGOUT)
+    handler({} as never, undefined)
+
+    expect(invalidateRuntimeSpy).toHaveBeenCalledTimes(1)
+  })
+})
