@@ -57,13 +57,15 @@ function validateSignal(signal: TradeSignal): string | null {
 
 export const TradeExecutor = {
   async execute(signal: TradeSignal): Promise<TradeResult> {
-    if (mainState.isOrderInProgress) {
-      return failResult(signal.trade_id, '이미 주문이 진행 중입니다.')
-    }
-
+    // 검증이 먼저 — signal 이 undefined 여도 signal.trade_id 접근으로 TypeError 가 나지 않도록.
     const validationError = validateSignal(signal)
     if (validationError) {
       return await sendFailCallback(signal?.trade_id || 'invalid', validationError)
+    }
+
+    // 진행 중 신호도 콜백·IPC 로 통보한다 — 통보가 없으면 UI 는 영원히 대기중, 백엔드는 TTL 까지 PENDING.
+    if (mainState.isOrderInProgress) {
+      return await sendFailCallback(signal.trade_id, '이미 주문이 진행 중입니다.')
     }
 
     mainState.setOrderInProgress(true)
@@ -88,7 +90,6 @@ export const TradeExecutor = {
       // Step 2: KIS 주문
       const orderResult = await KisService.placeOrder(signal.action, signal.ticker, finalQty)
 
-      // Step 3: 백엔드 콜백
       const result: TradeResult = {
         tradeId: signal.trade_id,
         status: 'EXECUTED',
@@ -98,7 +99,9 @@ export const TradeExecutor = {
         errorMessage: null,
       }
 
-      await BackendClient.sendCallback(signal.trade_id, {
+      // Step 3: 백엔드 콜백 — 체결은 이미 성사됐으므로 실패해도 FAILED 로 뒤집지 않는다.
+      // 재시도는 백그라운드에서 진행하고, 주문 락·체결 알림을 지연시키지 않는다.
+      void deliverExecutedCallback(signal.trade_id, result, {
         status: 'EXECUTED',
         broker_order_id: orderResult.orderId,
         executed_price: orderResult.executedPrice,
@@ -203,15 +206,49 @@ function syncPortfolioAsync() {
     .catch((e) => console.error('[TradeExecutor] 포트폴리오 동기화 실패:', e))
 }
 
-function failResult(tradeId: string, reason: string): TradeResult {
-  return {
-    tradeId,
-    status: 'FAILED',
-    orderId: null,
-    executedPrice: null,
-    executedQty: 0,
-    errorMessage: reason,
+/** EXECUTED 콜백 재시도 백오프 (ms). 최초 1회 + 아래 3회 = 최대 4회 전송 시도. */
+const EXECUTED_CALLBACK_RETRY_DELAYS_MS = [1000, 2000, 4000]
+
+type ExecutedCallbackPayload = {
+  status: 'EXECUTED'
+  broker_order_id: string | null
+  executed_price: number | null
+  executed_qty: number
+  error_message: null
+}
+
+/**
+ * 체결 성공 이후의 EXECUTED 콜백 전송.
+ * 이미 실제 체결이 난 주문이므로 콜백 실패를 FAILED 로 뒤집지 않는다 —
+ * 짧게 재시도하고, 끝내 실패하면 로그 + 렌더러 통보만 한다 (백엔드는 PENDING 유지).
+ */
+async function deliverExecutedCallback(
+  tradeId: string,
+  result: TradeResult,
+  payload: ExecutedCallbackPayload,
+): Promise<void> {
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt <= EXECUTED_CALLBACK_RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      const delay = EXECUTED_CALLBACK_RETRY_DELAYS_MS[attempt - 1]
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+    try {
+      await BackendClient.sendCallback(tradeId, payload)
+      return
+    } catch (e) {
+      lastError = e
+    }
   }
+
+  console.error('[TradeExecutor] 체결 콜백 전송 실패 (체결은 완료됨):', tradeId, lastError)
+  const reason = lastError instanceof Error ? lastError.message : '알 수 없는 오류'
+  pushToRenderer(IPC_CHANNELS.TRADE_FAILED, {
+    ...result,
+    reason: 'CALLBACK_FAILED',
+    errorMessage: `체결은 완료됐으나 백엔드 콜백 전송에 실패했습니다: ${reason}`,
+  })
 }
 
 /**
