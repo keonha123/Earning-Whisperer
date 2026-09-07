@@ -111,6 +111,16 @@ let lastKnownOrderableCash = 0
  */
 let activeAbortController: AbortController = new AbortController()
 
+/**
+ * 모드 전환으로 흐름이 중단됐음을 호출자에게 알리는 에러.
+ * 조용히 return 하면 ensureToken 이 정상 종료해 호출자가 `Bearer null` 로 요청하게 된다.
+ */
+const MODE_SWITCH_ERROR_MESSAGE = 'KIS 모드가 전환되어 요청을 취소했습니다'
+
+function modeSwitchError(): Error {
+  return new Error(MODE_SWITCH_ERROR_MESSAGE)
+}
+
 function isAbortError(e: unknown): boolean {
   const code = (e as { code?: string })?.code
   const name = (e as { name?: string })?.name
@@ -339,13 +349,15 @@ export const KisService = {
     // IIFE 진입 시 모드 캡처. axios resolve 까지 이어지는 모든 await 사이에 invalidateRuntime 으로
      // 모드가 바뀌면 결과 mainState/vault 반영을 차단해 옛 모드 토큰이 새 모드에 박히는 사고 방지.
     const issuedFor = mainState.isPaperTrading
-    issueTokenInFlight = (async () => {
+    // in-flight 소유권: 자기 Promise 일 때만 정리한다. invalidateRuntime 등으로 in-flight 가
+    // 교체된 뒤 옛 흐름의 finally 가 새 in-flight 를 지우면 중복 발급(EGW00133)이 발생한다.
+    const inFlight = (async () => {
       const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(issuedFor))
       const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(issuedFor))
       if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
       if (modeChangedSince(issuedFor)) {
         console.info('[KisService] issueToken 중단 — 모드 전환 감지')
-        return
+        throw modeSwitchError()
       }
 
       try {
@@ -357,7 +369,7 @@ export const KisService = {
 
         if (modeChangedSince(issuedFor)) {
           console.info('[KisService] 토큰 발급 결과 폐기 — resolve 사이 모드 전환')
-          return
+          throw modeSwitchError()
         }
 
         console.info(`[KisService] 토큰 발급 성공 — expires_in: ${data.expires_in}초`)
@@ -377,11 +389,12 @@ export const KisService = {
         throw e
       }
     })()
+    issueTokenInFlight = inFlight
 
     try {
-      await issueTokenInFlight
+      await inFlight
     } finally {
-      issueTokenInFlight = null
+      if (issueTokenInFlight === inFlight) issueTokenInFlight = null
     }
   },
 
@@ -405,14 +418,16 @@ export const KisService = {
     // 동시 호출 방지 — KIS API 초당 거래건수 초과 (EGW00201) 회피
     if (getBalanceInFlight) return getBalanceInFlight
 
-    getBalanceInFlight = (async () => {
+    // issueToken 과 동일한 in-flight 소유권 규칙 — 옛 흐름이 새 in-flight 를 지우지 않도록.
+    const inFlight = (async () => {
       return KisService._getBalanceImpl()
     })()
+    getBalanceInFlight = inFlight
 
     try {
-      return await getBalanceInFlight
+      return await inFlight
     } finally {
-      getBalanceInFlight = null
+      if (getBalanceInFlight === inFlight) getBalanceInFlight = null
     }
   },
 
