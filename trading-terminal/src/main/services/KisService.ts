@@ -854,3 +854,17 @@ function scheduleTokenRefresh(expiresIn: number) {
   const delay = Math.max((expiresIn - 3600) * 1000, 60_000)
   refreshTimer = setTimeout(() => { void runRefreshOnce() }, delay)
 }
+
+/** 테스트 전용 — 모듈 전역 상태 초기화 (테스트 간 누수 방지). */
+export function __resetForTest(): void {
+  lastKnownOrderableCash = 0
+  issueTokenInFlight = null
+  getBalanceInFlight = null
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  tokenRefreshAttempts = 0
+  activeAbortController.abort()
+  activeAbortController = new AbortController()
+}

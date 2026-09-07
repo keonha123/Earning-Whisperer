@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { kisHttpMock } from '../../../test/setup'
 
 import keytar from 'keytar'
-import { KisService } from '../KisService'
+import { KisService, __resetForTest } from '../KisService'
 import { kisLimiter } from '../KisRateLimiter'
 import { mainState } from '../../store/mainState'
 import {
@@ -25,6 +25,7 @@ async function seedCredentials(): Promise<void> {
 }
 
 beforeEach(() => {
+  __resetForTest()
   mainState.clear()
   // mainState.clear() 는 isPaperTrading 을 유지하므로 leak 방지로 명시 reset
   mainState.setPaperTrading(true)

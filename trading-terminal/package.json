@@ -13,7 +13,8 @@
     "postinstall": "electron-rebuild -f -w keytar",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",

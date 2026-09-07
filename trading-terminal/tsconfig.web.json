@@ -5,8 +5,8 @@
     "composite": true,
     "outDir": "dist/types/web",
     "paths": {
-      "@renderer/*": ["src/renderer/*"],
-      "@/*": ["src/renderer/*"]
+      "@renderer/*": ["./src/renderer/*"],
+      "@/*": ["./src/renderer/*"]
     }
   }
 }

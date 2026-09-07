@@ -50,10 +50,20 @@ async function flushCycle(n: number): Promise<void> {
 
 describe('PricePoller — 사이클 공식', () => {
   it('holdings 3 + watchlist 2 → 첫 tick 에서 5건 모두 호출 + batch 5건 push', async () => {
-    getCurrentPriceMock.mockImplementation(async (ticker: string) => {
-      const map: Record<string, number> = { A: 10, B: 20, C: 30, D: 40, E: 50 }
-      return map[ticker] ?? 0
-    })
+    const map: Record<string, number> = { A: 10, B: 20, C: 30, D: 40, E: 50 }
+    getCurrentPriceMock.mockImplementation(async (ticker: string) => ({
+      currentPrice: map[ticker] ?? 0,
+      previousClose: (map[ticker] ?? 0) - 1,
+    }))
+
+    const sendSpy = vi.fn()
+    const getAllWindowsMock = vi.mocked(BrowserWindow.getAllWindows)
+    getAllWindowsMock.mockReturnValue([
+      {
+        isDestroyed: () => false,
+        webContents: { send: sendSpy },
+      } as never,
+    ])
 
     setHoldings(['A', 'B', 'C'])
     setWatchlist(['D', 'E'])
@@ -67,15 +77,28 @@ describe('PricePoller — 사이클 공식', () => {
     const calledTickers = getCurrentPriceMock.mock.calls.map((c) => c[0]).sort()
     expect(calledTickers).toEqual(['A', 'B', 'C', 'D', 'E'])
 
+    // batch push 5건 + 캐시에 currentPrice/previousClose 반영 확인.
+    const updateCalls = sendSpy.mock.calls.filter((c) => c[0] === 'terminal:prices:update')
+    expect(updateCalls).toHaveLength(1)
+    const batch = updateCalls[0][1] as { ticker: string }[]
+    expect(batch).toHaveLength(5)
+
+    const cached = getCachedPrices()
+    expect(cached.A.currentPrice).toBe(10)
+    expect(cached.A.previousClose).toBe(9)
+    expect(cached.E.currentPrice).toBe(50)
+    expect(cached.E.previousClose).toBe(49)
+
     stop()
+    getAllWindowsMock.mockReturnValue([])
   })
 })
 
 describe('PricePoller — 부분 0 처리', () => {
   it('단건 0 반환은 batch 제외, 다른 건은 push (cycleFailures 누적되지 않아 정상)', async () => {
     getCurrentPriceMock.mockImplementation(async (ticker: string) => {
-      if (ticker === 'B') return 0
-      return 100
+      if (ticker === 'B') return { currentPrice: 0, previousClose: 0 }
+      return { currentPrice: 100, previousClose: 99 }
     })
 
     setHoldings(['A', 'B', 'C'])
@@ -97,7 +120,16 @@ describe('PricePoller — 부분 0 처리', () => {
 describe('PricePoller — 연속 실패 가드', () => {
   it('연속 5 cycle 전체 실패 → pausedUntil 미래값 + consecutiveFailures 리셋', async () => {
     // 항상 0 반환 → 모든 cycle 전체 실패 처리.
-    getCurrentPriceMock.mockResolvedValue(0)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 0, previousClose: 0 })
+
+    const sendSpy = vi.fn()
+    const getAllWindowsMock = vi.mocked(BrowserWindow.getAllWindows)
+    getAllWindowsMock.mockReturnValue([
+      {
+        isDestroyed: () => false,
+        webContents: { send: sendSpy },
+      } as never,
+    ])
 
     setHoldings(['A', 'B'])
     start()
@@ -113,13 +145,20 @@ describe('PricePoller — 연속 실패 가드', () => {
     expect(state.pausedUntil).toBeGreaterThan(Date.now())
     expect(state.consecutiveFailures).toBe(0) // pausedUntil 트리거 후 리셋됨
 
+    // 전체 실패이므로 batch push 없음 + 캐시도 채워지지 않음.
+    const updateCalls = sendSpy.mock.calls.filter((c) => c[0] === 'terminal:prices:update')
+    expect(updateCalls).toHaveLength(0)
+    expect(getCachedPrices()).toEqual({})
+
+    getAllWindowsMock.mockReturnValue([])
+
     stop()
   })
 })
 
 describe('PricePoller — stop() 캐시 정리 (H7)', () => {
   it('start → tick 1회로 캐시 채워짐 → stop → getCachedPrices() 빈 객체', async () => {
-    getCurrentPriceMock.mockResolvedValue(123)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 123, previousClose: 122 })
 
     setHoldings(['A', 'B'])
     start()
@@ -142,7 +181,7 @@ describe('PricePoller — stop() 캐시 정리 (H7)', () => {
 
 describe('PricePoller — clearCache (모드 전환)', () => {
   it('clearCache() 후 캐시는 빈 상태이고 running 이면 사이클이 재시작된다', async () => {
-    getCurrentPriceMock.mockResolvedValue(123)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 123, previousClose: 122 })
 
     setHoldings(['A', 'B'])
     start()
@@ -153,7 +192,7 @@ describe('PricePoller — clearCache (모드 전환)', () => {
     expect(Object.keys(getCachedPrices()).sort()).toEqual(['A', 'B'])
 
     // 모드 전환 시뮬레이션 — 새 가격 반환하도록 mock 변경
-    getCurrentPriceMock.mockResolvedValue(999)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 999, previousClose: 998 })
     clearCache()
 
     // clearCache 직후 캐시는 비어있어야 함 (옛 모드 가격 노출 방지)
@@ -168,7 +207,7 @@ describe('PricePoller — clearCache (모드 전환)', () => {
   })
 
   it('running=false 상태에서 clearCache() 는 캐시만 비우고 사이클은 시작하지 않는다', async () => {
-    getCurrentPriceMock.mockResolvedValue(123)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 123, previousClose: 122 })
 
     setHoldings(['A'])
     start()
@@ -191,7 +230,7 @@ describe('PricePoller — clearCache (모드 전환)', () => {
 
 describe('PricePoller — recalcAndRestart (setHoldings 즉시 반영)', () => {
   it('진행 중 setHoldings 호출 시 새 ticker 가 다음 tick 에 즉시 반영', async () => {
-    getCurrentPriceMock.mockResolvedValue(100)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 100, previousClose: 99 })
 
     setHoldings(['A'])
     setWatchlist(['B'])
@@ -234,14 +273,14 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
     ])
 
     // 첫 ticker(A) 의 await 를 외부에서 풀 수 있도록 deferred Promise 사용.
-    let releaseA: ((v: number) => void) | null = null
-    const aPromise = new Promise<number>((resolve) => {
+    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | null = null
+    const aPromise = new Promise<{ currentPrice: number; previousClose: number }>((resolve) => {
       releaseA = resolve
     })
     getCurrentPriceMock.mockImplementation(async (ticker: string) => {
       if (ticker === 'A') return aPromise
       // B/NEW 는 즉시 resolve.
-      return 999
+      return { currentPrice: 999, previousClose: 998 }
     })
 
     setHoldings(['A', 'B'])
@@ -256,7 +295,7 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
     setHoldings(['NEW'])
 
     // A await 해제 → 사이클 1 은 epoch mismatch 로 batch push 안 하고 즉시 return.
-    releaseA?.(123)
+    releaseA?.({ currentPrice: 123, previousClose: 122 })
     await flushMicrotasks()
 
     // 사이클 1 은 batch 발신 안 했어야 한다.
@@ -295,7 +334,7 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
       } as never,
     ])
 
-    getCurrentPriceMock.mockResolvedValue(50)
+    getCurrentPriceMock.mockResolvedValue({ currentPrice: 50, previousClose: 49 })
 
     setHoldings(['A', 'B'])
     start()
@@ -323,13 +362,13 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
       } as never,
     ])
 
-    let releaseA: ((v: number) => void) | null = null
-    const aPromise = new Promise<number>((resolve) => {
+    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | null = null
+    const aPromise = new Promise<{ currentPrice: number; previousClose: number }>((resolve) => {
       releaseA = resolve
     })
     getCurrentPriceMock.mockImplementation(async (ticker: string) => {
       if (ticker === 'A') return aPromise
-      return 100
+      return { currentPrice: 100, previousClose: 99 }
     })
 
     setHoldings(['A', 'B'])
@@ -342,7 +381,7 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
     stop()
 
     // A await 해제 → 사이클 1 은 epoch mismatch + running=false 로 즉시 return, batch 미발신.
-    releaseA?.(777)
+    releaseA?.({ currentPrice: 777, previousClose: 776 })
     await flushMicrotasks()
 
     const updateCalls = sendSpy.mock.calls.filter((c) => c[0] === 'terminal:prices:update')

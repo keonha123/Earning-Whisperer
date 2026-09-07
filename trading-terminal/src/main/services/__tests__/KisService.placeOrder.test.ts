@@ -351,14 +351,14 @@ describe('KisService.placeOrder — 체결조회로 executedQty 정확화', () =
     expect(result.executedPrice).toBeNull()
   })
 
-  it('inquire-ccnl 응답에 ODNO 매칭 row 없음 → fallback', async () => {
+  it('inquire-ccnl 응답에 ODNO 매칭 row 없음 → 미체결 → executedQty=0', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-MISS') })
     kisHttpMock.get.mockResolvedValueOnce(buildCcnlResponse('OTHER-ODNO', '10', '125.0'))
 
     const result = await KisService.placeOrder('BUY', 'TSLA', 10)
 
-    expect(result.executedQty).toBe(10)
+    expect(result.executedQty).toBe(0)
     expect(result.executedPrice).toBeNull()
   })
 
