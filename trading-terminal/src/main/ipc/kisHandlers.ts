@@ -146,13 +146,13 @@ export function registerKisHandlers() {
 
   registerHandler(IPC_CHANNELS.KIS_PLACE_MANUAL_ORDER, async (_e, req: ManualOrderRequest) => {
     if (!req?.ticker || typeof req.qty !== 'number' || req.qty <= 0) {
-      throw new IpcError('VALIDATION_ERROR', '올바르지 않은 주문 파라미터입니다.')
+      throw new IpcError('VALIDATION', '올바르지 않은 주문 파라미터입니다.')
     }
     if (req.price != null && (!Number.isFinite(req.price) || req.price <= 0)) {
-      throw new IpcError('VALIDATION_ERROR', '올바르지 않은 지정가입니다.')
+      throw new IpcError('VALIDATION', '올바르지 않은 지정가입니다.')
     }
     if (mainState.isOrderInProgress) {
-      throw new IpcError('ORDER_IN_PROGRESS', '이미 주문이 진행 중입니다.')
+      throw new IpcError('BUSINESS_RULE', '이미 주문이 진행 중입니다.')
     }
 
     // SELF_PAPER 수동 주문 — KIS API 미경유, pricesCache 현재가 기준 즉시 가상 체결

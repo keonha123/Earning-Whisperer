@@ -30,6 +30,7 @@ import { BackendClient } from '../BackendClient'
 import { NotificationService } from '../NotificationService'
 import { mainState } from '../../store/mainState'
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
+import { flushMicrotasks } from '../../../test/setup'
 
 const Kis = vi.mocked(KisService)
 const Backend = vi.mocked(BackendClient)
@@ -106,6 +107,30 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
     })
 
     expect(Notify.notifyTradeExecuted).toHaveBeenCalledWith('TSLA', 'BUY', 10, null)
+  })
+
+  it('EXECUTED 후 포트폴리오 동기화가 백엔드 계약대로 { cash_balance, positions } 로 호출된다', async () => {
+    Kis.getBalance.mockResolvedValue({
+      orderableCash: 1000,
+      totalCash: 1234,
+      holdings: [{ ticker: 'TSLA', qty: 7, avgPrice: 250.5, currentPrice: 260 }],
+    })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
+    Kis.placeOrder.mockResolvedValue({
+      orderId: 'ODNO123',
+      executedPrice: null,
+      executedQty: 10,
+    })
+    Backend.sendCallback.mockResolvedValue(undefined)
+    Backend.syncPortfolio.mockResolvedValue(undefined)
+
+    await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+    await flushMicrotasks()
+
+    expect(Backend.syncPortfolio).toHaveBeenCalledWith({
+      cash_balance: 1234,
+      positions: [{ ticker: 'TSLA', quantity: 7, avg_price: 250.5 }],
+    })
   })
 
   it('TRADE_EXECUTED IPC 이벤트 발화', async () => {

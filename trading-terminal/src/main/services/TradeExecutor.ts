@@ -192,10 +192,10 @@ function syncPortfolioAsync() {
   KisService.getBalance()
     .then((balance) =>
       BackendClient.syncPortfolio({
-        total_cash: balance.totalCash,
-        holdings: balance.holdings.map((h) => ({
+        cash_balance: balance.totalCash,
+        positions: balance.holdings.map((h) => ({
           ticker: h.ticker,
-          qty: h.qty,
+          quantity: h.qty,
           avg_price: h.avgPrice,
         })),
       }),
