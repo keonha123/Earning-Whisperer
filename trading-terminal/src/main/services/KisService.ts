@@ -4,6 +4,14 @@ import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { kisLimiter } from './KisRateLimiter'
+import { resolveExchange, type KisExchange } from './KisWebSocketService'
+
+// REST 파라미터용 거래소 코드 쌍. resolveExchange() 결과(NAS/NYS/AMS)를 KIS REST 코드로 변환.
+const REST_EXCHANGE_CODES: Record<KisExchange, { ovrsExcgCd: string; excd: string }> = {
+  NAS: { ovrsExcgCd: 'NASD', excd: 'NAS' },
+  NYS: { ovrsExcgCd: 'NYSE', excd: 'NYS' },
+  AMS: { ovrsExcgCd: 'AMEX', excd: 'AMS' },
+}
 
 const KIS_BASE_URL_PAPER = 'https://openapivts.koreainvestment.com:29443'
 const KIS_BASE_URL_REAL = 'https://openapi.koreainvestment.com:9443'
@@ -492,7 +500,7 @@ export const KisService = {
         signal: activeAbortController.signal,
         params: {
           AUTH: '',
-          EXCD: 'NAS',
+          EXCD: REST_EXCHANGE_CODES[resolveExchange(ticker)].excd,
           SYMB: ticker,
         },
       })
@@ -542,7 +550,7 @@ export const KisService = {
       {
         CANO: accountNo.slice(0, 8),
         ACNT_PRDT_CD: accountNo.slice(8) || '01',
-        OVRS_EXCG_CD: 'NASD',
+        OVRS_EXCG_CD: REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
         PDNO: ticker,
         ORD_DVSN: '00',
         ORD_QTY: String(qty),

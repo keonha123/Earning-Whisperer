@@ -63,7 +63,7 @@ export function setExchangeHints(hints: Record<string, KisExchange>): void {
   }
 }
 
-function resolveExchange(ticker: string): KisExchange {
+export function resolveExchange(ticker: string): KisExchange {
   return exchangeOverrides.get(ticker) ?? (STATIC_NYSE.has(ticker) ? 'NYS' : 'NAS')
 }
 
