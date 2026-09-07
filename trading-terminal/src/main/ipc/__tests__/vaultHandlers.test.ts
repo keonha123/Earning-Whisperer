@@ -62,7 +62,7 @@ describe('vaultHandlers — 계좌번호 정규화/검증', () => {
         }),
       ) as Promise<unknown>,
       'VALIDATION',
-      /accountNo/,
+      /계좌번호는 숫자 10자리/,
     )
 
     // 검증 실패 시 keytar 에 아무것도 남지 않아야 한다

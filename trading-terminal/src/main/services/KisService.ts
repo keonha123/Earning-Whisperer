@@ -77,14 +77,18 @@ const kisHttp = axios.create({
 })
 
 /**
- * 응답 에러에서 요청 config 제거.
+ * 응답 에러에서 요청 config / request 제거.
  * AxiosError 를 그대로 console 에 찍으면 config.headers 의 appkey/appsecret/authorization 이
- * 평문으로 로그에 남는다. 진단에 필요한 response.data/message 는 보존된다.
+ * 평문으로 로그에 남는다. request(Node ClientRequest) 의 `_header` 에도 같은 헤더 원문이
+ * 직렬화돼 있으므로 함께 제거한다. 진단에 필요한 response.data/message 는 보존된다.
  */
 kisHttp.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err && typeof err === 'object') delete (err as { config?: unknown }).config
+    if (err && typeof err === 'object') {
+      delete (err as { config?: unknown }).config
+      delete (err as { request?: unknown }).request
+    }
     return Promise.reject(err)
   },
 )

@@ -36,7 +36,7 @@ export function registerVaultHandlers() {
       // 숫자만 남긴 뒤 10자리(계좌 8 + 상품코드 2)가 아니면 저장 자체를 거부.
       const normalizedAccountNo = accountNo.replace(/\D/g, '')
       if (normalizedAccountNo.length !== 10) {
-        throw new IpcError('VALIDATION', 'accountNo must be 10 digits (계좌번호 8자리 + 상품코드 2자리)')
+        throw new IpcError('VALIDATION', '계좌번호는 숫자 10자리여야 합니다 (계좌번호 8자리 + 상품코드 2자리)')
       }
       await KisService.saveCredentials(appKey, appSecret, normalizedAccountNo, isPaperTrading)
       // 저장 대상 모드와 현재 활성 모드가 일치할 때만 토큰 발급 시도.

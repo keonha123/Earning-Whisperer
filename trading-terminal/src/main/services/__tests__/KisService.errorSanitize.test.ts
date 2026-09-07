@@ -59,6 +59,29 @@ describe('kisHttp response interceptor — 자격증명 로그 유출 차단', (
     expect(returned.response).toEqual({ status: 403, data: { msg1: '거부' } })
   })
 
+  it('reject 되는 AxiosError 에서 request(ClientRequest._header) 도 제거한다', async () => {
+    const reject = getResponseRejectHandler()
+
+    // Node ClientRequest 는 _header 에 직렬화된 요청 헤더 원문을 들고 있다.
+    const axiosError = new Error('socket hang up') as Error & {
+      config?: unknown
+      request?: unknown
+    }
+    axiosError.config = { url: '/uapi/hashkey' }
+    axiosError.request = {
+      _header:
+        'POST /uapi/hashkey HTTP/1.1\r\nappkey: PSyyyyyyyyyyyyyyyyyy\r\nappsecret: SECRETyyyyyyyyyyyyyy\r\nauthorization: Bearer token.value2\r\n\r\n',
+    }
+
+    const returned = (await Promise.resolve(reject(axiosError)).catch((e) => e)) as typeof axiosError
+
+    expect(returned.request).toBeUndefined()
+    const serialized = JSON.stringify(returned, Object.getOwnPropertyNames(returned))
+    expect(serialized).not.toContain('PSyyyyyyyyyyyyyyyyyy')
+    expect(serialized).not.toContain('SECRETyyyyyyyyyyyyyy')
+    expect(serialized).not.toContain('Bearer token.value2')
+  })
+
   it('config 가 없는 에러도 그대로 reject 한다', async () => {
     const reject = getResponseRejectHandler()
     const plain = new Error('네트워크 오류')
