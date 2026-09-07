@@ -46,12 +46,14 @@ interface TradingState {
   updateSignalStatus: (tradeId: string, status: SignalStatus) => void
   setLastExecutedTrade: (result: TradeResult) => void
   setSession: (active: boolean, ticker?: string) => void
+  /** 로그아웃 시 초기화 (useUserStore.clear() 가 호출). */
+  reset: () => void
 }
 
 const MAX_HISTORY = 50
 
-export const useTradingStore = create<TradingState>((set) => ({
-  mode: 'MANUAL',
+const initialState = {
+  mode: 'MANUAL' as TradingMode,
   isForcedManual: false,
   forcedManualReason: null,
   activeSignal: null,
@@ -60,6 +62,10 @@ export const useTradingStore = create<TradingState>((set) => ({
   signalHistory: [],
   isSessionActive: false,
   sessionTicker: null,
+}
+
+export const useTradingStore = create<TradingState>((set) => ({
+  ...initialState,
 
   setMode: (mode) => set({ mode }),
 
@@ -106,4 +112,6 @@ export const useTradingStore = create<TradingState>((set) => ({
       isSessionActive: active,
       sessionTicker: active && ticker ? ticker : null,
     }),
+
+  reset: () => set({ ...initialState }),
 }))

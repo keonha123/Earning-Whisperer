@@ -47,12 +47,13 @@ export default function TradingRoomPage() {
   const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null
 
   // ticker 우선순위:
-  //  1) activeSignal (실시간 어닝콜 신호)
-  //  2) ?ticker= 쿼리 파라미터 (Market Screen 또는 EarningsTimeline 진입)
+  //  1) ?ticker= 쿼리 파라미터 (사용자가 명시적으로 고른 종목 — 항상 우선)
+  //  2) activeSignal (실시간 어닝콜 신호)
   //  3) liveMeta (DEV fixture)
   //  4) null → /market 리다이렉트
+  // 신호로 진입하는 경로도 모두 ?ticker= 를 붙이므로, param 우선이 안전하다.
   const paramTicker = searchParams.get('ticker') || null
-  const ticker = activeSignal?.ticker ?? paramTicker ?? liveMeta?.ticker ?? null
+  const ticker = paramTicker ?? activeSignal?.ticker ?? liveMeta?.ticker ?? null
 
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
@@ -162,6 +163,8 @@ export default function TradingRoomPage() {
         maxBuyRatio: settings.maxBuyRatio,
         maxHoldingRatio: settings.maxHoldingRatio,
         cooldownMinutes: settings.cooldownMinutes,
+        // 누락 시 백엔드가 임계치를 기본값으로 덮어쓴다 — 현재 설정값을 그대로 보낸다.
+        aiScoreThreshold: settings.aiScoreThreshold,
       })
       setMode(newMode)
       setSettings({ tradingMode: newMode })
