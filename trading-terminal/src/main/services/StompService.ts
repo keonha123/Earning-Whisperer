@@ -16,6 +16,10 @@ type WsStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
 let client: Client | null = null
 let retryCount = 0
 let hasConnectedOnce = false
+/** 예약된 재연결 타이머 핸들 — 동시 장애 콜백이 타이머를 중첩 예약하는 것을 막는다. */
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+/** disconnect() 로 의도적으로 끊은 상태 — 이때 오는 소켓 종료 콜백은 재연결 대상이 아니다. */
+let intentionalDisconnect = false
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
 
 /**
@@ -96,6 +100,27 @@ export const StompService = {
     const token = mainState.backendToken
     console.log('[StompService] connect() called — WS_URL:', WS_URL, '| token:', token ? '있음' : '없음(null)')
     if (!token) return
+
+    intentionalDisconnect = false
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+
+    /*
+     * CONNECTING 상태로 남아있는 옛 client 를 정리한 뒤 교체한다.
+     * 정리하지 않으면 뒤늦게 연결된 옛 client 가 동일 토픽을 이중 구독해
+     * 같은 신호가 2회 dispatch 된다.
+     */
+    if (client) {
+      const stale = client
+      client = null
+      try {
+        stale.deactivate()
+      } catch (e) {
+        console.error('[StompService] 이전 client deactivate 실패:', e)
+      }
+    }
 
     onStatusChange('CONNECTING')
 
@@ -222,12 +247,29 @@ export const StompService = {
         onStatusChange('RECONNECTING')
         scheduleReconnect()
       },
+
+      /*
+       * 서버가 소켓을 닫은 경우(백엔드 재배포, heartbeat timeout 등)는 onDisconnect 가
+       * 아니라 onWebSocketClose 로만 통보된다. 이를 처리하지 않으면 UI 가 CONNECTED 로
+       * 남고 AUTO_PILOT 이 유지된 채 재연결도 되지 않는다.
+       */
+      onWebSocketClose: (event) => {
+        console.warn('[StompService] WebSocket 종료:', event?.code, event?.reason)
+        clearStompCovered()
+        onStatusChange('DISCONNECTED')
+        scheduleReconnect()
+      },
     })
 
     client.activate()
   },
 
   disconnect() {
+    intentionalDisconnect = true
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     client?.deactivate()
     client = null
     retryCount = 0
@@ -295,12 +337,21 @@ function transcriptMessageHandler(message: IMessage) {
   }
 }
 
+/**
+ * 재연결 예약 — 타이머 핸들 1개만 유지한다.
+ * 같은 장애로 onStompError / onWebSocketError / onWebSocketClose 가 연달아 호출돼도
+ * 타이머가 중첩되지 않아 client 가 2개 생성되는 이중 구독을 막는다.
+ */
 function scheduleReconnect() {
+  if (intentionalDisconnect) return
+  if (reconnectTimer) return
+
   const delay = getRetryDelay()
   retryCount++
   onStatusChange('RECONNECTING')
 
-  setTimeout(() => {
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
     if (mainState.backendToken) {
       StompService.connect()
     }
