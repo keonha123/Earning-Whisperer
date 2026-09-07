@@ -244,7 +244,8 @@ export const StompService = {
 
       onStompError: (frame) => {
         if (client !== created) return
-        console.error('[StompService] STOMP 에러:', frame)
+        // frame 전체를 찍으면 헤더의 인증 토큰이 로그에 남는다 — 메시지만 남긴다
+        console.error('[StompService] STOMP 에러:', frame.headers?.message)
         clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()

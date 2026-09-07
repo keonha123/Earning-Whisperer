@@ -203,7 +203,10 @@ function syncPortfolioAsync() {
         })),
       }),
     )
-    .catch((e) => console.error('[TradeExecutor] 포트폴리오 동기화 실패:', e))
+    .catch((e: any) =>
+      // raw AxiosError 를 그대로 찍으면 config.headers 의 appkey/appsecret 이 로그에 남는다
+      console.error('[TradeExecutor] 포트폴리오 동기화 실패:', e?.response?.data ?? e?.message),
+    )
 }
 
 /** EXECUTED 콜백 재시도 백오프 (ms). 최초 1회 + 아래 3회 = 최대 4회 전송 시도. */

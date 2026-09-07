@@ -193,7 +193,10 @@ export function registerKisHandlers() {
             })),
           }),
         )
-        .catch((e) => console.error('[kisHandlers] 포트폴리오 동기화 실패:', e))
+        .catch((e: any) =>
+          // raw AxiosError 를 그대로 찍으면 config.headers 의 appkey/appsecret 이 로그에 남는다
+          console.error('[kisHandlers] 포트폴리오 동기화 실패:', e?.response?.data ?? e?.message),
+        )
 
       const result = {
         status: orderResult.executedQty > 0 ? ('EXECUTED' as const) : ('PENDING' as const),

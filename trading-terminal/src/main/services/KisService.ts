@@ -76,6 +76,19 @@ const kisHttp = axios.create({
   timeout: 10_000,
 })
 
+/**
+ * 응답 에러에서 요청 config 제거.
+ * AxiosError 를 그대로 console 에 찍으면 config.headers 의 appkey/appsecret/authorization 이
+ * 평문으로 로그에 남는다. 진단에 필요한 response.data/message 는 보존된다.
+ */
+kisHttp.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err && typeof err === 'object') delete (err as { config?: unknown }).config
+    return Promise.reject(err)
+  },
+)
+
 function pushToRenderer(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
