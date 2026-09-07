@@ -309,6 +309,8 @@ describe('TradeExecutor.execute — 예외 처리', () => {
     await vi.advanceTimersByTimeAsync(7000)
     await flushMicrotasks()
 
+    // 최초 1회 + 1s·2s·4s 재시도 3회 = 4회 전송 시도
+    expect(Backend.sendCallback).toHaveBeenCalledTimes(4)
     // FAILED 콜백은 단 한 번도 나가지 않아야 한다
     expect(Backend.sendCallback).not.toHaveBeenCalledWith(
       'trade-1',
