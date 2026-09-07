@@ -22,13 +22,8 @@ import { shell, BrowserWindow } from 'electron'
 import http from 'http'
 import crypto from 'crypto'
 import { URL } from 'url'
-import { mainState, TradingMode } from '../store/mainState'
 import { BackendClient } from './BackendClient'
-import { KisService } from './KisService'
-import { start as startWatchlist } from '../ipc/watchlistHandlers'
-import { start as startEarnings } from '../ipc/earningsHandlers'
-import { start as startPricePoller } from './PricePoller'
-import { KisWebSocketService } from './KisWebSocketService'
+import { completeLogin } from '../ipc/authHandlers'
 
 export type OAuthProvider = 'google' | 'kakao'
 
@@ -291,38 +286,8 @@ class OAuthServiceImpl {
         redirectUri: LOOPBACK_REDIRECT_URI,
         codeVerifier: verifier,
       })
-      mainState.setBackendToken(token)
-
-      // 사용자 정보 (필수)
-      const user = await BackendClient.getMe()
-
-      // 설정 (선택 — 실패해도 진행)
-      let settings: unknown = null
-      try {
-        const s = await BackendClient.getSettings()
-        settings = s
-        if (s.tradingMode) {
-          mainState.setTradingMode(s.tradingMode as TradingMode)
-        }
-      } catch (e) {
-        console.warn('[OAuth] 설정 로드 실패, 기본값 사용:', e instanceof Error ? e.message : e)
-      }
-
-      // KIS 토큰 복원 (선택)
-      try {
-        await KisService.loadSavedToken()
-      } catch (e) {
-        console.warn('[OAuth] KIS 토큰 복원 실패:', e instanceof Error ? e.message : e)
-      }
-
-      // 관심종목 5분 폴링 시작 (이미 동작 중이면 no-op).
-      startWatchlist()
-      // 어닝콜 타임라인 5분 폴링 시작.
-      startEarnings()
-      // 시세 폴링 시작 — ticker 들은 watchlist/holdings 통보로 채워진다.
-      startPricePoller()
-      // KIS WebSocket 실시간 시세 연결 (실전 appKey 미등록 시 silent skip).
-      void KisWebSocketService.connectWithStoredKey()
+      // 이메일 로그인과 동일한 후처리 (유저/설정/활성 계좌/KIS 토큰/폴러).
+      const result = await completeLogin(token)
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
       res.end(renderResultHtml('로그인이 완료되었습니다'))
@@ -332,7 +297,7 @@ class OAuthServiceImpl {
       win?.show()
       win?.focus()
 
-      this.resolveFlow({ user, settings, accountType: mainState.accountType })
+      this.resolveFlow(result)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown'
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
