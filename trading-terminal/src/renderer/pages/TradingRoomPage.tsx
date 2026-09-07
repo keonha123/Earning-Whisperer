@@ -55,6 +55,12 @@ export default function TradingRoomPage() {
   const paramTicker = searchParams.get('ticker') || null
   const ticker = paramTicker ?? activeSignal?.ticker ?? liveMeta?.ticker ?? null
 
+  // 현재 보고 있는 종목에 종속된 표시(헤더 AI 점수/액션, LIVE 배지)는 이 값만 쓴다.
+  // ?ticker= 가 우선하므로 activeSignal 의 종목과 화면 종목이 다를 수 있고,
+  // 그때 NVDA 신호의 점수가 AAPL 페이지에 뜨면 안 된다.
+  const signalForTicker =
+    activeSignal && activeSignal.ticker === ticker ? activeSignal : null
+
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
   const { segments: liveSegments, endedCallIds } = useLiveTranscript(ticker)
@@ -102,11 +108,12 @@ export default function TradingRoomPage() {
   // LIVE 판정 (Contract 4.5 반영):
   //  - 활성 트랜스크립트 세션이 있고 (activeCallId 존재),
   //  - 그 callId 가 endedCallIds 에 포함되지 않을 때 LIVE.
-  //  - fallback: 실데이터 없는 DEV 환경에서는 기존 activeSignal 기반 LIVE 판정 유지.
+  //  - fallback: 실데이터 없는 DEV 환경에서는 신호 기반 LIVE 판정 유지.
+  //    단 현재 종목의 신호일 때만 — 다른 종목 신호로 LIVE 를 오표시하지 않는다.
   const isLive =
     activeCallId != null
       ? !endedCallIds.has(activeCallId)
-      : activeSignal != null
+      : signalForTicker != null
   const companyName = liveMeta?.companyName ?? null
   // 현재가/변동률: 실시간 시세(PRICES_UPDATE) 우선, 없으면 DEV fixture 폴백.
   // 단 실시세가 있으면 변동치도 실데이터 기준만 사용 — 전일종가 결측(previousClose<=0,
@@ -270,13 +277,13 @@ export default function TradingRoomPage() {
                     // design-canvas: AI score purple (violet-400) — 토큰화 보류 사유 위와 동일.
                     style={{ color: '#a78bfa', letterSpacing: '-0.01em' }}
                   >
-                    {activeSignal
-                      ? formatSigned(activeSignal.ai_score)
+                    {signalForTicker
+                      ? formatSigned(signalForTicker.ai_score)
                       : liveMeta
                         ? formatSigned(liveMeta.currentAiScore)
                         : '—'}
                   </span>
-                  {(activeSignal || liveMeta) && (
+                  {(signalForTicker || liveMeta) && (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-[0.08em] border"
                       // design-canvas: AI score purple chip (bg/border 는 violet-400 alpha,
@@ -287,7 +294,7 @@ export default function TradingRoomPage() {
                         borderColor: 'rgba(167,139,250,0.35)',
                       }}
                     >
-                      {activeSignal?.action === 'SELL' || liveMeta?.aiDirection === 'SELL'
+                      {signalForTicker?.action === 'SELL' || liveMeta?.aiDirection === 'SELL'
                         ? '▼ SELL'
                         : '▲ BUY'}
                       {liveMeta && ` · ${liveMeta.aiStrength}`}
