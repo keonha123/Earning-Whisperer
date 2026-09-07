@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
+import { useTradingStore } from '../store/useTradingStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
@@ -32,6 +33,10 @@ export default function AuthPage() {
         maxHoldingRatio: settings.maxPositionRatio,
         cooldownMinutes: settings.cooldownMinutes,
       })
+      // 승인 판정은 useUserStore.settings.tradingMode 가 하지만 셀렉터/헤더는
+      // useTradingStore.mode 를 그린다. 여기서 동기화하지 않으면 SEMI_AUTO 사용자가
+      // 로그인 직후 셀렉터는 MANUAL 인데 승인 팝업이 뜬다.
+      useTradingStore.getState().setMode(settings.tradingMode)
     }
     if (accountType) setAccountType(accountType as any)
 

@@ -4,6 +4,7 @@ import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { type MaskedCredentialsResponse } from '../../lib/ipcChannels'
 import AuthInputField from '../components/auth/AuthInputField'
 import { useUserStore } from '../store/useUserStore'
+import { useTradingStore } from '../store/useTradingStore'
 import { useConnectionStore } from '../store/useConnectionStore'
 import Slider from '../components/common/Slider'
 import Stepper from '../components/common/Stepper'
@@ -166,6 +167,9 @@ export default function SettingsPage() {
         aiScoreThreshold: form.aiScoreThreshold,
       })
       setSettings(form)
+      // 셀렉터/헤더가 읽는 useTradingStore.mode 도 함께 갱신 — 설정 저장 후
+      // 승인 판정(useUserStore.settings.tradingMode)과 표시가 어긋나지 않도록.
+      useTradingStore.getState().setMode(form.tradingMode)
       setAiScoreThreshold(form.aiScoreThreshold)
       setSaved(true)
       if (savedTimerRef.current !== null) {
