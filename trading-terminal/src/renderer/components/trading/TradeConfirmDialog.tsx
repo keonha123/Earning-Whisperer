@@ -14,12 +14,19 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
   const [isLoading, setIsLoading] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // 콜백은 ref 로 최신값 유지 — effect 재구독 없이 최신 핸들러를 호출한다.
+  const onTimeoutRef = useRef(onTimeout)
+  const onApproveRef = useRef(onApprove)
+  const onRejectRef = useRef(onReject)
+  onTimeoutRef.current = onTimeout
+  onApproveRef.current = onApprove
+  onRejectRef.current = onReject
+
   useEffect(() => {
     intervalRef.current = setInterval(() => {
       setRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(intervalRef.current!)
-          onTimeout()
           return 0
         }
         return prev - 1
@@ -29,11 +36,21 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
     return () => clearInterval(intervalRef.current!)
   }, [])
 
+  // setRemaining 업데이터 안에서 onTimeout 을 부르면 StrictMode 의 updater 이중 호출로
+  // 타임아웃이 두 번 발송된다. remaining 이 0 이 된 뒤 별도 effect 에서 1회만 호출한다.
+  const timedOutRef = useRef(false)
+  useEffect(() => {
+    if (remaining === 0 && !timedOutRef.current) {
+      timedOutRef.current = true
+      onTimeoutRef.current()
+    }
+  }, [remaining])
+
   // 키보드 단축키
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Enter' && !isLoading) handleApprove()
-      if (e.key === 'Escape') onReject()
+      if (e.key === 'Escape') onRejectRef.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -43,7 +60,7 @@ export default function TradeConfirmDialog({ signal, timeoutSeconds, onApprove, 
     setIsLoading(true)
     clearInterval(intervalRef.current!)
     try {
-      await onApprove()
+      await onApproveRef.current()
     } finally {
       setIsLoading(false)
     }

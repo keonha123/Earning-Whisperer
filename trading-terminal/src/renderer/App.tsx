@@ -146,6 +146,7 @@ function AppRoutes() {
       {/* 전역 SEMI_AUTO 확인 다이얼로그 */}
       {pendingConfirm && (
         <TradeConfirmDialog
+          key={pendingConfirm.trade_id}
           signal={pendingConfirm}
           timeoutSeconds={30}
           onApprove={async () => {
