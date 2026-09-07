@@ -34,6 +34,7 @@ vi.mock('../PricePoller', () => ({
 }))
 
 import { Client } from '@stomp/stompjs'
+import { IPC_CHANNELS } from '../../../lib/ipcChannels'
 
 /** new Client({...}) 로 전달된 config 와 stub 메서드를 담는 fake 인스턴스. */
 type StompCallbacks = {
@@ -46,6 +47,8 @@ type StompCallbacks = {
 
 type FakeClient = StompCallbacks & {
   connected: boolean
+  /** activate() 로 소켓이 열린 적이 있는지 — deactivate 의 지연 close 재현용. */
+  activated: boolean
   activate: ReturnType<typeof vi.fn>
   deactivate: ReturnType<typeof vi.fn>
   subscribe: ReturnType<typeof vi.fn>
@@ -58,11 +61,23 @@ function makeFakeClient(config: StompCallbacks): FakeClient {
   const instance: FakeClient = {
     ...config,
     connected: false,
+    activated: false,
     activate: vi.fn(() => {
+      instance.activated = true
       instance.connected = true
     }),
+    /*
+     * 실제 stompjs 의 deactivate() 는 소켓이 CONNECTING/OPEN 이면 닫고, 그 close 가
+     * 비동기로 해당 client 의 onWebSocketClose 를 호출한다(stomp-handler → client).
+     * 교체된 옛 client 의 지연 close 콜백을 재현하기 위해 동일하게 동작시킨다.
+     */
     deactivate: vi.fn(async () => {
+      const wasOpen = instance.activated
+      instance.activated = false
       instance.connected = false
+      if (wasOpen) {
+        setTimeout(() => instance.onWebSocketClose?.({ code: 1000 }), 0)
+      }
     }),
     subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
     publish: vi.fn(),
@@ -87,8 +102,17 @@ async function loadService() {
   )
   const { mainState } = await import('../../store/mainState')
   mainState.setBackendToken('test-token')
+  // resetModules 로 electron mock 도 새로 만들어지므로 같은 레지스트리에서 가져온다.
+  const { BrowserWindow } = await import('electron')
   const { StompService } = await import('../StompService')
-  return { StompService, mainState }
+  return { StompService, mainState, BrowserWindow }
+}
+
+/** renderer 로 push 된 WS_STATUS_CHANGED 중 특정 status 만 센다. */
+function countStatusPush(sendSpy: ReturnType<typeof vi.fn>, status: string): number {
+  return sendSpy.mock.calls.filter(
+    (c) => c[0] === IPC_CHANNELS.WS_STATUS_CHANGED && (c[1] as { status: string }).status === status,
+  ).length
 }
 
 beforeEach(() => {
@@ -168,6 +192,27 @@ describe('StompService — 재연결 중첩 방지', () => {
 
     expect(first.deactivate).toHaveBeenCalledTimes(1)
     expect(clients).toHaveLength(2)
+  })
+
+  it('교체된 옛 client 의 지연 close 콜백은 무시된다', async () => {
+    const { StompService, mainState, BrowserWindow } = await loadService()
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
+    ])
+    mainState.setTradingMode('AUTO_PILOT')
+
+    StompService.connect()
+    // 아직 STOMP CONNECTED 이전(CONNECTING) 상태에서 재호출 → 첫 client 가 교체된다.
+    last().connected = false
+    StompService.connect()
+
+    // 교체된 첫 client 의 소켓 close 가 뒤늦게 도착해도 유령 이벤트가 없어야 한다.
+    vi.advanceTimersByTime(60000)
+
+    expect(clients).toHaveLength(2)
+    expect(mainState.tradingMode).toBe('AUTO_PILOT')
+    expect(countStatusPush(sendSpy, 'DISCONNECTED')).toBe(0)
   })
 
   it('재연결 지연은 2s→4s→8s→16s→30s 로 증가하고 30s 에서 고정된다', async () => {

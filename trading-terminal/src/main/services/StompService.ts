@@ -124,7 +124,12 @@ export const StompService = {
 
     onStatusChange('CONNECTING')
 
-    client = new Client({
+    /*
+     * 생성한 인스턴스를 로컬로 잡아둔다. 교체된 옛 client 의 소켓이 뒤늦게 닫히면
+     * 라이브러리가 그 client 의 콜백을 그대로 호출하므로, 모든 콜백 첫 줄에서
+     * "내가 현재 client 인가" 를 확인해 유령 이벤트를 무시한다.
+     */
+    const created: Client = new Client({
       webSocketFactory: () => new WebSocket(WS_URL) as unknown as globalThis.WebSocket,
       connectHeaders: { Authorization: `Bearer ${token}` },
       heartbeatIncoming: 10000,
@@ -132,6 +137,7 @@ export const StompService = {
       reconnectDelay: 0, // 직접 관리
 
       onConnect: () => {
+        if (client !== created) return
         retryCount = 0
         onStatusChange('CONNECTED')
 
@@ -230,12 +236,14 @@ export const StompService = {
       },
 
       onDisconnect: () => {
+        if (client !== created) return
         clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()
       },
 
       onStompError: (frame) => {
+        if (client !== created) return
         console.error('[StompService] STOMP 에러:', frame)
         clearStompCovered()
         onStatusChange('DISCONNECTED')
@@ -243,6 +251,7 @@ export const StompService = {
       },
 
       onWebSocketError: (event) => {
+        if (client !== created) return
         console.error('[StompService] WebSocket 연결 오류:', event)
         onStatusChange('RECONNECTING')
         scheduleReconnect()
@@ -254,6 +263,7 @@ export const StompService = {
        * 남고 AUTO_PILOT 이 유지된 채 재연결도 되지 않는다.
        */
       onWebSocketClose: (event) => {
+        if (client !== created) return
         console.warn('[StompService] WebSocket 종료:', event?.code, event?.reason)
         clearStompCovered()
         onStatusChange('DISCONNECTED')
@@ -261,7 +271,8 @@ export const StompService = {
       },
     })
 
-    client.activate()
+    client = created
+    created.activate()
   },
 
   disconnect() {
