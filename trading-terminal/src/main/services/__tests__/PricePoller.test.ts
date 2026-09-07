@@ -30,6 +30,10 @@ beforeEach(() => {
   mainState.setPaperTrading(true)
   getCurrentPriceMock.mockReset()
   vi.useFakeTimers()
+  // isUsMarketOpen() 이 Date.now() 로 미국 장중 여부를 판단해 사이클 길이(5s/30s/180s)가
+  // 바뀌므로, 5초 사이클을 가정하는 테스트가 결정적으로 동작하도록 미국 정규장 중
+  // 고정 시각(2026-03-04 15:00 UTC = 10:00 EST, 수요일, DST 이전)으로 세팅한다.
+  vi.setSystemTime(new Date('2026-03-04T15:00:00Z'))
 })
 
 afterEach(() => {
