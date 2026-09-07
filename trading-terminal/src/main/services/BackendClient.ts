@@ -41,6 +41,9 @@ export interface MarketIndexPayload {
 
 export interface CallbackPayload {
   status: 'EXECUTED' | 'FAILED'
+  broker_order_id: string | null
+  executed_price: number | null
+  executed_qty: number
   error_message: string | null
 }
 
@@ -67,6 +70,7 @@ export interface UserSettings {
   max_buy_ratio: number
   max_holding_ratio: number
   cooldown_minutes: number
+  ai_score_threshold: number
 }
 
 /**

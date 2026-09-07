@@ -182,8 +182,9 @@ describe('axiosErrorToIpcError — status 별 분류', () => {
     const err = axiosErrorToIpcError(
       makeAxiosError(500, { trace: 'NullPointerException at ...' }),
     )
-    expect(err.details?.status).toBe(500)
-    expect(err.details?.data).toEqual({ trace: 'NullPointerException at ...' })
+    const details = err.details as { status?: number; data?: unknown } | undefined
+    expect(details?.status).toBe(500)
+    expect(details?.data).toEqual({ trace: 'NullPointerException at ...' })
   })
 
   it('보안: details 에 config.headers / request / stack 등 자격증명 source 가 포함되지 않음', () => {

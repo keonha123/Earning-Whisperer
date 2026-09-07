@@ -227,8 +227,8 @@ export default function DashboardPage() {
       .then((data) => { if (!cancelled) setEarningsData(data) })
       .catch(() => { /* DEV: fixture 유지, prod: 빈 상태 유지 */ })
 
-    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data: EarningsTimelineData) => {
-      setEarningsData(data)
+    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data) => {
+      setEarningsData(data as EarningsTimelineData)
     })
 
     return () => {
@@ -242,8 +242,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     ipc
-      .invoke(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, { days: assetRange })
-      .then((points: { date: string; totalAssetUsd: number }[]) =>
+      .invoke<{ date: string; totalAssetUsd: number }[]>(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, {
+        days: assetRange,
+      })
+      .then((points) =>
         setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd }))),
       )
       .catch(() => setAssetChartPoints([]))

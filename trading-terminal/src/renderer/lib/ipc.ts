@@ -1,7 +1,17 @@
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
+/**
+ * preload 의 contextBridge.exposeInMainWorld('terminalApi', ...) 형태.
+ * 전역 Window 선언은 preload 프로젝트(tsconfig.node)에만 포함되므로
+ * renderer 쪽에서는 동일 형태를 로컬 타입으로 둔다.
+ */
+interface TerminalApi {
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
+  on: (channel: string, listener: (payload: unknown) => void) => () => void
+}
+
 // 브라우저 개발 미리보기용 mock (Electron 컨텍스트 외부)
-const api: typeof window.terminalApi | undefined =
+const api: TerminalApi | undefined =
   typeof window !== 'undefined' ? (window as any).terminalApi : undefined
 
 const mockApi = {

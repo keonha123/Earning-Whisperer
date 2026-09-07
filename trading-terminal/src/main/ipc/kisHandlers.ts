@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { KisService } from '../services/KisService'
-import { TradeExecutor } from '../services/TradeExecutor'
+import { TradeExecutor, type TradeSignal } from '../services/TradeExecutor'
 import { BackendClient, type AssetHistoryPoint } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
@@ -136,7 +136,7 @@ export function registerKisHandlers() {
     }
   })
 
-  registerHandler(IPC_CHANNELS.KIS_PLACE_ORDER, async (_e, signal) => {
+  registerHandler<TradeSignal>(IPC_CHANNELS.KIS_PLACE_ORDER, async (_e, signal) => {
     try {
       return await TradeExecutor.execute(signal)
     } catch (e) {

@@ -14,12 +14,14 @@ export type {
   EarningsLiveEvent,
   EarningsGroup,
 } from '../../lib/types/earningsTimeline'
+import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 export type { EarningsTimelineData as EarningsTimelineFixture } from '../../lib/types/earningsTimeline'
 
-export const earningsTimelineDevMock: EarningsTimelineFixture = {
+export const earningsTimelineDevMock: EarningsTimelineData = {
   live: {
     ticker: 'NVDA',
     name: 'NVIDIA Corp.',
+    scheduledAt: 1763683200,
     timeLabel: '진행중',
     elapsed: '25:14',
     callLabel: 'Q3 FY25 Earnings Call',
@@ -32,6 +34,7 @@ export const earningsTimelineDevMock: EarningsTimelineFixture = {
         {
           ticker: 'TSLA',
           name: 'Tesla Inc.',
+          scheduledAt: 1763694000,
           timeLabel: '오후 5:00 PM',
           whenLabel: '오후',
           clockLabel: '5:00 PM',
@@ -39,6 +42,7 @@ export const earningsTimelineDevMock: EarningsTimelineFixture = {
         {
           ticker: 'AMZN',
           name: 'Amazon.com Inc.',
+          scheduledAt: 1763694000,
           timeLabel: '오후 5:00 PM',
           whenLabel: '오후',
           clockLabel: '5:00 PM',
@@ -52,6 +56,7 @@ export const earningsTimelineDevMock: EarningsTimelineFixture = {
         {
           ticker: 'MSFT',
           name: 'Microsoft Corp.',
+          scheduledAt: 1763762400,
           timeLabel: '오전 6:30 AM',
           whenLabel: '오전',
           clockLabel: '6:30 AM',
@@ -65,6 +70,7 @@ export const earningsTimelineDevMock: EarningsTimelineFixture = {
         {
           ticker: 'META',
           name: 'Meta Platforms',
+          scheduledAt: 1764000000,
           timeLabel: '금 오전 6:00 AM',
           whenLabel: '금 오전',
           clockLabel: '6:00 AM',
@@ -72,6 +78,7 @@ export const earningsTimelineDevMock: EarningsTimelineFixture = {
         {
           ticker: 'GOOGL',
           name: 'Alphabet Inc.',
+          scheduledAt: 1764003600,
           timeLabel: '금 오전 7:00 AM',
           whenLabel: '금 오전',
           clockLabel: '7:00 AM',

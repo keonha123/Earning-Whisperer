@@ -24,7 +24,7 @@ export function registerAuthHandlers() {
       const user = await BackendClient.getMe()
 
       // 포트폴리오 설정 조회 (선택 — 실패해도 기본값으로 로그인 진행)
-      let settings = null
+      let settings: Awaited<ReturnType<typeof BackendClient.getSettings>> | null = null
       try {
         settings = await BackendClient.getSettings()
         if (settings.tradingMode) {

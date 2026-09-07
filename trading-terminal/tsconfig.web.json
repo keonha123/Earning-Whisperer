@@ -1,9 +1,10 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
-  "include": ["src/renderer/**/*", "src/preload/*.d.ts"],
+  "include": ["src/renderer/**/*", "src/lib/**/*", "src/preload/*.d.ts"],
   "compilerOptions": {
     "composite": true,
     "outDir": "dist/types/web",
+    "types": ["vite/client"],
     "paths": {
       "@renderer/*": ["./src/renderer/*"],
       "@/*": ["./src/renderer/*"]

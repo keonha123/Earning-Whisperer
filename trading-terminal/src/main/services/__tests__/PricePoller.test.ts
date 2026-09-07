@@ -273,7 +273,7 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
     ])
 
     // 첫 ticker(A) 의 await 를 외부에서 풀 수 있도록 deferred Promise 사용.
-    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | null = null
+    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | undefined
     const aPromise = new Promise<{ currentPrice: number; previousClose: number }>((resolve) => {
       releaseA = resolve
     })
@@ -362,7 +362,7 @@ describe('PricePoller — C2 cycle cancellation (epoch counter)', () => {
       } as never,
     ])
 
-    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | null = null
+    let releaseA: ((v: { currentPrice: number; previousClose: number }) => void) | undefined
     const aPromise = new Promise<{ currentPrice: number; previousClose: number }>((resolve) => {
       releaseA = resolve
     })

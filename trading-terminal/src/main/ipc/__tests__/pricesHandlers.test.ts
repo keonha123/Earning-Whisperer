@@ -35,8 +35,8 @@ beforeEach(() => {
 describe('pricesHandlers — PRICES_GET', () => {
   it('PricePoller.getCachedPrices() 결과를 그대로 반환', async () => {
     const fixture = {
-      AAPL: { currentPrice: 200.5, lastUpdated: 1714400000 },
-      MSFT: { currentPrice: 410.1, lastUpdated: 1714400001 },
+      AAPL: { currentPrice: 200.5, previousClose: 198.2, lastUpdated: 1714400000 },
+      MSFT: { currentPrice: 410.1, previousClose: 405.0, lastUpdated: 1714400001 },
     }
     vi.mocked(getCachedPrices).mockReturnValue(fixture)
 
