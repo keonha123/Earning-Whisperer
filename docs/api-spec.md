@@ -438,3 +438,81 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
    | **2차 (클라이언트)** | Trading Terminal 트레이딩 모드 | 사용자 승인 방식 (Manual / 1-Click / Auto-Pilot) | 신호를 수신하더라도 모드에 따라 즉시 실행하거나 사용자 승인을 대기 |
 
    즉, 백엔드가 신호를 보냈다고 해서 반드시 주문이 실행되는 것은 아닙니다. Terminal의 트레이딩 모드가 최종 실행 여부를 결정합니다.
+
+---
+
+## 9. [Contract 9] Backend ➔ AI Engine (실시간 어닝콜 팩트체크)
+
+- **통신 방식:** HTTP POST (동기)
+- **엔드포인트:** `http://ai-engine:8000/v1/engine/live-fact-check/sentence`
+- **설명:** 어닝콜이 진행되는 동안 확정된 문장을 **1개씩** AI Engine에 제출합니다. AI Engine은 ticker별로 **3문장 버퍼**를 유지하다가 3문장이 모이면 Gemini 2패스(검증 가능한 주장 추출 → 뉴스 근거 대조)를 실행하고 판정을 반환합니다. 백엔드는 결과를 STOMP `/topic/factcheck/{ticker}`로 fan-out합니다.
+- **기존 `/v1/engine/fact-check`와 다른 엔드포인트입니다.** 그쪽은 LLM을 쓰지 않는 단발 유사도 검증이라 숫자 모순을 잡지 못합니다. 상세 비교는 `ai-engine/docs/LIVE_FACT_CHECK_API.md` 참조.
+
+### 9.1. 요청
+
+| 필드명               | 타입    | 필수 | 설명                                                            |
+| :------------------- | :------ | :--: | :-------------------------------------------------------------- |
+| `ticker`             | String  |  Y   | 분석 대상 종목 심볼 (예: "ORCL")                                |
+| `sentence`           | String  |  Y   | 확정된 어닝콜 문장 1개                                          |
+| `sentence_sequence`  | Integer |  Y   | 세션 내 문장 순번 (0부터 단조 증가). `0` 재전송 시 버퍼 초기화  |
+| `sentence_timestamp` | Long    |  Y   | Unix Epoch Second. **근거 검색 기준 시점** (9.4 주의사항 참조)  |
+| `is_session_end`     | Boolean |  N   | 어닝콜 세션 종료 여부 (기본값 `false`)                          |
+
+### 9.2. 응답
+
+**HTTP 상태는 정상 흐름 전체가 200입니다.** 요청 스키마 위반만 422입니다. 호출자는 반드시 본문 `status`를 분기해야 합니다.
+
+| `status`    | 발생 조건                    | 백엔드 처리                             |
+| :---------- | :--------------------------- | :-------------------------------------- |
+| `BUFFERING` | 3문장 미충족 (1~2번째 문장)  | fan-out 없음. 정상                      |
+| `COMPLETED` | 3문장 충족, 검증 완료        | `claims[]`를 `/topic/factcheck/{ticker}`로 발행 |
+| `REJECTED`  | 중복/역행 시퀀스             | 로그만. 재전송 금지                     |
+| `DISCARDED` | 3문장 미만인 채 세션 종료    | 자투리 문장 폐기. 정상                  |
+
+| 필드명                  | 타입    | 설명                                                    |
+| :---------------------- | :------ | :------------------------------------------------------ |
+| `ticker`                | String  | 정규화된(대문자) 종목 심볼                              |
+| `status`                | String  | 위 4종                                                  |
+| `buffered_count`        | Integer | 현재 버퍼에 쌓인 문장 수 (0~2)                          |
+| `batch_start_sequence`  | Integer | 이번 배치의 시작 문장 순번 (`BUFFERING`이면 `null`)     |
+| `batch_end_sequence`    | Integer | 이번 배치의 끝 문장 순번                                |
+| `claims`                | Array   | 검증된 주장 목록 (9.3 참조)                             |
+| `excluded_count`        | Integer | 검증 불가로 걸러진 주장 수 (수사적 표현 등)             |
+| `extraction_llm_used`   | Boolean | 주장 추출 LLM 실행 여부                                 |
+| `verification_llm_used` | Boolean | 근거 검증 LLM 실행 여부. `false`면 근거 부족으로 생략됨 |
+| `warnings`              | Array   | `sequence_gap`, `claim_retrieval_failed` 등 진단 코드   |
+| `generated_at`          | String  | 응답 생성 시각 (ISO-8601 UTC)                           |
+
+### 9.3. `claims[]` 항목
+
+| 필드명           | 타입    | 설명                                                                    |
+| :--------------- | :------ | :---------------------------------------------------------------------- |
+| `claim_id`       | String  | `{TICKER}:{시작seq}-{끝seq}:c{n}` 형식                                  |
+| `sentence_index` | Integer | 배치 내 문장 위치 (0~2)                                                 |
+| `source_text`    | String  | 원문에서 잘라낸 구간                                                    |
+| `claim`          | String  | 정규화된 주장                                                           |
+| `claim_type`     | String  | `numeric_fact` / `current_fact` / `historical_fact` / `event_fact`      |
+| `verdict`        | String  | `SUPPORTED` / `CONTRADICTED` / `INSUFFICIENT_EVIDENCE`                  |
+| `confidence`     | Double  | 0.0 ~ 1.0                                                               |
+| `explanation_ko` | String  | 한국어 판정 설명. **클라이언트에 그대로 노출**                          |
+| `reason_code`    | String  | `supported_by_news` / `contradicted_by_news` / `insufficient_relevance` / `evidence_not_specific` / `retrieval_failed` / `llm_failed` / `invalid_llm_response` |
+| `evidence`       | Array   | `doc_id`, `title`, `snippet`, `url`, `source`, `published_at`, `relevance_score` |
+| `retrieved_count` | Integer | 검색된 근거 수                                                         |
+| `accepted_count` | Integer | 관련성 게이트를 통과한 근거 수                                          |
+
+### 9.4. 통합 시 주의사항
+
+1. **`sentence_timestamp`는 실제 현재 시각을 넣어야 합니다.** 근거 검색이 이 값을 기준으로 과거 N일을 조회하므로, 임의값을 넣으면 적재된 근거가 있어도 검색 결과가 0건이 되어 전부 `INSUFFICIENT_EVIDENCE`로 떨어집니다.
+2. **근거는 사전 적재가 필요합니다.** 검증 대상 종목의 뉴스·보도자료를 `POST /api/v1/integration/collector/news`로 미리 넣어야 합니다. 관련성 게이트가 **서로 다른 매체 2곳 이상**을 요구하므로 단일 출처만 넣으면 통과하지 못합니다. 저장소가 인메모리라 AI Engine 재기동 시 초기화됩니다.
+3. **재생 루프를 블로킹하지 마세요.** 3문장 배치 처리에 Gemini 호출 2회로 수 초가 걸립니다. 백엔드는 비동기로 던지고 결과가 오는 대로 발행해야 트랜스크립트 표시가 지연되지 않습니다.
+4. **타임아웃과 폴백을 두세요.** 시연 중 LLM 지연·실패에 대비해 사전 캐시 응답으로 폴백합니다.
+
+### 9.5. 클라이언트 표기 규칙
+
+판정값은 AI Engine의 3종을 단일 진실 공급원으로 삼고, 화면 표기는 아래로 통일합니다.
+
+| `verdict`               | UI 표기       |
+| :---------------------- | :------------ |
+| `SUPPORTED`             | 사실 확인     |
+| `CONTRADICTED`          | 사실과 다름   |
+| `INSUFFICIENT_EVIDENCE` | 근거 부족     |

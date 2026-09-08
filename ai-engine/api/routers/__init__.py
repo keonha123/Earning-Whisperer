@@ -9,6 +9,7 @@ from .equity_research import router as equity_research_router
 from .health import router as health_router
 from .integration import router as integration_router
 from .legacy_analysis import router as legacy_analysis_router
+from .live_fact_check import router as live_fact_check_router
 from .query import router as query_router
 from .regression import router as regression_router
 from .transcript_diff import router as transcript_diff_router
@@ -19,6 +20,7 @@ ALL_ROUTERS = [
     equity_research_router,
     earnings_intelligence_router,
     evidence_router,
+    live_fact_check_router,
     integration_router,
     analysis_router,
     query_router,
@@ -39,6 +41,7 @@ __all__ = [
     "health_router",
     "integration_router",
     "legacy_analysis_router",
+    "live_fact_check_router",
     "query_router",
     "regression_router",
     "transcript_diff_router",
