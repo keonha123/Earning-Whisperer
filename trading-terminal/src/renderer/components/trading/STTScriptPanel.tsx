@@ -65,7 +65,10 @@ export default function STTScriptPanel({
     onJumpLatest?.()
   }
 
-  if (!isLive) {
+  // 빈 상태는 "표시할 라인이 없을 때" 이지 "LIVE 가 아닐 때" 가 아니다.
+  // isLive 로 갈랐더니 어닝콜이 끝나는 순간(is_session_end) 스크립트 전체가 화면에서
+  // 사라졌다 — 발표에서 결과를 짚어야 할 시점에 원문이 없어지는 셈이다.
+  if (transcript.length === 0) {
     return (
       <section className="card p-0 flex flex-col overflow-hidden h-full">
         <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
@@ -99,12 +102,21 @@ export default function STTScriptPanel({
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
           실시간 스크립트
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
-                         bg-surface-2 num text-[11px] text-text-secondary">
-          WPM <b className="text-accent-400 font-semibold">{wpm ?? '--'}</b>
-          <span className="w-1 h-1 rounded-full bg-buy" />
-          자동
-        </span>
+        {isLive ? (
+          <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
+                           bg-surface-2 num text-[11px] text-text-secondary">
+            WPM <b className="text-accent-400 font-semibold">{wpm ?? '--'}</b>
+            <span className="w-1 h-1 rounded-full bg-buy" />
+            자동
+          </span>
+        ) : (
+          /* 콜이 끝나도 원문은 남긴다 — 상태만 바꿔 표시한다. */
+          <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
+                           bg-surface-2 text-[11px] text-text-tertiary">
+            <span className="w-1 h-1 rounded-full bg-text-disabled" />
+            어닝콜 종료
+          </span>
+        )}
       </div>
 
       <div className="relative flex-1 min-h-0">
