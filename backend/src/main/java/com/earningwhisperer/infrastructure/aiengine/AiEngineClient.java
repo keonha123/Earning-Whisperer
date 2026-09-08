@@ -1,6 +1,7 @@
 package com.earningwhisperer.infrastructure.aiengine;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -30,6 +31,11 @@ public class AiEngineClient {
     private final RestClient restClient;
     private final boolean factCheckEnabled;
 
+    /**
+     * 생성자가 둘이므로 Spring 이 쓸 것을 명시한다. 없으면 기본 생성자를 찾다가
+     * BeanInstantiationException 으로 기동이 실패한다.
+     */
+    @Autowired
     public AiEngineClient(
             @Value("${ai-engine.base-url:http://localhost:8000}") String baseUrl,
             @Value("${ai-engine.fact-check-enabled:true}") boolean factCheckEnabled,
