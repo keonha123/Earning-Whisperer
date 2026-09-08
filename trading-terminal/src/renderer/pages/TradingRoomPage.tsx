@@ -14,11 +14,7 @@ import TradingRoomHeader from "../components/trading/TradingRoomHeader";
 import FactCheckPanel from "../components/trading/FactCheckPanel";
 import { showIpcErrorToast } from "../components/common/Toast";
 import type { TranscriptLine } from "../types/transcript";
-import {
-  liveSessionDevMock,
-  livePriceSeriesDevMock,
-  type PricePoint,
-} from "../fixtures/liveSession.dev-mock";
+import type { PricePoint } from "../types/priceSeries";
 import { useLiveTranscript } from "../hooks/useLiveTranscript";
 import { usePrices } from "../hooks/usePrices";
 import { useCompanyDetail } from "../hooks/useCompanyDetail";
@@ -40,18 +36,14 @@ export default function TradingRoomPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // ── DEV-only fixtures (prod 빌드에서는 null) ─────────────────────────────────
-  const liveMeta = import.meta.env.DEV ? liveSessionDevMock : null;
-
   // ticker 우선순위:
   //  1) ?ticker= 쿼리 파라미터 (사용자가 명시적으로 고른 종목 — 항상 우선)
   //  2) activeSignal (실시간 어닝콜 신호)
-  //  3) liveMeta (DEV fixture)
-  //  4) null → /market 리다이렉트
+  //  3) null → /market 리다이렉트
   // 신호로 진입하는 경로도 모두 ?ticker= 를 붙이므로, param 우선이 안전하다.
   const paramTicker = searchParams.get("ticker") || null;
   const ticker =
-    paramTicker ?? activeSignal?.ticker ?? liveMeta?.ticker ?? null;
+    paramTicker ?? activeSignal?.ticker ?? null;
 
   // 현재 보고 있는 종목에 종속된 표시(헤더 AI 점수/액션, LIVE 배지)는 이 값만 쓴다.
   // ?ticker= 가 우선하므로 activeSignal 의 종목과 화면 종목이 다를 수 있고,
@@ -85,7 +77,7 @@ export default function TradingRoomPage() {
           .map((d) => ({ time: d.date.slice(5), price: d.close }))
       );
     }
-    return import.meta.env.DEV ? livePriceSeriesDevMock : EMPTY_PRICES;
+    return EMPTY_PRICES;
   }, [companyDetail]);
 
   // segment → TranscriptLine 어댑터 (STTScriptPanel 의 기존 인터페이스 보존).
@@ -111,31 +103,32 @@ export default function TradingRoomPage() {
     activeCallId != null
       ? !endedCallIds.has(activeCallId)
       : signalForTicker != null;
-  const companyName = liveMeta?.companyName ?? null;
+  // 회사명은 종목 상세(STOCK_GET_DETAIL)에서 온다 — CompanyDrawer 와 같은 소스.
+  const companyName = companyDetail?.companyName ?? null;
   // 현재가/변동률: 실시간 시세(PRICES_UPDATE) 우선, 없으면 DEV fixture 폴백.
   // 단 실시세가 있으면 변동치도 실데이터 기준만 사용 — 전일종가 결측(previousClose<=0,
   // KIS 미제공) 시엔 미표시(undefined). 실가격 + fixture 가짜변동률 혼합을 방지.
   const currentPrice =
-    livePrice?.currentPrice ?? liveMeta?.currentPrice ?? null;
+    livePrice?.currentPrice ?? companyDetail?.currentPrice ?? null;
   const changePercent = livePrice
     ? livePrice.previousClose > 0
       ? ((livePrice.currentPrice - livePrice.previousClose) /
           livePrice.previousClose) *
         100
       : undefined
-    : liveMeta?.changePercent;
+    : undefined;
   const changeAmount = livePrice
     ? livePrice.previousClose > 0
       ? livePrice.currentPrice - livePrice.previousClose
       : undefined
-    : liveMeta?.changeAmount;
+    : undefined;
   const priceLabel =
     currentPrice != null
       ? `$${currentPrice.toFixed(2)}`
-      : (liveMeta?.currentPriceLabel ?? "—");
-  const sessionLabel = liveMeta?.sessionLabel ?? null;
-  // 경과 시간 라벨 — fixture 정적값 ("25:14"). 실시간 헬퍼는 본 PR 범위 외.
-  const elapsedLabel = liveMeta?.elapsedLabel ?? null;
+      : "—";
+  // 세션 라벨·경과 시간은 아직 실데이터 소스가 없다. 가짜 값을 띄우지 않는다.
+  const sessionLabel = null;
+  const elapsedLabel = null;
 
   // ── 어닝콜 시연 재생 제어 (Contract 7.8) ────────────────────────────────────
   const [demoStarting, setDemoStarting] = useState(false);
@@ -286,7 +279,7 @@ export default function TradingRoomPage() {
         <STTScriptPanel
           transcript={transcript}
           isLive={isLive && transcript.length > 0}
-          wpm={liveMeta?.wpm}
+          wpm={undefined}
         />
 
         {/* MIDDLE 40% — 가격 차트 (상) + AI 점수 차트 (하) */}
@@ -310,8 +303,8 @@ export default function TradingRoomPage() {
                 priceLabel={priceLabel}
                 changePercent={changePercent}
                 changeAmount={changeAmount}
-                volumeLabel={liveMeta?.volumeLabel}
-                marketSession={liveMeta?.marketSession}
+                volumeLabel={undefined}
+                marketSession={undefined}
                 series={chartSeries}
                 isLive={isLive}
               />

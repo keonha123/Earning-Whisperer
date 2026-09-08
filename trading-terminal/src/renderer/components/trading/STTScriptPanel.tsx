@@ -105,9 +105,14 @@ export default function STTScriptPanel({
         {isLive ? (
           <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
                            bg-surface-2 num text-[11px] text-text-secondary">
-            WPM <b className="text-accent-400 font-semibold">{wpm ?? '--'}</b>
+            {/* WPM 은 측정 소스가 있을 때만 — "WPM --" 를 띄우면 고장난 것처럼 보인다. */}
+            {wpm != null && (
+              <>
+                WPM <b className="text-accent-400 font-semibold">{wpm}</b>
+              </>
+            )}
             <span className="w-1 h-1 rounded-full bg-buy" />
-            자동
+            LIVE
           </span>
         ) : (
           /* 콜이 끝나도 원문은 남긴다 — 상태만 바꿔 표시한다. */

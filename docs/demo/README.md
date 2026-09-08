@@ -16,6 +16,7 @@ Trading Terminal 의 어닝콜 시연 UI 를 처음 만들 때 쓰던 목업 데
 | `rippleEffect.dev-mock.ts` | 서플라이체인 파급효과 그래프 (노드·엣지) |
 | `speakerProfile.dev-mock.ts` | 발화자 프로필 (재임기간·성향·가이던스 정확도) |
 | `useEarningsDemoPlayback.ts` | 렌더러에서 타이머로 스크립트를 재생하던 훅 |
+| `liveSession.dev-mock.ts` | 트레이딩룸 헤더·가격 폴백 (회사명·세션 라벨·경과시간·WPM·거래량) |
 
 ### 왜 옮겼나
 
@@ -32,6 +33,8 @@ Trading Terminal 의 어닝콜 시연 UI 를 처음 만들 때 쓰던 목업 데
 | :-- | :-- |
 | 실시간 스크립트 (`STTScriptPanel`) | **실데이터.** Contract 4.5 STOMP |
 | 실시간 팩트체크 (`FactCheckPanel`) | **실데이터.** Contract 4.6 STOMP, Gemini 2패스 검증 |
+| 회사명·현재가 | **실데이터.** `STOCK_GET_DETAIL` + `PRICES_UPDATE` |
+| 세션 라벨·경과시간·WPM | 소스 없음. 가짜 값을 띄우지 않고 감춘다 |
 | 종합 평가 (`EarningsEvaluationCard`) | 미연결. 컴포넌트와 타입만 남아 있음 |
 | 최종 신호 (`FinalSignalCard`) | 미연결 |
 | 파급효과 (`RippleEffectModal`) | 미연결. AI Engine `/v1/engine/impact-chain/{ticker}` 와 연결 가능 |
