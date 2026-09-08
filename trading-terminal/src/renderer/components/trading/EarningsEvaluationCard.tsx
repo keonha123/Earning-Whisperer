@@ -1,4 +1,4 @@
-import type { EvaluationScore } from '../../fixtures/earningsEvaluation.dev-mock'
+import type { EvaluationScore } from '../../types/earningsEvaluation'
 
 interface Props {
   scores: readonly EvaluationScore[]

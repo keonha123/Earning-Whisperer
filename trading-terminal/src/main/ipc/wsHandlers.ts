@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { app, dialog } from 'electron'
 import { StompService } from '../services/StompService'
-import { BackendClient } from '../services/BackendClient'
+import { BackendClient, type DemoStartResult } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { SubscriptionManager } from '../services/SubscriptionManager'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
@@ -91,4 +91,40 @@ export function registerWsHandlers() {
     if (!payload || typeof payload.ticker !== 'string') return
     StompService.unsubscribeTranscript(payload.ticker)
   })
+
+  /*
+   * 팩트체크 동적 구독 (Contract 4.6). 트랜스크립트와 동일한 규약.
+   */
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.FACTCHECK_SUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.subscribeFactCheck(payload.ticker)
+  })
+
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.FACTCHECK_UNSUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.unsubscribeFactCheck(payload.ticker)
+  })
+
+  /*
+   * 어닝콜 시연 재생 제어 (Contract 7.8).
+   * 트랜스크립트/팩트체크 구독과 달리 결과를 Renderer 로 돌려준다 —
+   * 버튼이 "이미 재생 중" 과 "시작 실패" 를 구분해 보여줘야 하기 때문이다.
+   */
+  registerHandler<{ ticker: string }, DemoStartResult>(
+    IPC_CHANNELS.DEMO_EARNINGS_START,
+    async (_e, payload) => {
+      if (!payload || typeof payload.ticker !== 'string' || !payload.ticker) {
+        return { ok: false, reason: 'FAILED', message: 'ticker 가 필요합니다.' }
+      }
+      return BackendClient.startEarningsDemo(payload.ticker)
+    },
+  )
+
+  registerHandler<{ ticker: string }, boolean>(
+    IPC_CHANNELS.DEMO_EARNINGS_STOP,
+    async (_e, payload) => {
+      if (!payload || typeof payload.ticker !== 'string' || !payload.ticker) return false
+      return BackendClient.stopEarningsDemo(payload.ticker)
+    },
+  )
 }

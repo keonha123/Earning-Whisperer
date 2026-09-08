@@ -12,10 +12,13 @@ interface TradingRoomHeaderProps {
   isLive: boolean
   /** Market Screen 복귀 콜백. */
   onExit?: () => void
-  /** 파급효과 모달 열기 콜백. */
-  onRippleEffect?: () => void
-  /** 발화자 프로필 모달 열기 콜백. */
-  onSpeakerProfile?: () => void
+  /**
+   * 어닝콜 시연 재생 시작 콜백 (Contract 7.8).
+   * 지정하지 않으면 버튼이 렌더되지 않는다.
+   */
+  onStartDemo?: () => void
+  /** 시연 시작 요청이 진행 중인지. true 면 버튼을 잠근다. */
+  demoStarting?: boolean
 }
 
 /**
@@ -44,8 +47,8 @@ export default function TradingRoomHeader({
   wpm,
   isLive,
   onExit,
-  onRippleEffect,
-  onSpeakerProfile,
+  onStartDemo,
+  demoStarting = false,
 }: TradingRoomHeaderProps) {
   const openDrawer = useDrawerStore((s) => s.open)
 
@@ -93,43 +96,22 @@ export default function TradingRoomHeader({
             종목 정보
           </button>
 
-          {onRippleEffect && (
+          {onStartDemo && (
             <button
               type="button"
-              onClick={onRippleEffect}
+              onClick={onStartDemo}
+              disabled={demoStarting}
               className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded
                          bg-surface-2 border border-border-subtle text-text-secondary text-[11px] font-medium
                          hover:bg-surface-3 hover:text-text-primary hover:border-border-strong
+                         disabled:opacity-50 disabled:cursor-not-allowed
                          transition-colors duration-100"
-              title="서플라이체인 파급효과 분석"
+              title="준비된 어닝콜 스크립트를 재생합니다"
             >
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <circle cx="6" cy="6" r="2" />
-                <circle cx="1.5" cy="1.5" r="1.2" />
-                <circle cx="10.5" cy="1.5" r="1.2" />
-                <circle cx="10.5" cy="10.5" r="1.2" />
-                <circle cx="1.5" cy="10.5" r="1.2" />
-                <path d="M4.6 4.6L2.7 2.7M7.4 4.6L9.3 2.7M7.4 7.4L9.3 9.3M4.6 7.4L2.7 9.3" strokeLinecap="round" />
+                <path d="M3 2.2l6.5 3.8L3 9.8z" strokeLinejoin="round" />
               </svg>
-              파급효과
-            </button>
-          )}
-
-          {onSpeakerProfile && (
-            <button
-              type="button"
-              onClick={onSpeakerProfile}
-              className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded
-                         bg-surface-2 border border-border-subtle text-text-secondary text-[11px] font-medium
-                         hover:bg-surface-3 hover:text-text-primary hover:border-border-strong
-                         transition-colors duration-100"
-              title="발화자 프로필 및 성향 분석"
-            >
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <circle cx="6" cy="4" r="2.2" />
-                <path d="M1.5 10.5c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" strokeLinecap="round" />
-              </svg>
-              발화자
+              {demoStarting ? '시작하는 중…' : '시연 시작'}
             </button>
           )}
 

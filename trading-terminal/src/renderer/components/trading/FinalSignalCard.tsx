@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { EarningsEvaluation } from '../../fixtures/earningsEvaluation.dev-mock'
+import type { EarningsEvaluation } from '../../types/earningsEvaluation'
 
 type TradeAction = 'BUY' | 'HOLD' | 'SELL'
 type ModalState = 'closed' | 'input' | 'sending' | 'done'

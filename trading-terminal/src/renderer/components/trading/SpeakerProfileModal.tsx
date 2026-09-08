@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Modal from '../common/Modal'
-import type { SpeakerProfile } from '../../fixtures/speakerProfile.dev-mock'
+import type { SpeakerProfile } from '../../types/speakerProfile'
 
 interface SpeakerProfileModalProps {
   open: boolean

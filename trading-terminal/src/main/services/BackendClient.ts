@@ -85,6 +85,11 @@ export interface WatchlistItem {
 
 // StockDetailResponsePayload 는 src/lib/types/stockDetail.ts 단일 정의 — 위에서 re-export.
 
+/** 시연 재생 시작 결과. 409(이미 재생 중)를 예외가 아니라 값으로 전달한다. */
+export type DemoStartResult =
+  | { ok: true; callId: string; segmentCount: number; intervalMs: number }
+  | { ok: false; reason: 'ALREADY_RUNNING' | 'FAILED'; message: string }
+
 export const BackendClient = {
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
     const { data } = await http.post('/api/v1/auth/login', { email, password })
@@ -135,6 +140,39 @@ export const BackendClient = {
   async fetchPendingTrades(): Promise<TradeSignal[]> {
     const { data } = await http.get<TradeSignal[]>('/api/v1/trades/pending')
     return Array.isArray(data) ? data : []
+  },
+
+  /**
+   * 어닝콜 시연 재생 시작 (Contract 7.8).
+   * 202 = 시작, 409 = 이미 재생 중, 500 = 스크립트 결함.
+   * 409 는 정상 흐름(중복 클릭)이므로 예외 대신 결과로 구분해 돌려준다.
+   */
+  async startEarningsDemo(ticker: string): Promise<DemoStartResult> {
+    try {
+      const { data } = await http.post('/api/v1/demo/earnings-call/start', { ticker })
+      return {
+        ok: true,
+        callId: String(data?.call_id ?? ''),
+        segmentCount: Number(data?.segment_count ?? 0),
+        intervalMs: Number(data?.interval_ms ?? 0),
+      }
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status
+      const message =
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        '시연을 시작하지 못했습니다.'
+      return { ok: false, reason: status === 409 ? 'ALREADY_RUNNING' : 'FAILED', message }
+    }
+  },
+
+  /** 어닝콜 시연 재생 중지. 진행 중인 재생이 없으면(404) false. */
+  async stopEarningsDemo(ticker: string): Promise<boolean> {
+    try {
+      await http.post('/api/v1/demo/earnings-call/stop', { ticker })
+      return true
+    } catch {
+      return false
+    }
   },
 
   async syncPortfolio(payload: PortfolioSyncPayload): Promise<void> {

@@ -29,6 +29,7 @@ const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
  *  - 값: STOMP subscription handle (활성), 또는 undefined (미연결 상태에서 sub 요청만 기록)
  */
 const transcriptSubscriptions = new Map<string, StompSubscription | undefined>()
+const factCheckSubscriptions = new Map<string, StompSubscription | undefined>()
 
 function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
@@ -233,6 +234,13 @@ export const StompService = {
           )
           transcriptSubscriptions.set(ticker, sub)
         }
+        for (const ticker of factCheckSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/factcheck/${ticker}`,
+            factCheckMessageHandler,
+          )
+          factCheckSubscriptions.set(ticker, sub)
+        }
       },
 
       onDisconnect: () => {
@@ -287,6 +295,7 @@ export const StompService = {
     retryCount = 0
     // 트랜스크립트 핸들도 함께 정리 — disconnect 후 dangling sub 방지.
     transcriptSubscriptions.clear()
+    factCheckSubscriptions.clear()
     onStatusChange('DISCONNECTED')
   },
 
@@ -334,6 +343,36 @@ export const StompService = {
     }
     transcriptSubscriptions.delete(ticker)
   },
+
+  /**
+   * 동적 팩트체크 토픽 구독 (Contract 4.6).
+   * subscribeTranscript 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
+   * 다음 onConnect 에서 자동 재구독한다.
+   */
+  subscribeFactCheck(ticker: string) {
+    if (!ticker) return
+    if (factCheckSubscriptions.get(ticker)) return
+
+    if (client?.connected) {
+      const sub = client.subscribe(`/topic/factcheck/${ticker}`, factCheckMessageHandler)
+      factCheckSubscriptions.set(ticker, sub)
+    } else {
+      factCheckSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  unsubscribeFactCheck(ticker: string) {
+    if (!ticker) return
+    const sub = factCheckSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 팩트체크 unsubscribe 실패:', e)
+      }
+    }
+    factCheckSubscriptions.delete(ticker)
+  },
 }
 
 /**
@@ -346,6 +385,19 @@ function transcriptMessageHandler(message: IMessage) {
     pushToRenderer(IPC_CHANNELS.TRANSCRIPT_SEGMENT_RECEIVED, payload)
   } catch (e) {
     console.error('[StompService] 트랜스크립트 파싱 실패:', e)
+  }
+}
+
+/**
+ * 팩트체크 STOMP 메시지 핸들러 — 모든 ticker 가 공유.
+ * transcriptMessageHandler 와 동일한 이유로 module-level 에 둔다(재구독 시 동일 reference).
+ */
+function factCheckMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.FACTCHECK_BATCH_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 팩트체크 파싱 실패:', e)
   }
 }
 

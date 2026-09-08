@@ -1,5 +1,5 @@
 import Modal from '../common/Modal'
-import type { RippleNode, RippleEdge } from '../../fixtures/rippleEffect.dev-mock'
+import type { RippleNode, RippleEdge } from '../../types/rippleEffect'
 
 interface RippleEffectModalProps {
   open: boolean

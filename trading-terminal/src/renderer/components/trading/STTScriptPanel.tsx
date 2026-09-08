@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { TranscriptLine } from '../../fixtures/sttTranscript.dev-mock'
+import type { TranscriptLine } from '../../types/transcript'
 
 interface STTScriptPanelProps {
   /** STT 라인 목록 (오래된 → 최신 순). 컨테이너가 자동으로 가장 마지막 라인을 강조한다. */

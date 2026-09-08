@@ -164,6 +164,36 @@ export const IPC_CHANNELS = {
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
 
   /**
+   * 실시간 어닝콜 팩트체크 동적 구독.
+   * Backend Contract 4.6: STOMP /topic/factcheck/{ticker}, 기존 STOMP 세션 JWT 사용.
+   * TRANSCRIPT_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  FACTCHECK_SUBSCRIBE: 'terminal:factcheck:subscribe',
+  FACTCHECK_UNSUBSCRIBE: 'terminal:factcheck:unsubscribe',
+
+  /**
+   * STOMP 팩트체크 배치 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, batch_start_sequence, batch_end_sequence,
+   *   claims: [{ claim_id, claim, verdict, confidence, explanation_ko,
+   *              reason_code, evidence: [{ doc_id, title, snippet, url, source }] }]
+   * }
+   * 백엔드는 판정이 1건 이상일 때만 발행한다 — 빈 배치는 도착하지 않는다.
+   * snake_case → camelCase 변환과 검증은 store 의 upsertBatch 에서 수행.
+   */
+  FACTCHECK_BATCH_RECEIVED: 'terminal:factcheck:batch-received',
+
+  /**
+   * 어닝콜 시연 재생 제어 (Renderer → Main, invoke).
+   * Backend Contract 7.8. payload: { ticker }
+   * DEMO_START 응답: { ok: true, callId, segmentCount, intervalMs }
+   *                | { ok: false, reason: 'ALREADY_RUNNING' | 'FAILED', message }
+   */
+  DEMO_EARNINGS_START: 'terminal:demo:earnings-start',
+  DEMO_EARNINGS_STOP: 'terminal:demo:earnings-stop',
+
+  /**
    * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
    * S&P 500 전체 종목 대상. main process 에서 그룹핑 후 EarningsTimelineData 반환.
    * 응답: EarningsTimelineData { live, groups }
