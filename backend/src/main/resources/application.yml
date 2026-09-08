@@ -57,6 +57,21 @@ fmp:
   base-url: https://financialmodelingprep.com
   api-key: ${FMP_API_KEY:}       # 미설정 시 S&P 500 분기 동기화 스케줄러 비활성화
 
+ai-engine:
+  # 실시간 어닝콜 팩트체크 (Contract 9). 같은 인스턴스에 올릴 경우 localhost.
+  base-url: ${AI_ENGINE_BASE_URL:http://localhost:8000}
+  # false 로 두면 AI Engine 호출 없이 트랜스크립트 재생만 수행한다.
+  fact-check-enabled: ${AI_ENGINE_FACT_CHECK_ENABLED:true}
+  # LLM 2패스 실측 약 5초. 여유를 두되 무한정 기다리지 않는다.
+  timeout-ms: ${AI_ENGINE_TIMEOUT_MS:8000}
+
+demo:
+  earnings-call:
+    # 시연용 어닝콜 스크립트. classpath 기준 경로.
+    script-path: ${DEMO_SCRIPT_PATH:data/demo-earnings-call.json}
+    # 세그먼트 발행 간격. 시연 길이는 세그먼트 수 x 이 값이다.
+    interval-ms: ${DEMO_SEGMENT_INTERVAL_MS:6000}
+
 app:
   internal:
     # Data Pipeline → Backend 내부 엔드포인트(/api/v1/internal/**) 공유 시크릿.

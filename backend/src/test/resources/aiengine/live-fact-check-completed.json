@@ -1,0 +1,85 @@
+{
+  "ticker": "ORCL",
+  "status": "COMPLETED",
+  "buffered_count": 0,
+  "batch_start_sequence": 0,
+  "batch_end_sequence": 2,
+  "claims": [
+    {
+      "claim_id": "ORCL:0-2:c1",
+      "sentence_index": 0,
+      "source_text": "Oracle's fourth quarter fiscal 2026 earnings call",
+      "claim": "Oracle held its fourth quarter fiscal 2026 earnings call.",
+      "claim_type": "event_fact",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "confidence": 0.85,
+      "explanation_ko": "제시된 증거에는 2026 회계연도 4분기 실적 발표가 있었다는 내용은 포함되어 있지 않습니다.",
+      "reason_code": "evidence_not_specific",
+      "evidence": [],
+      "retrieved_count": 2,
+      "accepted_count": 2
+    },
+    {
+      "claim_id": "ORCL:0-2:c2",
+      "sentence_index": 1,
+      "source_text": "Oracle Cloud Infrastructure revenue grew 52 percent year over year this quarter.",
+      "claim": "Oracle Cloud Infrastructure revenue increased by 52 percent year-over-year in the fourth quarter of fiscal 2026.",
+      "claim_type": "numeric_fact",
+      "verdict": "CONTRADICTED",
+      "confidence": 0.85,
+      "explanation_ko": "증거에 따르면 오라클 클라우드 인프라 매출은 전년 대비 42% 증가했으며, 52% 증가했다는 주장은 사실과 다릅니다.",
+      "reason_code": "contradicted_by_news",
+      "evidence": [
+        {
+          "doc_id": "reuters:ORCL:e2e-1",
+          "title": "Oracle cloud infrastructure revenue rises 42%",
+          "snippet": "Oracle reported Oracle Cloud Infrastructure revenue of $3.9 billion for the quarter, up 42 percent year over year. Total cloud revenue rose 27 percent.",
+          "url": "https://reuters.example.com/e2e-1",
+          "source": "reuters",
+          "published_at": 1788609600,
+          "relevance_score": 1.0
+        },
+        {
+          "doc_id": "bloomberg:ORCL:e2e-2",
+          "title": "Oracle OCI growth cools to 42% as capex climbs",
+          "snippet": "Oracle Cloud Infrastructure revenue grew 42 percent in the quarter. The company guided capital expenditures above $25 billion, pressuring gross margin.",
+          "url": "https://bloomberg.example.com/e2e-2",
+          "source": "bloomberg",
+          "published_at": 1788613200,
+          "relevance_score": 0.5198
+        }
+      ],
+      "retrieved_count": 2,
+      "accepted_count": 2
+    },
+    {
+      "claim_id": "ORCL:0-2:c3",
+      "sentence_index": 2,
+      "source_text": "Capital expenditures will exceed 25 billion dollars this fiscal year.",
+      "claim": "Oracle management issued a forecast that capital expenditures will exceed 25 billion dollars for the 2026 fiscal year.",
+      "claim_type": "event_fact",
+      "verdict": "SUPPORTED",
+      "confidence": 0.85,
+      "explanation_ko": "제공된 증거에 따르면 오라클 경영진은 자본 지출이 250억 달러를 초과할 것으로 전망했습니다.",
+      "reason_code": "supported_by_news",
+      "evidence": [
+        {
+          "doc_id": "bloomberg:ORCL:e2e-2",
+          "title": "Oracle OCI growth cools to 42% as capex climbs",
+          "snippet": "Oracle Cloud Infrastructure revenue grew 42 percent in the quarter. The company guided capital expenditures above $25 billion, pressuring gross margin.",
+          "url": "https://bloomberg.example.com/e2e-2",
+          "source": "bloomberg",
+          "published_at": 1788613200,
+          "relevance_score": 1.0
+        }
+      ],
+      "retrieved_count": 2,
+      "accepted_count": 1
+    }
+  ],
+  "excluded_count": 0,
+  "extraction_llm_used": true,
+  "verification_llm_used": true,
+  "warnings": [],
+  "generated_at": "2026-09-08T16:48:23.909228Z"
+}

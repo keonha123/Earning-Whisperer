@@ -164,6 +164,28 @@
 
 ---
 
+### 4.6. Live Fact-Check Broadcast (실시간 어닝콜 팩트체크 표시용)
+
+- **Topic:** `/topic/factcheck/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5와 동일 정책.
+- **설명:** 어닝콜 발언 중 검증 가능한 주장을 AI Engine이 뉴스 근거와 대조한 결과를 브로드캐스트합니다. Trading Terminal의 팩트체크 패널이 구독합니다.
+- **발행 시점:** AI Engine이 3문장 배치 검증을 마치고 `status=COMPLETED` 이며 `claims[]`가 비어 있지 않을 때만 발행합니다. `BUFFERING`/`REJECTED`/`DISCARDED`와 주장이 0건인 배치는 화면에 표시할 것이 없으므로 발행하지 않습니다.
+- **트랜스크립트 채널과의 관계:** 4.5는 발언 원문, 본 채널은 그 발언에 대한 검증 결과입니다. 검증에 LLM 2패스(실측 5~15초)가 걸리므로 **팩트체크는 해당 발언보다 늦게 도착합니다.** 클라이언트는 `batch_start_sequence`~`batch_end_sequence` 범위로 어느 발언에 대한 판정인지 매칭합니다.
+
+| 필드명                 | 타입    | 필수 | 설명                                                    |
+| :--------------------- | :------ | :--: | :------------------------------------------------------ |
+| `ticker`               | String  |  Y   | 종목 심볼                                               |
+| `call_id`              | String  |  Y   | 어닝콜 세션 식별자 (4.5와 동일 값)                      |
+| `batch_start_sequence` | Integer |  Y   | 검증 대상 문장 범위의 시작 `sequence`                   |
+| `batch_end_sequence`   | Integer |  Y   | 검증 대상 문장 범위의 끝 `sequence`                     |
+| `claims`               | Array   |  Y   | 판정 목록. 항목 스키마는 Contract 9.3과 동일 (1건 이상) |
+
+> **표기 규칙:** `verdict`의 화면 표기는 Contract 9.5 참조 (`SUPPORTED`=사실 확인, `CONTRADICTED`=사실과 다름, `INSUFFICIENT_EVIDENCE`=근거 부족).
+>
+> **구독 예시:** `stompClient.subscribe('/topic/factcheck/ORCL', handler)`
+
+---
+
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
 로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
@@ -418,6 +440,40 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
     ]
 
 > **초기 로드 전략:** Trading Terminal/Frontend Web 마운트 시 본 엔드포인트로 1회 GET 후 `/topic/market/indices` STOMP 구독. REST 응답이 빈 배열이면 placeholder 유지하고 STOMP 수신 시 즉시 렌더로 전환.
+
+### 7.8. 어닝콜 시연 재생 제어 (Demo Earnings Call)
+
+| Method | Endpoint                            | 인증 | 설명                             |
+| :----- | :---------------------------------- | :--: | :------------------------------- |
+| POST   | `/api/v1/demo/earnings-call/start`  | 필요 | 준비된 어닝콜 스크립트 재생 시작 |
+| POST   | `/api/v1/demo/earnings-call/stop`   | 필요 | 재생 중지                        |
+| GET    | `/api/v1/demo/earnings-call/status` | 필요 | 진행 상황 조회 (`?ticker=ORCL`)  |
+
+- **설명:** 시연에서 Data Pipeline의 STT 단계를 사전 준비된 스크립트가 대신합니다. 재생된 세그먼트는 **실제 인입 경로**(`TranscriptService` 검증 → Contract 4.5 fan-out)를 그대로 통과하며, 동시에 Contract 9로 AI Engine 팩트체크를 거쳐 Contract 4.6으로 발행됩니다. 클라이언트가 가짜 데이터를 그리는 구조가 아닙니다.
+- **요청 본문(start/stop):** `{"ticker": "ORCL"}`. start에서 생략하면 스크립트에 지정된 기본 종목을 사용합니다.
+
+| 상태 코드 | 의미                                        |
+| :-------- | :------------------------------------------ |
+| 202       | 재생 시작 (비동기 진행). `call_id` 반환     |
+| 409       | 해당 종목이 이미 재생 중 — 먼저 중지해야 함 |
+| 500       | 스크립트 파일을 읽을 수 없음                |
+| 404       | (stop) 진행 중인 재생이 없음                |
+
+start 응답 예시:
+
+    { "ticker": "ORCL", "call_id": "demo-orcl-q4fy26-1788886133461-1", "segment_count": 6, "interval_ms": 6000 }
+
+- **`call_id`는 재생 회차마다 새로 생성됩니다.** 같은 값을 재사용하면 `TranscriptSessionRegistry`가 종료된 세션으로 판단해 모든 세그먼트를 거부합니다(조용한 실패).
+- **status는 끝난 재생의 결과도 알려줍니다.** 재생 중이 아니면 `running:false`와 함께 `last_run`을 반환합니다. `outcome`은 `COMPLETED` / `STOPPED` / `NO_SEGMENT_PUBLISHED` 중 하나입니다. 세 번째는 스크립트 결함 등으로 세그먼트를 하나도 내보내지 못하고 끝난 경우로, 이것이 없으면 "정상 완료"·"시작한 적 없음"과 구별되지 않습니다.
+
+      { "running": false, "ticker": "ORCL",
+        "last_run": { "call_id": "...", "outcome": "COMPLETED", "published_count": 6, "total_segments": 6 } }
+
+- **스크립트 교체 시 규칙.** 시작 시점에 검증하며, 위반하면 500(`SCRIPT_UNAVAILABLE`)으로 거부합니다.
+  1. `sequence`는 **0부터 1씩 증가**해야 합니다. 0에서 시작하지 않으면 AI Engine의 ticker 버퍼가 초기화되지 않습니다 — AI Engine은 `call_id`가 아니라 `ticker`로 버퍼를 잡고 `sentence_sequence=0`에서만 리셋하므로, 중지 후 재시작 시 트랜스크립트는 정상인데 팩트체크만 전부 조용히 사라집니다.
+  2. `text`는 비어 있을 수 없습니다.
+  3. 세그먼트 수는 **3의 배수**를 권장합니다. AI Engine이 3문장 단위로 검증하므로 나머지 1~2문장은 `DISCARDED`되어 마지막 발언들의 팩트체크가 나오지 않습니다. 위반해도 시작은 되지만 기동 로그에 경고가 남습니다.
+- **관련 설정:** `demo.earnings-call.script-path`, `demo.earnings-call.interval-ms`, `ai-engine.base-url`, `ai-engine.fact-check-enabled`, `ai-engine.timeout-ms`. `fact-check-enabled=false`로 두면 AI Engine 없이 트랜스크립트 재생만 수행합니다.
 
 ---
 

@@ -169,6 +169,24 @@ excluded_count: 1   ← "고객과 파트너를 소중히" 문장은 검증 대�
 `GEMINI_PRIMARY_MODEL`(기본 `gemini-3.1-flash-lite`), `route_profile: economy`,
 `temperature 0.1` 입니다. 20문장짜리 스크립트면 배치 약 7회 × 최대 2회 = 14회입니다.
 
+### 추출 타임아웃이 시연의 실질 리스크입니다
+
+`FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS` 기본값이 **5초**인데, Gemini 응답이 이를 넘는
+경우를 검증 중 실제로 겪었습니다. 이때 배치는 예외 없이 `status=COMPLETED`,
+`claims=[]`, `warnings=["claim_extraction_failed"]` 로 돌아옵니다. 즉 **조용히 아무
+판정도 나오지 않습니다.**
+
+시연 환경에서는 여유를 두는 편이 안전합니다.
+
+```
+FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS=20
+FACT_CHECK_LLM_TIMEOUT_SECONDS=25
+```
+
+이 값으로 재시도했을 때 같은 입력이 판정 3건을 모두 반환했습니다. 백엔드는
+`warnings` 에 `claim_extraction_failed` 가 있으면 로그로 남겨 원인을 추적할 수 있게
+해야 합니다.
+
 관련 타임아웃 설정 (`config.py`):
 `FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS`, `FACT_CHECK_LLM_TIMEOUT_SECONDS`,
 `FACT_CHECK_RETRIEVAL_TIMEOUT_SECONDS`, `FACT_CHECK_SENTENCE_BUFFER_TTL_SECONDS`.
