@@ -106,6 +106,19 @@ export function registerWsHandlers() {
   })
 
   /*
+   * 종합 판단 동적 구독 (Contract 4.7). 팩트체크와 동일한 규약.
+   */
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.EVALUATION_SUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.subscribeEvaluation(payload.ticker)
+  })
+
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.EVALUATION_UNSUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.unsubscribeEvaluation(payload.ticker)
+  })
+
+  /*
    * 어닝콜 시연 재생 제어 (Contract 7.8).
    * 트랜스크립트/팩트체크 구독과 달리 결과를 Renderer 로 돌려준다 —
    * 버튼이 "이미 재생 중" 과 "시작 실패" 를 구분해 보여줘야 하기 때문이다.

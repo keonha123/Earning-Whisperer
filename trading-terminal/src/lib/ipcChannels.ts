@@ -185,6 +185,32 @@ export const IPC_CHANNELS = {
   FACTCHECK_BATCH_RECEIVED: 'terminal:factcheck:batch-received',
 
   /**
+   * 어닝콜 종료 후 종합 판단 동적 구독.
+   * Backend Contract 4.7: STOMP /topic/evaluation/{ticker}.
+   * FACTCHECK_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  EVALUATION_SUBSCRIBE: 'terminal:evaluation:subscribe',
+  EVALUATION_UNSUBSCRIBE: 'terminal:evaluation:unsubscribe',
+
+  /**
+   * STOMP 종합 판단 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, generated_at,
+   *   judgment: { direction, magnitude, confidence, catalyst_type, rationale,
+   *               risk_flags, hold_days, model_version },
+   *   gate: { action, gate_result, institutional_grade, institutional_grade_score,
+   *           position_intent_ko, no_trade_summary_ko, risk_flags_ko, counter_thesis_ko },
+   *   evasion: { evasion_score, directness, pivot_detected, missing_topics, rationale_ko },
+   *   impact_chain: [{ ticker, relationship, direction, impact_score, confidence, rationale_ko }],
+   *   risk_plan: { available, direction, reference_price, stop_loss, take_profit_1, ... },
+   *   warnings: string[]
+   * }
+   * 어닝콜 회차당 1건만 도착한다. 변환·검증은 store 의 setSummary 에서 수행.
+   */
+  EVALUATION_RECEIVED: 'terminal:evaluation:received',
+
+  /**
    * 어닝콜 시연 재생 제어 (Renderer → Main, invoke).
    * Backend Contract 7.8. payload: { ticker }
    * DEMO_START 응답: { ok: true, callId, segmentCount, intervalMs }

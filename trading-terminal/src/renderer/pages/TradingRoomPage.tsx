@@ -12,6 +12,7 @@ import OrderBar, {
 } from "../components/trading/OrderBar";
 import TradingRoomHeader from "../components/trading/TradingRoomHeader";
 import FactCheckPanel from "../components/trading/FactCheckPanel";
+import EarningsSummaryPanel from "../components/trading/EarningsSummaryPanel";
 import { showIpcErrorToast } from "../components/common/Toast";
 import type { TranscriptLine } from "../types/transcript";
 import type { PricePoint } from "../types/priceSeries";
@@ -19,6 +20,7 @@ import { useLiveTranscript } from "../hooks/useLiveTranscript";
 import { usePrices } from "../hooks/usePrices";
 import { useCompanyDetail } from "../hooks/useCompanyDetail";
 import { useFactCheck } from "../hooks/useFactCheck";
+import { useEarningsSummary } from "../hooks/useEarningsSummary";
 import type { TranscriptSegment } from "../store/useTranscriptStore";
 
 type SignalFilter = "ALL" | "BUY" | "SELL" | "FAILED";
@@ -59,6 +61,11 @@ export default function TradingRoomPage() {
   // 트랜스크립트와 같은 ticker 를 따라간다. 판정은 서버에서 완료되어 도착한다.
   const { claims: factCheckClaims, clear: clearFactCheck } =
     useFactCheck(ticker);
+
+  // ── 어닝콜 종료 후 종합 판단 (Contract 4.7 STOMP /topic/evaluation/{ticker}) ──
+  // 회차당 1건뿐이라 늦게 구독하면 놓친다. 여기서 ticker 와 함께 구독을 세워 둔다.
+  const { summary: earningsSummary, clear: clearEarningsSummary } =
+    useEarningsSummary(ticker);
 
   // ── 실시간 시세 (다른 화면과 동일 소스: PRICES_UPDATE ← PricePoller/STOMP) ──────
   const { prices } = usePrices();
@@ -147,6 +154,10 @@ export default function TradingRoomPage() {
   const factCheckAnalyzing =
     isLive && lastSegmentSequence > lastCheckedSequence;
 
+  // 콜이 실제로 재생됐고(세그먼트가 있고) 끝났는데 아직 종합 판단이 안 온 상태.
+  // 종목을 열어만 둔 경우와 구분하기 위해 세그먼트 존재를 함께 본다.
+  const awaitingSummary = !isLive && liveSegments.length > 0;
+
   // ── 신호 필터 (로컬 state) ────────────────────────────────────────────────────
   const [filter, setFilter] = useState<SignalFilter>("ALL");
 
@@ -188,6 +199,9 @@ export default function TradingRoomPage() {
         | { ok: false; reason: string; message: string }
       if (result.ok) {
         clearFactCheck(ticker)
+        // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이
+        // 계속 떠 있게 된다.
+        clearEarningsSummary(ticker)
         return
       }
       // showIpcErrorToast 는 Error 를 기대한다 — 문자열을 그대로 넘기지 않는다.
@@ -323,8 +337,52 @@ export default function TradingRoomPage() {
           </div>
         </section>
 
-        {/* RIGHT 25% — 신호 피드 */}
-        <section className="card p-0 flex flex-col overflow-hidden min-h-0">
+        {/* RIGHT 25% — 종합 판단(도착 시) + 신호 피드 */}
+        {/*
+          이 래퍼가 25fr 컬럼의 grid item 이다. min-w-0 / overflow-hidden 이 없으면
+          긴 영문 rationale 이나 줄바꿈 불가 토큰이 컬럼을 밀어 차트 컬럼을 잡아먹는다.
+          이전에는 이 자리의 section 이 그 역할을 하고 있었다.
+        */}
+        <div className="flex flex-col gap-3 min-h-0 min-w-0 overflow-hidden">
+        {/*
+          종합 판단은 어닝콜이 끝나야 도착한다. 도착 전에는 자리를 비워 두고
+          신호 피드가 열을 다 쓰게 한다 — 빈 카드를 미리 띄워 둘 이유가 없다.
+        */}
+        {/*
+          종합 판단은 회차당 1건뿐이라 놓치면 다시 받을 방법이 없다(백필 경로 없음).
+          그래서 "아직 안 왔다" 와 "유실됐다" 가 화면에서 같아 보이면 안 된다.
+          콜이 끝났는데 판단이 없는 동안은 대기 상태를 명시한다.
+        */}
+        {!earningsSummary && awaitingSummary && (
+          <section className="card p-0 flex flex-col shrink-0">
+            <div className="h-10 px-3.5 flex items-center border-b border-border-subtle">
+              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
+                어닝콜 종합 판단
+              </span>
+            </div>
+            <div className="px-3.5 py-3 text-[10.5px] text-text-tertiary leading-snug animate-pulse">
+              어닝콜이 종료되었습니다. 전문을 종합 분석하는 중입니다...
+            </div>
+          </section>
+        )}
+
+        {/*
+          종합 판단은 이 시연의 결론이다. 신호 피드보다 훨씬 넓게 준다 —
+          3:2 로 뒀더니 회피·손절 계획·파급효과가 전부 스크롤 아래로 내려갔다.
+        */}
+        {earningsSummary && (
+          <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "5 1 0%" }}>
+            <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
+              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
+                <span className="w-2 h-2 rounded-sm bg-accent-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                어닝콜 종합 판단
+              </span>
+            </div>
+            <EarningsSummaryPanel summary={earningsSummary} />
+          </section>
+        )}
+
+        <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "2 1 0%" }}>
           <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
               신호 피드 ·{" "}
@@ -369,6 +427,7 @@ export default function TradingRoomPage() {
             </div>
           </>
         </section>
+        </div>
       </div>
 
       {/* ── 하단 80px 고정 OrderBar ─────────────────────────────────────────────── */}

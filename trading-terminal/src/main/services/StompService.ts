@@ -31,6 +31,9 @@ const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
 const transcriptSubscriptions = new Map<string, StompSubscription | undefined>()
 const factCheckSubscriptions = new Map<string, StompSubscription | undefined>()
 
+/** 종합 판단 구독 핸들 (Contract 4.7). 위 두 Map 과 동일한 규약. */
+const evaluationSubscriptions = new Map<string, StompSubscription | undefined>()
+
 function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
 }
@@ -241,6 +244,13 @@ export const StompService = {
           )
           factCheckSubscriptions.set(ticker, sub)
         }
+        for (const ticker of evaluationSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/evaluation/${ticker}`,
+            evaluationMessageHandler,
+          )
+          evaluationSubscriptions.set(ticker, sub)
+        }
       },
 
       onDisconnect: () => {
@@ -373,6 +383,39 @@ export const StompService = {
     }
     factCheckSubscriptions.delete(ticker)
   },
+
+  /**
+   * 동적 종합 판단 토픽 구독 (Contract 4.7).
+   * subscribeFactCheck 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
+   * 다음 onConnect 에서 자동 재구독한다.
+   *
+   * 이 토픽은 어닝콜 회차당 1건만 흐른다. 그래서 구독이 늦으면 그 1건을 통째로
+   * 놓친다 — 재생 시작 버튼을 누르기 전에 이미 구독되어 있어야 한다.
+   */
+  subscribeEvaluation(ticker: string) {
+    if (!ticker) return
+    if (evaluationSubscriptions.get(ticker)) return
+
+    if (client?.connected) {
+      const sub = client.subscribe(`/topic/evaluation/${ticker}`, evaluationMessageHandler)
+      evaluationSubscriptions.set(ticker, sub)
+    } else {
+      evaluationSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  unsubscribeEvaluation(ticker: string) {
+    if (!ticker) return
+    const sub = evaluationSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 종합 판단 unsubscribe 실패:', e)
+      }
+    }
+    evaluationSubscriptions.delete(ticker)
+  },
 }
 
 /**
@@ -398,6 +441,16 @@ function factCheckMessageHandler(message: IMessage) {
     pushToRenderer(IPC_CHANNELS.FACTCHECK_BATCH_RECEIVED, payload)
   } catch (e) {
     console.error('[StompService] 팩트체크 파싱 실패:', e)
+  }
+}
+
+/** 종합 판단 STOMP 메시지 핸들러 — 위 둘과 동일한 이유로 module-level 에 둔다. */
+function evaluationMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.EVALUATION_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 종합 판단 파싱 실패:', e)
   }
 }
 
