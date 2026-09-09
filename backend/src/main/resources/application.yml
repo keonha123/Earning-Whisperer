@@ -62,6 +62,8 @@ ai-engine:
   base-url: ${AI_ENGINE_BASE_URL:http://localhost:8000}
   # false 로 두면 AI Engine 호출 없이 트랜스크립트 재생만 수행한다.
   fact-check-enabled: ${AI_ENGINE_FACT_CHECK_ENABLED:true}
+  # 어닝콜 종료 후 종합 판단(Contract 4.7). false 면 재생과 팩트체크만 돈다.
+  summary-enabled: ${AI_ENGINE_SUMMARY_ENABLED:true}
   # 읽기 타임아웃. AI Engine 내부 예산(추출 + 검증 타임아웃)보다 커야 한다.
   # 이 값이 더 짧으면 AI Engine 이 아직 작업 중인데 백엔드가 먼저 포기해서
   # 팩트체크가 조용히 사라진다. AI Engine 기본값 합(5+8초)과 시연 권장값(20+25초)

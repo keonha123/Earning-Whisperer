@@ -186,6 +186,41 @@
 
 ---
 
+### 4.7. Earnings Call Summary Broadcast (어닝콜 종료 후 종합 판단)
+
+- **Topic:** `/topic/evaluation/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5/4.6과 동일 정책.
+- **설명:** 어닝콜 재생이 끝난 뒤 **회차당 한 번** 발행되는 종합 판단입니다. 4.6이 문장 단위 사실 검증이라면, 본 채널은 콜 전체를 놓고 낸 방향·강도·신뢰도와 그에 딸린 회피 지표·파급효과·손절 계획입니다.
+- **발행 시점:** 재생이 정상 완료되고(중지된 회차 제외) 세그먼트가 1건 이상 발행되었으며, AI Engine이 판단 본문(`judgment`)을 돌려준 경우에만 발행합니다. 판단이 없으면 발행하지 않습니다 — 빈 화면보다 "종합 판단 없음"이 정확합니다.
+- **소요 시간:** 즉시 오지 않습니다. 마지막 세그먼트 직후 제출되지만, LLM 리뷰 패스(`analyze`)와 부가 정보 조회(`earnings/intelligence`)를 순서대로 타므로 정상적으로도 수 초에서 십수 초가 걸리고, AI Engine 이 응답하지 않으면 읽기 타임아웃(`ai-engine.timeout-ms`, 기본 50초) 두 번을 소진한 뒤 발행 없이 끝납니다.
+- **발행되지 않는 경우:** 중지된 회차, 세그먼트 0건인 회차, `ai-engine.summary-enabled=false`, 어닝콜 전문이 비어 있는 경우, `analyze` 가 판단 본문을 돌려주지 않은 경우. 모두 로그에 사유가 남습니다.
+- **회차 대조:** 같은 종목을 연달아 재생하면 클라이언트가 이전 회차의 판단을 받을 수 있습니다. **반드시 `call_id` 를 현재 회차(4.5의 `call_id`)와 대조하고 다르면 무시하세요.** 백엔드도 발행 직전에 같은 검사를 하지만, 두 곳에서 막는 편이 안전합니다.
+
+| 필드명         | 타입    | 필수 | 설명                                                          |
+| :------------- | :------ | :--: | :------------------------------------------------------------ |
+| `ticker`                 | String  |  Y   | 종목 심볼                                                     |
+| `call_id`                | String  |  Y   | 어닝콜 세션 식별자 (4.5/4.6과 동일 값)                        |
+| `generated_at`           | String  |  Y   | 생성 시각 (ISO-8601)                                          |
+| `judgment`               | Object  |  Y   | LLM 판단 본문. 스키마는 Contract 9.6 응답의 `analysis`와 동일 |
+| `gate`                   | Object  |  N   | 실행 가능성 게이트. Contract 9.6 응답의 `signal_brief`와 동일 |
+| `intelligence_available` | Boolean |  N   | 부가 정보 조회 성공 여부. 아래 설명 참조                      |
+| `evasion`                | Object  |  N   | 질문 회피 지표. Contract 9.7 응답의 `omission_evasion`         |
+| `impact_chain`           | Array   |  N   | 연쇄 영향 후보. Contract 9.7 응답과 동일                       |
+| `risk_plan`              | Object  |  N   | 손절/익절 계획. Contract 9.7 응답과 동일                       |
+| `warnings`               | Array   |  N   | 엔진이 붙인 주의사항 문자열                                   |
+
+> **`N` 의 인코딩이 두 가지입니다.** 위 표의 최상위 필드는 값이 없으면 **키 자체가 없습니다**(`NON_NULL` 직렬화). 반면 중첩 객체(`judgment` / `gate` / `risk_plan` 등) 내부의 없는 값은 **명시적 `null`** 로 옵니다. 클라이언트는 `'key' in payload` 가 아니라 옵셔널 접근으로 다루세요.
+>
+> **`evasion` / `impact_chain` / `risk_plan` / `warnings` 는 하나의 원자 그룹입니다.** 같이 오거나 같이 없습니다(모두 Contract 9.7 한 번의 호출에서 나오기 때문). `intelligence_available=false` 면 **조회 자체가 실패**한 것이고, `true` 인데 `risk_plan.available=false` 면 **엔진이 "계획을 낼 수 없다"고 답한** 것입니다. 화면에서 이 둘을 다르게 말해야 합니다 — 전자는 "부가 정보를 가져오지 못했습니다", 후자는 `risk_plan.invalidation_text` 의 사유.
+
+> **`judgment`와 `gate`를 한 줄에 그리지 마세요.** `gate.action`은 판단 방향이 아니라 "이 판단대로 움직여도 되는가"의 답입니다. 뉴스 근거가 적재되지 않은 상태에서는 `missing_rag_evidence` 때문에 **`judgment.direction=BULLISH`인데 `gate.action=AVOID`** 가 정상적으로 나옵니다. 두 값을 나란히 놓으면 모순으로 읽히므로, 화면에서는 "판단"과 "실행 보류 사유"를 분리해 표시합니다.
+>
+> **`warnings`를 숨기지 마세요.** "RAG evidence is empty" 같은 항목이 여기 옵니다. 감추면 검증되지 않은 판단이 검증된 것처럼 보입니다.
+>
+> **구독 예시:** `stompClient.subscribe('/topic/evaluation/ORCL', handler)`
+
+---
+
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
 로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
@@ -497,7 +532,7 @@ start 응답 예시:
 
 ---
 
-## 9. [Contract 9] Backend ➔ AI Engine (실시간 어닝콜 팩트체크)
+## 9. [Contract 9] Backend ➔ AI Engine (실시간 팩트체크 · 종합 판단)
 
 - **통신 방식:** HTTP POST (동기)
 - **엔드포인트:** `http://ai-engine:8000/v1/engine/live-fact-check/sentence`
@@ -572,3 +607,53 @@ start 응답 예시:
 | `SUPPORTED`             | 사실 확인     |
 | `CONTRADICTED`          | 사실과 다름   |
 | `INSUFFICIENT_EVIDENCE` | 근거 부족     |
+
+### 9.6. 종합 판단 (`POST /v1/engine/analyze`)
+
+어닝콜 전문을 통째로 넘겨 LLM 판단을 받습니다. **판단이 실제로 만들어지는 유일한 엔드포인트입니다.**
+
+**요청**
+
+| 필드명        | 타입    | 필수 | 설명                                                              |
+| :------------ | :------ | :--: | :---------------------------------------------------------------- |
+| `ticker`      | String  |  N   | 종목 심볼                                                         |
+| `prompt`      | String  |  Y   | 어닝콜 전문 (모든 세그먼트를 이어붙인 것)                         |
+| `needs_review`| Boolean |  N   | 리뷰 모델까지 태울지. 회차당 1회뿐이므로 백엔드는 항상 `true`     |
+| `market_data` | Object  |  N   | `symbol`, `current_price`, `prev_close`. 없으면 손절 계획이 생략됨 |
+
+**응답 (화면이 쓰는 필드만)**
+
+- `analysis`: `direction`(BULLISH/BEARISH/NEUTRAL), `magnitude`(0~1), `confidence`(0~1), `catalyst_type`, `rationale`(영문), `risk_flags[]`, `hold_days`, `model_version`, `review_triggered`
+- `signal_brief`: `action`, `gate_result`, `decision_state`, `institutional_grade`(A~E), `institutional_grade_score`, `institutional_approval_state`, `position_intent_ko`, `no_trade_summary_ko`, `risk_flags_ko[]`, `counter_thesis_ko`, `recommended_hold_days`
+
+응답에는 이 밖에도 필드가 많습니다. 백엔드 모델은 `@JsonIgnoreProperties(ignoreUnknown = true)`로 선언해 두었으니 엔진이 필드를 늘려도 역직렬화가 깨지지 않습니다.
+
+### 9.7. 회피·파급·손절 (`POST /v1/engine/earnings/intelligence`)
+
+**이 엔드포인트는 LLM을 쓰지 않습니다.** 규칙 기반이라 응답이 즉시 옵니다. 여기서 나오는 `fact_checks`는 9.1의 LLM 검증이 아니라 구형 휴리스틱이므로 **화면에 쓰지 마세요.**
+
+**요청**
+
+| 필드명            | 타입   | 필수 | 설명                                                                    |
+| :---------------- | :----- | :--: | :---------------------------------------------------------------------- |
+| `ticker`          | String |  Y   | 종목 심볼                                                               |
+| `event_text`      | String |  Y   | 어닝콜 전문                                                             |
+| `question`        | String |  N   | 애널리스트 질문. 없으면 회피 지표가 의미를 잃습니다                     |
+| `answer`          | String |  N   | 그 질문에 대한 경영진 답변                                              |
+| `related_tickers` | Array  |  N   | 연쇄 영향을 볼 종목                                                     |
+| `market_data`     | Object |  N   | `current_price`만 있어도 손절 계획이 계산됩니다                         |
+| `direction_hint`  | String |  N   | 9.6의 `direction`. 손절 계획의 LONG/SHORT를 가릅니다                    |
+| `confidence_hint` | Number |  N   | 9.6의 `confidence`                                                      |
+
+**응답 (화면이 쓰는 필드만)**
+
+- `omission_evasion`: `evasion_score`(0~1, 높을수록 회피), `directness`, `omission_score`, `pivot_detected`, `missing_topics[]`, `rationale_ko`
+- `impact_chain[]`: `ticker`, `relationship`, `direction`, `impact_score`, `confidence`, `rationale_ko`
+- `risk_plan`: `available`, `direction`, `reference_price`, `stop_loss`, `take_profit_1/2`, `stop_pct`, `take_profit_1/2_pct`, `risk_reward_1`, `time_stop_days`, `invalidation_text`, `sizing_note_ko`
+- `warnings[]`
+
+> **`related_tickers`를 반드시 실어 보내세요.** AI Engine의 정적 관계 그래프에는 일부 종목(NVDA/AMD/TSMC/MSFT/META/TSLA/AAPL)만 들어 있습니다. 시연 종목이 거기 없으면 `impact_chain`이 빈 배열로 나옵니다. 요청에 실어 보내면 그래프를 고치지 않고도 잡힙니다.
+>
+> **`risk_plan.available=false`면 나머지 필드는 전부 `null`입니다.** 가격 정보가 없거나 방향성이 서지 않았다는 뜻이므로, 화면에서 0으로 채우지 말고 `invalidation_text`의 사유를 보여줍니다.
+>
+> **무료 등급 Gemini 키 주의.** 9.6은 리뷰 모델을 태웁니다. 무료 키는 pro 계열 할당량이 0이라 pro를 지정하면 매 호출이 429로 실패하고, 엔진은 `confidence: 0.0`의 폴백 응답을 돌려줍니다. 화면에는 늘 NEUTRAL만 뜹니다. 사용 가능 모델은 `gemini-3.6-flash`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`입니다.

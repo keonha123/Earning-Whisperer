@@ -25,8 +25,33 @@ public record DemoEarningsCallScript(
         @JsonProperty("call_id_prefix")
         String callIdPrefix,
 
+        /**
+         * 연쇄 영향을 볼 종목. AI Engine 의 정적 관계 그래프는 일부 종목만 담고 있어서,
+         * 시연 종목이 거기 없으면 파급효과가 빈 배열로 나온다. 여기에 적어 두면 엔진이
+         * 그 종목들을 영향 후보로 잡는다.
+         */
+        @JsonProperty("related_tickers")
+        List<String> relatedTickers,
+
+        /** 회피 탐지에 쓸 애널리스트 Q&A. 없으면 종합 화면의 회피 지표가 생략된다. */
+        @JsonProperty("analyst_qa")
+        AnalystQa analystQa,
+
         List<Segment> segments
 ) {
+
+    /**
+     * 회피 탐지 입력.
+     *
+     * <p>어닝콜 Q&A 세션에서 실제로 오간 질문 하나와 그 답변을 그대로 옮겨 적는다.
+     * 엔진은 질문에 등장한 주제가 답변에서 다뤄졌는지를 보고 회피 점수를 낸다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record AnalystQa(
+            String question,
+            String answer
+    ) {
+    }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Segment(

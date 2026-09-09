@@ -1,9 +1,18 @@
 {
-  "_comment": "PLACEHOLDER — 파이프라인 검증용 최소 스크립트입니다. 시연 전에 실제 어닝콜 트랜스크립트 발췌로 반드시 교체하세요. 교체 규칙(시작 시 검증되며 위반 시 재생이 거부됩니다): (1) sequence 는 0 부터 1씩 증가. 0 에서 시작하지 않으면 AI Engine 의 ticker 버퍼가 초기화되지 않아 재시작 시 팩트체크만 조용히 사라집니다. (2) text 는 문장 1개 단위. AI Engine 이 3문장씩 묶어 검증합니다. (3) 세그먼트 수는 3의 배수 권장. 나머지 1~2문장은 DISCARDED 되어 팩트체크가 나오지 않습니다. (4) 검증 가능한 사실 주장이 담긴 문장과 수사적 문장을 섞을 것 — 후자가 excluded_count 로 걸러지는 동작을 보여줍니다. 상세는 docs/api-spec.md 7.8 참조.",
+  "_comment": "PLACEHOLDER — 파이프라인 검증용 최소 스크립트입니다. 시연 전에 실제 어닝콜 트랜스크립트 발췌로 반드시 교체하세요. 교체 규칙(시작 시 검증되며 위반 시 재생이 거부됩니다): (1) sequence 는 0 부터 1씩 증가. 0 에서 시작하지 않으면 AI Engine 의 ticker 버퍼가 초기화되지 않아 재시작 시 팩트체크만 조용히 사라집니다. (2) text 는 문장 1개 단위. AI Engine 이 3문장씩 묶어 검증합니다. (3) 세그먼트 수는 3의 배수 권장. 나머지 1~2문장은 DISCARDED 되어 팩트체크가 나오지 않습니다. (4) 검증 가능한 사실 주장이 담긴 문장과 수사적 문장을 섞을 것 — 후자가 excluded_count 로 걸러지는 동작을 보여줍니다. 상세는 docs/api-spec.md 7.8 참조. (5) related_tickers 에 이 종목의 공급망/경쟁 관계 종목을 적을 것 — AI Engine 의 정적 관계 그래프는 일부 종목만 담고 있어서, 여기 없으면 종합 화면의 파급효과가 빈 칸으로 나옵니다. (6) analyst_qa 에 Q&A 세션에서 실제로 오간 질문 하나와 그 답변을 옮겨 적을 것 — 회피 탐지 지표가 이 한 쌍으로만 계산됩니다.",
   "ticker": "ORCL",
   "company_name": "Oracle Corporation",
   "session_label": "Q4 FY2026 Earnings Call",
   "call_id_prefix": "demo-orcl-q4fy26",
+  "related_tickers": [
+    "NVDA",
+    "MSFT",
+    "AMZN"
+  ],
+  "analyst_qa": {
+    "question": "PLACEHOLDER — Q&A 세션의 실제 애널리스트 질문 한 개로 교체하세요.",
+    "answer": "PLACEHOLDER — 위 질문에 대한 경영진의 실제 답변으로 교체하세요."
+  },
   "segments": [
     {
       "sequence": 0,

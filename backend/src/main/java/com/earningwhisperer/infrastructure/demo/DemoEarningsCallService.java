@@ -59,6 +59,7 @@ public class DemoEarningsCallService {
     private final TranscriptService transcriptService;
     private final AiEngineClient aiEngineClient;
     private final FactCheckPublisher factCheckPublisher;
+    private final EarningsSummaryService summaryService;
     private final ObjectMapper objectMapper;
     private final String scriptPath;
     private final long intervalMs;
@@ -76,6 +77,21 @@ public class DemoEarningsCallService {
     private final AtomicLong callIdSequence = new AtomicLong();
 
     /**
+     * 종합 판단 전용 스레드.
+     *
+     * <p>재생 스레드에서 부르지 않는 이유: 재생 종료 시 {@code session.shutdown} 이
+     * playback executor 에 shutdownNow 를 걸어 자기 자신을 인터럽트한다. 그 상태에서
+     * 수 초짜리 HTTP 호출을 이어 붙이면 인터럽트 플래그를 안고 도는 셈이 된다.
+     * 세션 수명과 무관한 단일 스레드에 넘겨 회차마다 순서대로 처리한다.
+     */
+    private final ExecutorService summaryExecutor = new ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), r -> {
+        Thread thread = new Thread(r, "demo-call-summary");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
      * ticker → 마지막으로 끝난 재생의 요약. 재생이 끝나면 세션은 map 에서 사라지므로,
      * 이것이 없으면 "정상 완료", "시작한 적 없음", "첫 세그먼트부터 전부 거부되어 즉시 끝남"
      * 이 status API 에서 전부 똑같이 보인다. 시연 중 "버튼을 눌렀는데 화면에 아무것도
@@ -83,10 +99,20 @@ public class DemoEarningsCallService {
      */
     private final Map<String, LastRun> lastRuns = new ConcurrentHashMap<>();
 
+    /**
+     * ticker → 가장 최근에 시작된 회차의 callId.
+     *
+     * <p>종합 판단은 재생이 끝난 뒤 수십 초까지 걸릴 수 있고, 그동안 시연자가 같은 종목을
+     * 다시 재생할 수 있다. 그러면 <b>이전 회차의 판단이 새 회차 재생 도중에 발행된다</b> —
+     * 어닝콜이 진행 중인데 결론 카드가 뜨는 셈이다. 발행 직전에 이 값과 대조해 막는다.
+     */
+    private final Map<String, String> latestCallIds = new ConcurrentHashMap<>();
+
     public DemoEarningsCallService(
             TranscriptService transcriptService,
             AiEngineClient aiEngineClient,
             FactCheckPublisher factCheckPublisher,
+            EarningsSummaryService summaryService,
             ObjectMapper objectMapper,
             @Value("${demo.earnings-call.script-path:data/demo-earnings-call.json}") String scriptPath,
             @Value("${demo.earnings-call.interval-ms:6000}") long intervalMs,
@@ -95,6 +121,7 @@ public class DemoEarningsCallService {
         this.transcriptService = transcriptService;
         this.aiEngineClient = aiEngineClient;
         this.factCheckPublisher = factCheckPublisher;
+        this.summaryService = summaryService;
         this.objectMapper = objectMapper;
         this.scriptPath = scriptPath;
         // 음수 간격은 Thread.sleep 에서 IllegalArgumentException 이 되고, 재생이 세그먼트
@@ -146,6 +173,7 @@ public class DemoEarningsCallService {
             return StartResult.alreadyRunning(existing.ticker, existing.callId);
         }
 
+        latestCallIds.put(ticker, callId);
         try {
             created.playbackFuture = created.playback.submit(() -> runPlayback(created, script));
         } catch (RuntimeException e) {
@@ -275,12 +303,59 @@ public class DemoEarningsCallService {
             // 실패가 로그 한 줄로만 남아 시연 중 원인을 찾을 수 없다.
             // AI Engine 타임아웃보다 넉넉히 기다린 뒤 종료한다.
             // 중지 경로는 이미 stop() 이 grace 0 으로 정리했으므로 여기서는 남은 것이 없다.
-            long grace = session.stopRequested.get() ? 0 : aiEngineTimeoutMs + 2_000;
+            // stopRequested 를 한 번만 읽는다. 세 곳에서 따로 읽으면, 마지막 세그먼트가
+            // 나간 직후 중지 버튼이 눌린 순간에 "COMPLETED 로 기록됐는데 종합 판단은
+            // 안 나가는" 상태가 만들어진다. 콜은 다 재생됐는데 결론이 없는 셈이다.
+            boolean stopped = session.stopRequested.get();
+
+            // 종합 판단은 shutdown 보다 <b>먼저</b> 제출한다. 이유가 둘이다.
+            //  (1) 정상 경로의 grace 는 AI Engine 타임아웃 + 2초라 기본 설정에서 52초다.
+            //      뒤에 두면 종합 판단이 그만큼 늦게 시작한다.
+            //  (2) shutdown 안의 playback.shutdownNow() 가 이 스레드를 인터럽트한다.
+            //      인터럽트된 스레드에서 executor 에 제출하는 상태를 만들지 않는다.
+            // 요약 태스크는 다른 스레드에서 돌고 script 는 불변이라 순서를 앞당겨도 안전하다.
+            if (!stopped && session.publishedCount > 0) {
+                submitSummary(session, script);
+            }
+
+            long grace = stopped ? 0 : aiEngineTimeoutMs + 2_000;
             session.shutdown(grace);
-            if (!session.stopRequested.get()) {
+            if (!stopped) {
                 recordLastRun(session, session.publishedCount == 0 ? "NO_SEGMENT_PUBLISHED" : "COMPLETED");
             }
             sessions.remove(session.ticker, session);
+        }
+    }
+
+    /**
+     * 종합 판단 생성을 전용 스레드에 넘긴다. 실패해도 재생 종료 자체는 이미 끝났다.
+     */
+    private void submitSummary(Session session, DemoEarningsCallScript script) {
+        try {
+            // submit 이 아니라 execute 다. submit 은 Throwable 을 아무도 보지 않는 Future 에
+            // 가둬 버려서 Error 계열이 로그 한 줄 없이 사라진다. 팩트체크 제출도 execute 를 쓴다.
+            summaryExecutor.execute(() -> {
+                // 이 태스크가 큐에서 기다리는 동안 같은 종목이 다시 재생을 시작했을 수 있다.
+                // 그대로 발행하면 진행 중인 어닝콜 위에 지난 회차의 결론이 덮인다.
+                String latest = latestCallIds.get(session.ticker);
+                if (latest != null && !latest.equals(session.callId)) {
+                    log.warn("[DemoCall] 지난 회차의 종합 판단을 버립니다 - ticker={} call_id={} 최신={}",
+                            session.ticker, session.callId, latest);
+                    return;
+                }
+                try {
+                    summaryService.summarizeAndPublish(session.ticker, session.callId, script);
+                } catch (Throwable e) {
+                    // Exception 만 잡으면 Error 계열이 스레드를 조용히 죽이고, 다음 회차부터
+                    // 종합 판단이 통째로 사라진다.
+                    log.error("[DemoCall] 종합 판단 실패 - ticker={} call_id={} error={}",
+                            session.ticker, session.callId, e.toString(), e);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // 종료 중. 시연이 끝나는 상황이므로 경고로 충분하다.
+            log.warn("[DemoCall] 종합 판단을 제출하지 못했습니다(종료 중) - ticker={} call_id={} error={}",
+                    session.ticker, session.callId, e.toString());
         }
     }
 
@@ -375,6 +450,28 @@ public class DemoEarningsCallService {
         });
         sessions.clear();
         lastRuns.clear();
+        latestCallIds.clear();
+        shutdownSummaryExecutor();
+    }
+
+    /**
+     * 종합 판단 스레드 회수.
+     *
+     * <p>그냥 shutdownNow 만 하면 "마지막 회차 종합 판단이 안 왔다" 의 원인이 로그에
+     * 아무것도 남지 않는다. 짧게 한 번 기다려 보고, 그래도 남은 것이 있으면 몇 건인지 남긴다.
+     */
+    private void shutdownSummaryExecutor() {
+        summaryExecutor.shutdown();
+        try {
+            if (!summaryExecutor.awaitTermination(1_500, TimeUnit.MILLISECONDS)) {
+                List<Runnable> dropped = summaryExecutor.shutdownNow();
+                log.warn("[DemoCall] 종료 중 종합 판단 {}건을 버렸습니다(진행 중 1건 포함 가능)",
+                        dropped.size());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            summaryExecutor.shutdownNow();
+        }
     }
 
     /** 재생 1회분의 상태와 전용 스레드. */

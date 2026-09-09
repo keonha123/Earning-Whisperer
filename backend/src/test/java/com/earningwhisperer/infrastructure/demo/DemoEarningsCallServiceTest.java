@@ -36,7 +36,10 @@ class DemoEarningsCallServiceTest {
     @AfterEach
     void tearDown() {
         if (service != null) {
-            service.stop("ORCL");
+            // stop() 은 세션 executor 만 정리한다. shutdownAll 을 부르지 않으면 종합 판단
+            // 전용 스레드가 테스트 JVM 에 계속 park 된 채 남고, @PreDestroy 회수 경로가
+            // 한 번도 실행되지 않는다.
+            service.shutdownAll();
         }
     }
 
@@ -44,7 +47,15 @@ class DemoEarningsCallServiceTest {
                                                AiEngineClient client,
                                                FactCheckPublisher publisher,
                                                long intervalMs) {
-        service = new DemoEarningsCallService(transcript, client, publisher,
+        return newService(transcript, client, publisher, noopSummaryService(), intervalMs);
+    }
+
+    private DemoEarningsCallService newService(TranscriptService transcript,
+                                               AiEngineClient client,
+                                               FactCheckPublisher publisher,
+                                               EarningsSummaryService summaryService,
+                                               long intervalMs) {
+        service = new DemoEarningsCallService(transcript, client, publisher, summaryService,
                 new ObjectMapper(), SCRIPT, intervalMs, AI_TIMEOUT_MS);
         return service;
     }
@@ -173,7 +184,8 @@ class DemoEarningsCallServiceTest {
     @Test
     void 스크립트가_없으면_시작하지_않는다() {
         service = new DemoEarningsCallService(new RecordingTranscriptService(), disabledClient(),
-                noopPublisher(), new ObjectMapper(), "data/does-not-exist.json", 1, AI_TIMEOUT_MS);
+                noopPublisher(), noopSummaryService(), new ObjectMapper(),
+                "data/does-not-exist.json", 1, AI_TIMEOUT_MS);
 
         DemoEarningsCallService.StartResult result = service.start("ORCL");
 
@@ -324,7 +336,7 @@ class DemoEarningsCallServiceTest {
 
     @Test
     void text_가_비면_거부된다() {
-        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo",
+        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null,
                 List.of(new DemoEarningsCallScript.Segment(0, 0, 1, "CEO", "   ")));
 
         assertThat(DemoEarningsCallService.validateSegments(script)).contains("text");
@@ -335,7 +347,7 @@ class DemoEarningsCallServiceTest {
         for (int seq : sequences) {
             segments.add(new DemoEarningsCallScript.Segment(seq, 0, 1, "CEO", "sentence " + seq));
         }
-        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", segments);
+        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, segments);
     }
 
     private static int countDemoThreads() {
@@ -361,7 +373,88 @@ class DemoEarningsCallServiceTest {
 
     /** 비활성 클라이언트. 공개 생성자를 쓰되 enabled=false 라 호출이 발생하지 않는다. */
     private static AiEngineClient disabledClient() {
-        return new AiEngineClient("http://localhost:1", false, 100);
+        return new AiEngineClient("http://localhost:1", false, false, 100);
+    }
+
+    @Test
+    void 재생이_정상_종료되면_종합_판단이_한_번_돈다() {
+        RecordingSummaryService summary = new RecordingSummaryService();
+        DemoEarningsCallService svc = newService(new RecordingTranscriptService(), disabledClient(),
+                noopPublisher(), summary, 1);
+
+        DemoEarningsCallService.StartResult result = svc.start("ORCL");
+
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> assertThat(summary.calls).hasSize(1));
+        assertThat(summary.calls.get(0)).isEqualTo("ORCL|" + result.callId());
+    }
+
+    @Test
+    void 중지된_회차는_종합_판단을_만들지_않는다() {
+        // 일부만 재생된 어닝콜로 "콜 전체를 보고 낸 판단" 을 만들면 결론이 왜곡된다.
+        RecordingTranscriptService transcript = new RecordingTranscriptService();
+        RecordingSummaryService summary = new RecordingSummaryService();
+        DemoEarningsCallService svc = newService(transcript, disabledClient(), noopPublisher(), summary, 300);
+
+        svc.start("ORCL");
+        await().atMost(3, TimeUnit.SECONDS).until(() -> !transcript.accepted.isEmpty());
+        assertThat(svc.stop("ORCL")).isTrue();
+
+        await().pollDelay(700, TimeUnit.MILLISECONDS).atMost(3, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(summary.calls).isEmpty());
+    }
+
+    @Test
+    void 세그먼트를_하나도_발행하지_못하면_종합_판단을_만들지_않는다() {
+        // 콜이 재생되지 않았는데 "콜 전체를 보고 낸 판단" 이 나오면 안 된다.
+        RecordingSummaryService summary = new RecordingSummaryService();
+        DemoEarningsCallService svc = newService(new RejectingTranscriptService(), disabledClient(),
+                noopPublisher(), summary, 1);
+
+        svc.start("ORCL");
+
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+                assertThat(svc.lastRun("ORCL")).isPresent());
+        assertThat(summary.calls).isEmpty();
+    }
+
+    @Test
+    void shutdownAll_이_종합_판단_스레드를_회수한다() {
+        DemoEarningsCallService svc = newService(new RecordingTranscriptService(), disabledClient(),
+                noopPublisher(), new RecordingSummaryService(), 1);
+        svc.start("ORCL");
+        await().atMost(5, TimeUnit.SECONDS).until(() -> svc.lastRun("ORCL").isPresent());
+
+        svc.shutdownAll();
+        service = null;
+
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted(() ->
+                assertThat(Thread.getAllStackTraces().keySet())
+                        .noneMatch(thread -> "demo-call-summary".equals(thread.getName())));
+    }
+
+    /** 종합 판단 호출을 기록만 하는 스텁. */
+    private static final class RecordingSummaryService extends EarningsSummaryService {
+        final List<String> calls = new CopyOnWriteArrayList<>();
+
+        RecordingSummaryService() {
+            super(new AiEngineClient("http://localhost:1", false, false, 100), null, null);
+        }
+
+        @Override
+        public boolean summarizeAndPublish(String ticker, String callId, DemoEarningsCallScript script) {
+            calls.add(ticker + "|" + callId);
+            return true;
+        }
+    }
+
+    /**
+     * 종합 판단을 하지 않는 서비스. summary-enabled=false 인 클라이언트를 물려 두면
+     * publisher/가격캐시에는 손도 대지 않으므로 null 로 충분하다. 이 테스트가 검증하는
+     * 것은 재생 경로이지 종합 판단이 아니다.
+     */
+    private EarningsSummaryService noopSummaryService() {
+        return new EarningsSummaryService(new AiEngineClient("http://localhost:1", false, false, 100),
+                null, null);
     }
 
     private static FactCheckPublisher noopPublisher() {
