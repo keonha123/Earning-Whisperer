@@ -145,8 +145,6 @@ class GeminiEmbeddingProvider:
     #: 무료 등급에서 429 없이 통과하는 것을 확인한 상한.
     MAX_BATCH = 20
 
-    #: 배치 사이 간격. 무료 등급 분당 한도를 넘지 않기 위한 것이다.
-    INTER_BATCH_SLEEP_SECONDS = 1.5
 
     MAX_RETRIES = 6
     RETRY_BASE_DELAY_SECONDS = 4.0
@@ -169,13 +167,19 @@ class GeminiEmbeddingProvider:
         vectors: list[list[float]] = []
         for index, start in enumerate(range(0, len(texts), self.MAX_BATCH)):
             if index:
-                # 무료 등급은 분당 요청 수가 낮다. 대량 인입 시 연속 호출하면 429 가 난다.
-                time.sleep(self.INTER_BATCH_SLEEP_SECONDS)
+                # 배치의 각 항목이 요청 1건으로 계산된다. 20건 배치를 1.5초 간격으로
+                # 보내면 분당 800건꼴이라 무료 등급 한도를 크게 넘는다. 목표 RPM 에서
+                # 간격을 역산한다.
+                time.sleep(self._inter_batch_sleep(settings))
             window = list(texts[start : start + self.MAX_BATCH])
             vectors.extend(self._embed_batch_with_retry(window, api_key))
         if len(vectors) != len(texts):
             raise RuntimeError("Gemini embedding response size mismatch")
         return vectors
+
+    def _inter_batch_sleep(self, settings: Any) -> float:
+        rpm = max(1, int(getattr(settings, "gemini_embed_requests_per_minute", 90) or 90))
+        return self.MAX_BATCH / (rpm / 60.0)
 
     def _embed_batch_with_retry(self, texts: list[str], api_key: str) -> list[list[float]]:
         """429 를 지수 백오프로 넘긴다.

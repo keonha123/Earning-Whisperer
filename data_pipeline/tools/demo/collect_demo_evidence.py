@@ -31,6 +31,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import sys
 import time
 from typing import Any
@@ -181,9 +182,46 @@ def _source_counts(articles: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
 
-def ingest(snapshot_path: Path, ai_engine_url: str, batch_size: int) -> None:
+def ingest(
+    snapshot_path: Path,
+    ai_engine_url: str,
+    batch_size: int,
+    relevance_terms: list[str],
+    max_content_chars: int,
+) -> None:
+    """스냅샷을 ai-engine 에 인입한다.
+
+    두 가지를 거른다.
+
+    ``relevance_terms`` — Finnhub 의 종목 뉴스 피드에는 그 종목과 무관한 일반 시장
+    기사가 절반 가까이 섞여 있다. 그대로 넣으면 검색 정밀도가 떨어진다. 실측에서
+    연준 기사가 월마트 발언 검증에 0.72 로 잡혔다. 제목이나 요약에 회사 이름이
+    없는 기사는 빼는 편이 낫다.
+
+    ``max_content_chars`` — 기사 본문 전체를 넣으면 청크가 급증해 무료 등급 임베딩
+    한도에 걸린다. 실적 기사는 수치가 앞부분에 몰려 있으므로 앞을 남긴다.
+    """
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     articles: list[dict[str, Any]] = snapshot["articles"]
+
+    if relevance_terms:
+        pattern = re.compile("|".join(re.escape(term) for term in relevance_terms), re.IGNORECASE)
+        before = len(articles)
+        articles = [
+            a for a in articles
+            if pattern.search(str(a.get("headline") or "")) or pattern.search(str(a.get("summary") or ""))
+        ]
+        logger.info("관련도 필터: %d건 → %d건 (제외 %d건)", before, len(articles), before - len(articles))
+
+    if max_content_chars > 0:
+        truncated = 0
+        for article in articles:
+            content = str(article.get("content") or "")
+            if len(content) > max_content_chars:
+                article["content"] = content[:max_content_chars]
+                truncated += 1
+        logger.info("본문 상한 %d자 적용: %d건 절단", max_content_chars, truncated)
+
     accepted = 0
     with httpx.Client(timeout=300.0) as client:
         for start in range(0, len(articles), batch_size):
@@ -222,6 +260,10 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--snapshot", required=True, type=Path)
     i.add_argument("--ai-engine-url", default=os.getenv("AI_ENGINE_URL", "http://localhost:8000"))
     i.add_argument("--batch-size", type=int, default=20)
+    i.add_argument("--relevance-terms", default="",
+                   help="쉼표 구분. 제목/요약에 이 중 하나가 없는 기사는 제외한다.")
+    i.add_argument("--max-content-chars", type=int, default=2500,
+                   help="기사 본문 상한. 0 이면 자르지 않는다.")
 
     args = parser.parse_args(argv)
     if args.command == "collect":
@@ -229,7 +271,13 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "enrich":
         enrich(args.snapshot, args.delay)
     else:
-        ingest(args.snapshot, args.ai_engine_url, args.batch_size)
+        ingest(
+            args.snapshot,
+            args.ai_engine_url,
+            args.batch_size,
+            [term.strip() for term in args.relevance_terms.split(",") if term.strip()],
+            args.max_content_chars,
+        )
     return 0
 
 
