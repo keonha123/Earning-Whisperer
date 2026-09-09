@@ -7,7 +7,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -84,18 +83,11 @@ public class InternalSecretFilter extends OncePerRequestFilter {
         return MessageDigest.isEqual(expected, actual);
     }
 
-    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        // GlobalExceptionHandler 와 동일한 {"error": "..."} 형식 유지
-        response.getWriter().write("{\"error\":\"" + escape(message) + "\"}");
-    }
-
     /**
-     * 메시지에 따옴표/역슬래시가 포함될 가능성에 대비한 최소 이스케이프.
+     * 시큐리티 단계의 에러 응답은 {@link JsonErrorResponseWriter} 한 곳에서만 만든다.
+     * 이스케이프·charset·Content-Type 처리가 갈라지지 않게 하기 위해서다.
      */
-    private String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        JsonErrorResponseWriter.write(response, HttpStatus.UNAUTHORIZED.value(), message);
     }
 }

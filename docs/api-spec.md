@@ -531,7 +531,9 @@ start 응답 예시:
 1. **인증 방식:** JWT Bearer 토큰. 로그인 응답의 `accessToken`을 모든 인증 필요 요청의 `Authorization: Bearer {token}` 헤더에 포함. WebSocket STOMP 연결 시 CONNECT 프레임의 `Authorization` 헤더로 전달.
 2. **플랜 접근 제어:** 유저 role은 `FREE` / `PRO` 두 가지. `action` (BUY/SELL 신호) 및 Trading Terminal 사용은 PRO 전용. FREE 유저는 `raw_score` 시각화까지만 접근 가능.
 3. **내부 API 인증:** Data Pipeline → 백엔드 내부 전용 엔드포인트(`/api/v1/internal/*`)는 `X-Internal-Secret` 헤더로 공유 시크릿 검증.
-4. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
+4. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
+   - **401 과 403 을 구분합니다.** 인증이 없거나 토큰이 만료·위조된 경우는 **401** 입니다. 권한 부족(**403**)은 핸들러만 마련해 둔 상태입니다 — 현재 모든 엔드포인트 규칙이 `permitAll` 아니면 `authenticated()` 라서 실제로 403 이 나가는 경로는 없습니다. §8.2 의 FREE/PRO 접근 제어를 구현하면 그때 쓰입니다. 클라이언트(터미널·웹 프론트)는 **401 에서만** refresh 토큰으로 갱신하고 원 요청을 재시도합니다. 전에는 Spring Security 기본값(`Http403ForbiddenEntryPoint`) 때문에 만료된 토큰에도 403 이 나갔고, 그래서 양쪽 클라이언트의 갱신 로직이 한 번도 실행되지 않았습니다 — 액세스 토큰 수명(15분)마다 로그인 화면으로 튕겼습니다. `SecurityConfig.exceptionHandling` 이 이 규약을 지킵니다.
+   - 만료와 위조를 응답에서 구분해 알려주지 않습니다. 둘 다 `{"error": "인증이 필요합니다."}` 입니다.
 5. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.
 6. **무상태성 및 단일 진실 공급원:** 백엔드는 KIS API 키를 가지지 않으며, 모든 '최종' 자산 상태는 Trading Terminal이 쏘아주는 Sync 데이터를 '단일 진실 공급원(Single Source of Truth)'으로 취급하여 덮어씁니다.
 7. **Fallback (안전망):** Trading Terminal은 백엔드 웹소켓 연결이 끊기거나 비정상적인 데이터가 수신될 경우, 즉시 매매 모드를 `MANUAL(수동)`로 강제 전환하고 유저에게 OS 네이티브 알림을 띄워야 합니다.
