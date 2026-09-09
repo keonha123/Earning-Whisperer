@@ -8,10 +8,14 @@ import java.util.Map;
  * 클라이언트는 같은 숫자 필드(price)에 대해 지수형/퍼센트형을 구분 표시해야 하므로
  * 백엔드가 심볼별 format 상수를 함께 내려준다.
  *
- * - SPX, NDX, VIX, DXY → "index" (소수점 둘째 자리, 콤마 구분 등 지수형 표기)
- * - 10Y               → "percent" (%로 표시)
+ * 표시 대상은 미국 시장 대표 ETF 5종이다. 원지수(SPX/NDX 등)는 유료 데이터라
+ * 무료 등급으로 받을 수 없다. SPY 를 10배 해서 SPX 라고 표기하는 식의 환산은 하지
+ * 않는다 — 실제 지수값과 다르고, 화면에 지수인 것처럼 뜨면 거짓이 된다.
+ * ETF 심볼을 그대로 노출해 무엇을 보고 있는지 분명히 한다.
  *
- * 5종 외 심볼 수신 시에는 호출자 측에서 미리 드롭하므로 본 enum은 5종만 매핑한다.
+ * - SPY, QQQ, DIA, IWM, VIXY → "index" (소수점 둘째 자리 가격 표기)
+ *
+ * 지원 외 심볼 수신 시에는 호출자 측에서 미리 드롭한다.
  */
 public final class MarketIndexFormat {
 
@@ -19,11 +23,11 @@ public final class MarketIndexFormat {
     public static final String PERCENT = "percent";
 
     private static final Map<String, String> FORMAT_BY_SYMBOL = Map.of(
-            "SPX", INDEX,
-            "NDX", INDEX,
-            "VIX", INDEX,
-            "DXY", INDEX,
-            "10Y", PERCENT
+            "SPY", INDEX,
+            "QQQ", INDEX,
+            "DIA", INDEX,
+            "IWM", INDEX,
+            "VIXY", INDEX
     );
 
     private MarketIndexFormat() {
@@ -32,7 +36,7 @@ public final class MarketIndexFormat {
 
     /**
      * 지원 심볼 여부.
-     * @param symbol 대문자 심볼 (예: "SPX")
+     * @param symbol 대문자 심볼 (예: "SPY")
      */
     public static boolean isSupported(String symbol) {
         return FORMAT_BY_SYMBOL.containsKey(symbol);
