@@ -13,12 +13,15 @@ from collections import Counter
 from dataclasses import dataclass, field
 import hashlib
 import importlib
+import json
 import logging
 import math
 import re
 import threading
 import time
 from typing import Any, Mapping, Protocol, Sequence
+import urllib.error
+import urllib.request
 from uuid import NAMESPACE_URL, uuid5
 
 try:
@@ -123,6 +126,107 @@ class HashEmbeddingProvider:
                 vector[bucket] += 1.0 if digest[4] % 2 == 0 else -1.0
             vectors.append(_normalize_vector(vector))
         return vectors
+
+
+class GeminiEmbeddingProvider:
+    """Gemini embedding wrapper.
+
+    무료 등급 키로 쓸 수 있는 유일한 실제 의미 임베딩이다. OpenAI 키가 없는 환경에서
+    ``hash`` 로 조용히 떨어지면 근거 검색이 단어 겹침 수준으로 퇴화하고, 관련도 임계값
+    (기본 0.42)을 아무것도 넘지 못해 모든 판정이 INSUFFICIENT_EVIDENCE 가 된다.
+    그 실패는 화면에서 "근거가 없는 주장" 과 구별되지 않으므로 여기서 막는다.
+
+    배치 크기를 20 으로 제한하는 이유: 무료 등급에서 100건을 한 번에 보내면 429 가 난다.
+    실측값이다.
+    """
+
+    name = "gemini"
+
+    #: 무료 등급에서 429 없이 통과하는 것을 확인한 상한.
+    MAX_BATCH = 20
+
+    #: 배치 사이 간격. 무료 등급 분당 한도를 넘지 않기 위한 것이다.
+    INTER_BATCH_SLEEP_SECONDS = 1.5
+
+    MAX_RETRIES = 6
+    RETRY_BASE_DELAY_SECONDS = 4.0
+    MAX_RETRY_DELAY_SECONDS = 60.0
+
+    _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+
+    def __init__(self, *, model: str, dimension: int) -> None:
+        self.model = model or "gemini-embedding-001"
+        self.dimension = max(32, int(dimension))
+
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        settings = get_settings()
+        api_key = str(getattr(settings, "gemini_api_key", "") or "")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is required for Gemini embeddings")
+
+        vectors: list[list[float]] = []
+        for index, start in enumerate(range(0, len(texts), self.MAX_BATCH)):
+            if index:
+                # 무료 등급은 분당 요청 수가 낮다. 대량 인입 시 연속 호출하면 429 가 난다.
+                time.sleep(self.INTER_BATCH_SLEEP_SECONDS)
+            window = list(texts[start : start + self.MAX_BATCH])
+            vectors.extend(self._embed_batch_with_retry(window, api_key))
+        if len(vectors) != len(texts):
+            raise RuntimeError("Gemini embedding response size mismatch")
+        return vectors
+
+    def _embed_batch_with_retry(self, texts: list[str], api_key: str) -> list[list[float]]:
+        """429 를 지수 백오프로 넘긴다.
+
+        여기서 예외를 그냥 올리면 뉴스 인입 배치 전체가 500 으로 실패하고, 어디까지
+        들어갔는지 알 수 없는 상태가 된다. 한도는 기다리면 풀리는 문제이므로 기다린다.
+        """
+        delay = self.RETRY_BASE_DELAY_SECONDS
+        last_error: Exception | None = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                return self._embed_batch(texts, api_key)
+            except urllib.error.HTTPError as exc:  # noqa: PERF203
+                if exc.code not in (429, 500, 503):
+                    raise
+                last_error = exc
+                logger.warning(
+                    "Gemini 임베딩 %s — %.1f초 후 재시도 (%d/%d)",
+                    exc.code, delay, attempt + 1, self.MAX_RETRIES,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, self.MAX_RETRY_DELAY_SECONDS)
+        raise RuntimeError(f"Gemini embedding failed after {self.MAX_RETRIES} retries") from last_error
+
+    def _embed_batch(self, texts: list[str], api_key: str) -> list[list[float]]:
+        payload = {
+            "requests": [
+                {
+                    "model": f"models/{self.model}",
+                    "content": {"parts": [{"text": text or " "}]},
+                    "outputDimensionality": self.dimension,
+                }
+                for text in texts
+            ]
+        }
+        request = urllib.request.Request(
+            self._ENDPOINT.format(model=self.model),
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            body = json.loads(response.read())
+        embeddings = body.get("embeddings") or []
+        if len(embeddings) != len(texts):
+            raise RuntimeError("Gemini embedding batch size mismatch")
+        # 차원 축소 임베딩은 정규화되어 오지 않는다. 코사인 유사도를 쓰는 저장소에
+        # 그대로 넣으면 관련도 점수가 문서 길이에 흔들린다.
+        return [
+            _normalize_vector(_truncate_or_pad(_coerce_embedding_vector(item.get("values")), self.dimension))
+            for item in embeddings
+        ]
 
 
 class OpenAIEmbeddingProvider:
@@ -232,6 +336,17 @@ class BaseExternalRetriever:
             self._stats.last_error = str(error)
 
 
+    def count_documents(self, *, ticker: str, since_epoch: int | None = None) -> int:
+        """해당 종목의 근거 문서 수. 임베딩 호출 없이 세기만 한다.
+
+        시연 직전에 "근거 저장소가 비어 있는지" 를 확인하는 용도다. 이게 없으면
+        근거가 하나도 없는 상태로 어닝콜을 재생해도 화면에는 그냥 "근거 부족" 만
+        줄줄이 뜨고, 그것이 <b>정말 근거가 없는 주장</b>인지 <b>저장소가 빈 것</b>인지
+        구별할 방법이 없다.
+        """
+        raise NotImplementedError
+
+
 class InMemoryExternalRetriever(BaseExternalRetriever):
     """BM25-like in-memory retriever with the same facade API as Qdrant."""
 
@@ -315,6 +430,16 @@ class InMemoryExternalRetriever(BaseExternalRetriever):
             self._record_retrieval(latency_ms=(time.monotonic() - start) * 1000, hit_count=len(scored), error=error)
 
 
+    def count_documents(self, *, ticker: str, since_epoch: int | None = None) -> int:
+        normalized = str(ticker or "").upper()
+        return sum(
+            1
+            for doc in self._documents.values()
+            if doc.ticker.upper() == normalized
+            and (since_epoch is None or not doc.published_at or doc.published_at >= since_epoch)
+        )
+
+
 class QdrantExternalRetriever(BaseExternalRetriever):
     """Qdrant-backed external evidence retriever."""
 
@@ -395,6 +520,18 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         ]
         self.client.upsert(collection_name=self.collection_name, points=points)
         self._record_upsert(len(points))
+
+    def count_documents(self, *, ticker: str, since_epoch: int | None = None) -> int:
+        filters = [self._match_filter("ticker", str(ticker or "").upper())]
+        if since_epoch is not None:
+            filters.append(self._range_filter("published_at", gte=int(since_epoch)))
+        result = self.client.count(
+            collection_name=self.collection_name,
+            count_filter=self._filter(filters),
+            exact=True,
+        )
+        return int(getattr(result, "count", 0) or 0)
+
 
     def clear(self) -> None:
         self.client.delete(
@@ -633,6 +770,9 @@ class ExternalRetrieverFacade:
     def delete_expired_documents(self, *, now: int | None = None) -> dict[str, object]:
         return self._get_backend().delete_expired_documents(now=now)
 
+    def count_documents(self, *, ticker: str, since_epoch: int | None = None) -> int:
+        return self._get_backend().count_documents(ticker=ticker, since_epoch=since_epoch)
+
     def retrieve(
         self,
         *,
@@ -734,6 +874,12 @@ def _build_embedding_provider(*, provider: str | None = None, model: str | None 
     effective_dimension = int(dimension or settings.embedding_dimension)
     if effective_provider == "openai":
         return OpenAIEmbeddingProvider(model=effective_model, dimension=effective_dimension)
+    if effective_provider == "gemini":
+        return GeminiEmbeddingProvider(model=effective_model, dimension=effective_dimension)
+    if effective_provider not in {"", "hash"}:
+        # 오타로 알 수 없는 값이 들어오면 해시로 떨어뜨리지 않는다. 그렇게 되면
+        # 의미 검색이 죽은 채로 조용히 돌아간다.
+        raise ValueError(f"Unknown EMBEDDING_PROVIDER: {effective_provider}")
     return HashEmbeddingProvider(dimension=effective_dimension)
 
 

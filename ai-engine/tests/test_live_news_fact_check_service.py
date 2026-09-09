@@ -49,6 +49,11 @@ class FakeLlmClient:
 def _settings() -> Settings:
     return Settings(
         VECTOR_STORE_BACKEND="memory",
+        # 관련도 임계값을 명시한다. 비워 두면 .env 의 운영 튜닝값을 읽어서,
+        # 임베딩 모델을 바꿀 때마다 게이트 로직 테스트가 같이 깨진다.
+        # 이 테스트가 검증하는 것은 배포 튜닝이 아니라 게이트 분기다.
+        FACT_CHECK_STRONG_RELEVANCE_SCORE=0.42,
+        FACT_CHECK_MODERATE_RELEVANCE_SCORE=0.34,
         FACT_CHECK_RETRIEVAL_TIMEOUT_SECONDS=2.0,
         FACT_CHECK_LLM_TIMEOUT_SECONDS=2.0,
         FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS=2.0,
