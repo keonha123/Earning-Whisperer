@@ -339,15 +339,29 @@ export default function EarningsSummaryPanel({ summary }: Props) {
               <span className="num text-[10px] font-semibold text-text-primary w-11 shrink-0">
                 {link.ticker}
               </span>
-              <div className="flex-1 h-[3px] rounded-full bg-surface-2">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${(link.impactScore ?? 0) * 100}%`,
-                    // 모르는 방향을 초록으로 칠하면 없는 호재 판단을 만들어내는 셈이다.
-                    background: link.direction ? IMPACT_COLORS[link.direction] : '#64748b',
-                  }}
-                />
+              <div
+                className="flex-1 h-[3px] rounded-full bg-surface-2"
+                // 점수가 없다는 건 "영향 0" 이 아니라 "잴 근거가 없었다" 는 뜻이다.
+                // 빈 막대로 두면 0% 와 구별되지 않으므로 빗금 트랙으로 표시한다.
+                style={
+                  link.impactScore === null
+                    ? {
+                        backgroundImage:
+                          'repeating-linear-gradient(45deg, #334155 0 3px, transparent 3px 6px)',
+                      }
+                    : undefined
+                }
+              >
+                {link.impactScore !== null && (
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${link.impactScore * 100}%`,
+                      // 모르는 방향을 초록으로 칠하면 없는 호재 판단을 만들어내는 셈이다.
+                      background: link.direction ? IMPACT_COLORS[link.direction] : '#64748b',
+                    }}
+                  />
+                )}
               </div>
               <span className="num text-[9.5px] text-text-tertiary w-8 text-right">
                 {pct(link.impactScore)}

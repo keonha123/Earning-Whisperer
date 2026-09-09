@@ -220,6 +220,12 @@ export const IPC_CHANNELS = {
   DEMO_EARNINGS_STOP: 'terminal:demo:earnings-stop',
 
   /**
+   * 콜 참가자 명부 조회 (Renderer → Main, invoke).
+   * 응답: SpeakerProfile[] — 명부가 없으면 빈 배열.
+   */
+  DEMO_EARNINGS_SPEAKERS: 'terminal:demo:earnings-speakers',
+
+  /**
    * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
    * S&P 500 전체 종목 대상. main process 에서 그룹핑 후 EarningsTimelineData 반환.
    * 응답: EarningsTimelineData { live, groups }

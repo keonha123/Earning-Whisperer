@@ -223,16 +223,31 @@ export default function DashboardPage() {
 
   const [assetRange, setAssetRange] = useState<7 | 30 | 90>(30)
   const [assetChartPoints, setAssetChartPoints] = useState<{ date: string; price: number }[]>([])
+  // 빈 배열은 "아직 안 왔다" 와 "스냅샷이 하나도 없다" 두 가지를 모두 뜻해서,
+  // 상태를 따로 들지 않으면 화면이 영원히 "동기화 중…" 에 머문다.
+  const [assetChartStatus, setAssetChartStatus] =
+    useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
+    let cancelled = false
+    setAssetChartStatus('loading')
     ipc
       .invoke<{ date: string; totalAssetUsd: number }[]>(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, {
         days: assetRange,
       })
-      .then((points) =>
-        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd }))),
-      )
-      .catch(() => setAssetChartPoints([]))
+      .then((points) => {
+        if (cancelled) return
+        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd })))
+        setAssetChartStatus('ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAssetChartPoints([])
+        setAssetChartStatus('error')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [assetRange])
 
   return (
@@ -310,7 +325,12 @@ export default function DashboardPage() {
           />
         </section>
 
-        <AssetChartCard points={assetChartPoints} range={assetRange} onRangeChange={setAssetRange} />
+        <AssetChartCard
+          points={assetChartPoints}
+          status={assetChartStatus}
+          range={assetRange}
+          onRangeChange={setAssetRange}
+        />
       </div>
 
       {/* Row 3: Holdings + Earnings timeline */}
@@ -356,17 +376,26 @@ const ASSET_RANGES = [
 
 function AssetChartCard({
   points,
+  status,
   range,
   onRangeChange,
 }: {
   points: { date: string; price: number }[]
+  status: 'loading' | 'ready' | 'error'
   range: 7 | 30 | 90
   onRangeChange: (r: 7 | 30 | 90) => void
 }) {
   if (points.length === 0) {
+    // 스냅샷은 계좌 동기화 때마다 하루 한 건씩 쌓인다. 신규 계좌는 당분간 비어 있는 게 정상.
+    const message =
+      status === 'loading'
+        ? '자산 추이 동기화 중…'
+        : status === 'error'
+          ? '자산 추이를 불러오지 못했습니다.'
+          : `최근 ${range}일간 기록된 자산 스냅샷이 없습니다.`
     return (
       <section className="rounded-lg bg-surface-1 border border-border-subtle flex items-center justify-center text-[11px] text-text-disabled">
-        자산 추이 동기화 중…
+        {message}
       </section>
     )
   }
@@ -442,8 +471,10 @@ function AssetChartCard({
       <div className="relative flex-1 px-2.5 pb-2 min-h-0">
         <div className="absolute left-0.5 top-1 bottom-4 w-11 flex flex-col justify-between
                         num text-[9px] text-text-tertiary text-right pr-1">
-          {pickYTicks(prices).map((y) => (
-            <span key={y}>${y.toLocaleString()}</span>
+          {/* 자산 추이가 평탄하면 4개 tick 이 같은 값으로 반올림돼 key 가 충돌한다.
+              값이 아니라 위치(index)가 이 라벨들의 정체성이므로 index 를 key 에 섞는다. */}
+          {pickYTicks(prices).map((y, i) => (
+            <span key={`${y}-${i}`}>${y.toLocaleString()}</span>
           ))}
         </div>
         {/* Y축 라벨 영역(w-11=44px) + 8px 갭 = 52px. tailwind 기본 spacing 에 13(52px) 이
@@ -459,8 +490,8 @@ function AssetChartCard({
         </div>
         <div className="absolute left-[52px] right-2.5 bottom-1 flex justify-between
                         num text-[9px] text-text-tertiary">
-          {pickXLabels(points).map((d) => (
-            <span key={d}>{d}</span>
+          {pickXLabels(points).map((d, i) => (
+            <span key={`${d}-${i}`}>{d}</span>
           ))}
         </div>
       </div>

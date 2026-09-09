@@ -507,8 +507,8 @@ function ChartBlock({
           className="absolute left-0 top-0 bottom-3.5 w-10 flex flex-col justify-between
                      num text-[9px] text-text-tertiary text-right pr-1"
         >
-          {pickYTicks(prices).map((y) => (
-            <span key={y}>${y.toFixed(0)}</span>
+          {pickYTicks(prices).map((y, i) => (
+            <span key={`${y}-${i}`}>${y.toFixed(0)}</span>
           ))}
         </div>
         <div className="absolute left-11 right-0.5 top-0 bottom-3.5">

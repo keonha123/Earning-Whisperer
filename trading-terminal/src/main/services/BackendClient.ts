@@ -86,6 +86,15 @@ export interface WatchlistItem {
 // StockDetailResponsePayload 는 src/lib/types/stockDetail.ts 단일 정의 — 위에서 re-export.
 
 /** 시연 재생 시작 결과. 409(이미 재생 중)를 예외가 아니라 값으로 전달한다. */
+/** 콜 참가자 명부 1건. renderer 의 SpeakerProfile 과 동일 shape. */
+export interface SpeakerProfilePayload {
+  matchKey: string
+  name: string
+  title: string
+  affiliation: string
+  kind: 'MANAGEMENT' | 'ANALYST'
+}
+
 export type DemoStartResult =
   | {
       ok: true
@@ -175,6 +184,40 @@ export const BackendClient = {
         (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
         '시연을 시작하지 못했습니다.'
       return { ok: false, reason: status === 409 ? 'ALREADY_RUNNING' : 'FAILED', message }
+    }
+  },
+
+  /**
+   * 콜 참가자 명부 조회.
+   * 백엔드는 사실 항목만 (이름/직책/소속/애널리스트 여부) 돌려준다. 실패하면 빈 배열 —
+   * 명부는 부가 정보라서, 못 가져왔다고 트레이딩 룸 진입을 막을 이유가 없다.
+   */
+  async getEarningsSpeakers(): Promise<SpeakerProfilePayload[]> {
+    try {
+      const { data } = await http.get('/api/v1/demo/earnings-call/speakers')
+      if (!Array.isArray(data)) return []
+      const seen = new Set<string>()
+      return data.flatMap((raw) => {
+        const name = typeof raw?.name === 'string' ? raw.name.trim() : ''
+        if (!name) return []
+        // match_key 는 세그먼트 speaker 문자열과 정확히 같은 값이다. 백엔드가 채워 주므로
+        // 클라이언트가 "이름이 라벨에 들어 있나" 를 추측할 필요가 없다 — 그 추측은
+        // 동명이인이나 중간 이니셜에서 조용히 틀린다.
+        const rawKey = typeof raw?.match_key === 'string' ? raw.match_key.trim() : ''
+        const matchKey = (rawKey || name).toLowerCase()
+        // 같은 키가 두 번 오면 발언량이 한쪽으로 덮이고 탭의 React key 도 충돌한다.
+        if (seen.has(matchKey)) return []
+        seen.add(matchKey)
+        return [{
+          matchKey,
+          name,
+          title: typeof raw?.title === 'string' ? raw.title : '',
+          affiliation: typeof raw?.affiliation === 'string' ? raw.affiliation : '',
+          kind: raw?.analyst === true ? ('ANALYST' as const) : ('MANAGEMENT' as const),
+        }]
+      })
+    } catch {
+      return []
     }
   },
 

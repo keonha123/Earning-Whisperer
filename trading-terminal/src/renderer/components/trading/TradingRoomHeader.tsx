@@ -19,6 +19,13 @@ interface TradingRoomHeaderProps {
   onStartDemo?: () => void
   /** 시연 시작 요청이 진행 중인지. true 면 버튼을 잠근다. */
   demoStarting?: boolean
+  /**
+   * 발화자 프로필 열기 콜백. 명부를 못 가져왔으면 호출처가 넘기지 않고,
+   * 그때는 버튼이 렌더되지 않는다 — 눌러도 빈 모달이 뜨는 것보다 낫다.
+   */
+  onSpeakerProfile?: () => void
+  /** 명부 인원 수. 버튼에 같이 표시해 무엇이 들어 있는지 미리 알린다. */
+  speakerCount?: number
 }
 
 /**
@@ -49,6 +56,8 @@ export default function TradingRoomHeader({
   onExit,
   onStartDemo,
   demoStarting = false,
+  onSpeakerProfile,
+  speakerCount = 0,
 }: TradingRoomHeaderProps) {
   const openDrawer = useDrawerStore((s) => s.open)
 
@@ -112,6 +121,26 @@ export default function TradingRoomHeader({
                 <path d="M3 2.2l6.5 3.8L3 9.8z" strokeLinejoin="round" />
               </svg>
               {demoStarting ? '시작하는 중…' : '시연 시작'}
+            </button>
+          )}
+
+          {onSpeakerProfile && (
+            <button
+              type="button"
+              onClick={onSpeakerProfile}
+              className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded
+                         bg-surface-2 border border-border-subtle text-text-secondary text-[11px] font-medium
+                         hover:bg-surface-3 hover:text-text-primary hover:border-border-strong
+                         focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent-500
+                         transition-colors duration-100"
+              title="콜 참가자 명부와 발언 집계"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <circle cx="6" cy="4.2" r="2.2" />
+                <path d="M2 10.2c0-2 1.8-3.2 4-3.2s4 1.2 4 3.2" strokeLinecap="round" />
+              </svg>
+              발화자
+              {speakerCount > 0 && <span className="num text-text-tertiary">{speakerCount}</span>}
             </button>
           )}
 

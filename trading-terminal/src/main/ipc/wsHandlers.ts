@@ -2,7 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import { app, dialog } from 'electron'
 import { StompService } from '../services/StompService'
-import { BackendClient, type DemoStartResult } from '../services/BackendClient'
+import {
+  BackendClient,
+  type DemoStartResult,
+  type SpeakerProfilePayload,
+} from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { SubscriptionManager } from '../services/SubscriptionManager'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
@@ -131,6 +135,11 @@ export function registerWsHandlers() {
       }
       return BackendClient.startEarningsDemo(payload.ticker)
     },
+  )
+
+  registerHandler<void, SpeakerProfilePayload[]>(
+    IPC_CHANNELS.DEMO_EARNINGS_SPEAKERS,
+    async () => BackendClient.getEarningsSpeakers(),
   )
 
   registerHandler<{ ticker: string }, boolean>(

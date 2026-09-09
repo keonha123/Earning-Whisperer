@@ -11,6 +11,11 @@ interface STTScriptPanelProps {
   wpm?: number
   /** "최신 라인으로 점프" 콜백 (선택). 미제공 시 내부에서만 처리. */
   onJumpLatest?: () => void
+  /**
+   * 화자 라벨 클릭 콜백 (선택). 주면 라벨이 버튼이 되어 발화자 프로필을 연다.
+   * 명부를 못 가져왔을 때는 호출 측이 넘기지 않아서 라벨이 그냥 텍스트로 남는다.
+   */
+  onSpeakerClick?: (speaker: string) => void
 }
 
 /**
@@ -37,6 +42,7 @@ export default function STTScriptPanel({
   isLive,
   wpm,
   onJumpLatest,
+  onSpeakerClick,
 }: STTScriptPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isStickyBottom, setIsStickyBottom] = useState(true)
@@ -148,7 +154,25 @@ export default function STTScriptPanel({
                   />
                 )}
                 <div className="num text-[10px] text-text-tertiary">
-                  [{line.timestamp}] · {line.speaker}
+                  [{line.timestamp}] ·{' '}
+                  {onSpeakerClick && line.speaker ? (
+                    <button
+                      type="button"
+                      onClick={() => onSpeakerClick(line.speaker)}
+                      className="underline decoration-dotted underline-offset-2
+                                 hover:text-text-primary transition-colors duration-100
+                                 focus-visible:outline focus-visible:outline-1
+                                 focus-visible:outline-accent-500"
+                      // title 은 보조기기에서 신뢰할 수 없다. 이름만 읽히면 무슨 동작인지
+                      // 알 수 없으므로 접근 이름에 동작을 붙인다.
+                      aria-label={`${line.speaker} 발화자 프로필 열기`}
+                      title="발화자 프로필 열기"
+                    >
+                      {line.speaker}
+                    </button>
+                  ) : (
+                    line.speaker
+                  )}
                   {line.ai_score != null && (
                     <span
                       className={

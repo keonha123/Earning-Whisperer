@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useTradingStore, type SignalFeedItem } from "../store/useTradingStore";
 import { useUserStore } from "../store/useUserStore";
@@ -7,6 +7,7 @@ import { ipc, IPC_CHANNELS } from "../lib/ipc";
 import ModeSelector from "../components/common/ModeSelector";
 import SignalFeed from "../components/trading/SignalFeed";
 import STTScriptPanel from "../components/trading/STTScriptPanel";
+import SpeakerProfileModal from "../components/trading/SpeakerProfileModal";
 import OrderBar, {
   type OrderBarSubmitPayload,
 } from "../components/trading/OrderBar";
@@ -17,6 +18,9 @@ import { showIpcErrorToast } from "../components/common/Toast";
 import type { TranscriptLine } from "../types/transcript";
 import type { PricePoint } from "../types/priceSeries";
 import { useLiveTranscript } from "../hooks/useLiveTranscript";
+import { useSpeakerProfiles } from "../hooks/useSpeakerProfiles";
+import { computeSpeakerStats, findProfileByLabel } from "../lib/speakerStats";
+import type { SpeakerCallStats } from "../types/speakerProfile";
 import { usePrices } from "../hooks/usePrices";
 import { useCompanyDetail } from "../hooks/useCompanyDetail";
 import { useFactCheck } from "../hooks/useFactCheck";
@@ -95,11 +99,46 @@ export default function TradingRoomPage() {
 
   const transcript: readonly TranscriptLine[] = liveTranscript;
 
+  // ── 발화자 프로필 ───────────────────────────────────────────────────────────
+  // 명부는 사실 정보(이름/직책/소속)만 백엔드에서 오고, 발언량과 팩트체크 귀속은
+  // 이 화면이 이미 받아 둔 세그먼트/판정으로 계산한다.
+  const speakerProfiles = useSpeakerProfiles(ticker);
+  const [speakerModalOpen, setSpeakerModalOpen] = useState(false);
+  const [speakerModalKey, setSpeakerModalKey] = useState<string | null>(null);
+
+  // 헤더 버튼 — 명부 전체를 연다. 열 사람을 따로 지정하지 않고, 모달이 "발언 중인 사람
+  // → 없으면 첫 사람" 순서로 고른다.
+  const openSpeakerRoster = useCallback(() => {
+    setSpeakerModalKey(null);
+    setSpeakerModalOpen(true);
+  }, []);
+
+  const openSpeakerProfile = useCallback(
+    (label: string) => {
+      const found = findProfileByLabel(speakerProfiles, label);
+      // 명부에 없는 이름이면 첫 번째 사람을 열어 준다 — 모달은 명부 전체를 보여주므로
+      // 빈 화면 대신 목록에서 직접 찾을 수 있다.
+      setSpeakerModalKey(found?.matchKey ?? speakerProfiles[0]?.matchKey ?? null);
+      setSpeakerModalOpen(true);
+    },
+    [speakerProfiles],
+  );
+
   // 활성 callId — 가장 최근 segment 의 callId. 없으면 null.
   const activeCallId =
     liveSegments.length > 0
       ? liveSegments[liveSegments.length - 1].callId
       : null;
+
+  // 발화자 집계는 모달이 열려 있을 때만 계산한다. 세그먼트가 도착할 때마다 새 배열이
+  // 만들어지므로, 닫힌 상태에서도 돌면 회차 내내 헛일을 반복한다.
+  const speakerStats = useMemo(
+    () =>
+      speakerModalOpen
+        ? computeSpeakerStats(speakerProfiles, liveSegments, factCheckClaims, activeCallId)
+        : new Map<string, SpeakerCallStats>(),
+    [speakerModalOpen, speakerProfiles, liveSegments, factCheckClaims, activeCallId],
+  );
 
   // LIVE 판정 (Contract 4.5 반영):
   //  - 활성 트랜스크립트 세션이 있고 (activeCallId 존재),
@@ -110,6 +149,14 @@ export default function TradingRoomPage() {
     activeCallId != null
       ? !endedCallIds.has(activeCallId)
       : signalForTicker != null;
+
+  // 지금 발언 중인 사람 — 마지막 세그먼트의 화자. 콜이 끝났으면 아무도 발언 중이 아니다.
+  const currentSpeakerKey = useMemo(() => {
+    if (!isLive || liveSegments.length === 0) return null;
+    const last = liveSegments[liveSegments.length - 1];
+    return findProfileByLabel(speakerProfiles, last.speaker)?.matchKey ?? null;
+  }, [isLive, speakerProfiles, liveSegments]);
+
   // 회사명은 종목 상세(STOCK_GET_DETAIL)에서 온다 — CompanyDrawer 와 같은 소스.
   const companyName = companyDetail?.companyName ?? null;
   // 현재가/변동률: 실시간 시세(PRICES_UPDATE) 우선, 없으면 DEV fixture 폴백.
@@ -278,6 +325,10 @@ export default function TradingRoomPage() {
           onExit={handleExit}
           onStartDemo={handleStartDemo}
           demoStarting={demoStarting}
+          onSpeakerProfile={
+            speakerProfiles.length > 0 ? openSpeakerRoster : undefined
+          }
+          speakerCount={speakerProfiles.length}
         />
         <div className="w-72 shrink-0">
           <ModeSelector
@@ -299,6 +350,9 @@ export default function TradingRoomPage() {
           transcript={transcript}
           isLive={isLive && transcript.length > 0}
           wpm={undefined}
+          onSpeakerClick={
+            speakerProfiles.length > 0 ? openSpeakerProfile : undefined
+          }
         />
 
         {/* MIDDLE 40% — 가격 차트 (상) + AI 점수 차트 (하) */}
@@ -444,6 +498,16 @@ export default function TradingRoomPage() {
         mode={mode}
         onSubmit={handleOrderSubmit}
         isLoading={isOrderLoading}
+      />
+
+      <SpeakerProfileModal
+        open={speakerModalOpen}
+        onClose={() => setSpeakerModalOpen(false)}
+        profiles={speakerProfiles}
+        stats={speakerStats}
+        initialSpeakerKey={speakerModalKey ?? currentSpeakerKey}
+        activeSpeakerKey={currentSpeakerKey}
+        isLive={isLive}
       />
     </div>
   );
