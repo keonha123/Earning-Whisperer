@@ -449,6 +449,10 @@ class QdrantExternalRetriever(BaseExternalRetriever):
 
     backend_name = "qdrant"
 
+    #: 종목별 문서 수 캐시 수명. 한 번의 어닝콜 검증에서 문장마다 카운트를 다시 묻지
+    #: 않으려는 목적이고, 적재 직후에도 곧 반영되도록 짧게 잡는다.
+    _COUNT_CACHE_TTL_SECONDS = 30.0
+
     def __init__(
         self,
         *,
@@ -465,6 +469,7 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         self.embedding_provider = embedding_provider or _build_embedding_provider(provider=provider, model=model, dimension=dimension)
         self.embedding_version = embedding_version or version
         self.client = client or self._build_client(url=settings.qdrant_url, path=settings.qdrant_path)
+        self._count_cache: dict[str, tuple[int, float]] = {}
         self._ensure_collection()
 
     @staticmethod
@@ -495,6 +500,8 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         )
 
     def upsert_documents(self, documents: Sequence[ExternalDocument]) -> None:
+        # 방금 넣은 문서를 캐시 수명 동안 못 보는 일이 없게 즉시 버린다.
+        self._count_cache.clear()
         chunks: list[ExternalDocument] = []
         for document in documents:
             chunks.extend(_chunk_document(document))
@@ -525,6 +532,26 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         self.client.upsert(collection_name=self.collection_name, points=points)
         self._record_upsert(len(points))
 
+    def _ticker_document_count(self, ticker: str) -> int:
+        """종목별 적재 문서 수. 한 번의 검증에서 문장마다 반복 호출되므로 짧게 캐시한다.
+
+        캐시 수명이 짧아서 적재 직후에도 곧 반영된다. 정확한 수치가 필요한 곳
+        (readiness 엔드포인트) 은 캐시를 타지 않는 ``count_documents`` 를 그대로 쓴다.
+        """
+        normalized = str(ticker or "").upper()
+        now = time.monotonic()
+        cached = self._count_cache.get(normalized)
+        if cached is not None and now - cached[1] < self._COUNT_CACHE_TTL_SECONDS:
+            return cached[0]
+        try:
+            count = self.count_documents(ticker=normalized)
+        except Exception as exc:
+            # 카운트에 실패했다고 검색을 막지는 않는다 — 원래 경로로 흘려보낸다.
+            logger.warning("문서 수 조회 실패 — 검색을 그대로 진행한다: %s", exc)
+            return 1
+        self._count_cache[normalized] = (count, now)
+        return count
+
     def count_documents(self, *, ticker: str, since_epoch: int | None = None) -> int:
         filters = [self._match_filter("ticker", str(ticker or "").upper())]
         if since_epoch is not None:
@@ -538,6 +565,7 @@ class QdrantExternalRetriever(BaseExternalRetriever):
 
 
     def clear(self) -> None:
+        self._count_cache.clear()
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=self._filter_selector([self._match_filter("store", "external")]),
@@ -575,6 +603,12 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         try:
             settings = get_settings()
             if not query.strip() or not ticker.strip():
+                return []
+            # 그 종목의 문서가 하나도 없으면 검색할 대상이 없다. 그런데도 질의를 임베딩하면
+            # 무료 등급 하루 한도를 헛되이 깎고, 한도가 이미 소진된 상태에서는 429 재시도가
+            # 수 분씩 걸려 호출 측(백엔드 종합 판단)이 통째로 타임아웃된다. 근거가 없다는
+            # 사실은 임베딩 없이도 알 수 있으므로 여기서 끝낸다.
+            if self._ticker_document_count(ticker) == 0:
                 return []
             query_vector = self.embedding_provider.embed_texts([query])[0]
             results = self._retrieve_with_vector(

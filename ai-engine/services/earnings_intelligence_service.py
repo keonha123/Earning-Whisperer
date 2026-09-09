@@ -177,22 +177,49 @@ class EarningsIntelligenceService:
         direction = _direction_score(event_text)
         impact_direction = ImpactDirection.POSITIVE if direction > 0 else ImpactDirection.NEGATIVE if direction < 0 else ImpactDirection.NEUTRAL
         related = _related_tickers(ticker, explicit_related)
-        evidence_payload = [_to_payload(item) for item in retrieved[:2]]
         nodes: list[ImpactNode] = []
         for rel, relationship in related[:10]:
-            base = 0.42
-            if any(term in relationship.lower() for term in ("supplier", "supply", "foundry", "memory")):
-                base += 0.12
-            if any(term in event_text.lower() for term in ("demand", "capex", "ai", "supply", "margin")):
-                base += 0.14
+            # 이 종목이 이번 콜의 근거 문서에 실제로 같이 등장하는 문서만 추린다.
+            # 예전에는 관계 문자열과 이벤트 문구만 보고 점수를 만들어서, 어떤 종목을
+            # 넣어도 값이 같았다 (전부 0.56). 그건 측정이 아니라 상수였다.
+            mentions = [item for item in retrieved if _mentions_ticker(item, rel)]
+            evidence_payload = [_to_payload(item) for item in mentions[:2]]
+            if not retrieved:
+                # 근거 코퍼스 자체가 비었으면 셀 것이 없다. 0.0 으로 내리면 "영향 없음"
+                # 으로 읽히므로 미측정(None)으로 남긴다 — 화면이 빗금 처리로 구분한다.
+                nodes.append(
+                    ImpactNode(
+                        ticker=rel,
+                        relationship=relationship,
+                        direction=impact_direction,
+                        impact_score=None,
+                        confidence=0.0,
+                        rationale_ko=f"근거 문서가 없어 {rel} 와의 연쇄 영향을 측정하지 못했습니다.",
+                        evidence=[],
+                    )
+                )
+                continue
+
+            share = len(mentions) / len(retrieved)
+            if mentions:
+                rationale = (
+                    f"이번 콜 근거 문서 {len(retrieved)}건 중 {len(mentions)}건이 {rel} 를 함께 "
+                    f"언급합니다 ({relationship})."
+                )
+            else:
+                rationale = (
+                    f"이번 콜 근거 문서 {len(retrieved)}건에서 {rel} 언급이 확인되지 않았습니다 "
+                    f"({relationship} 관계로만 후보에 올랐습니다)."
+                )
             nodes.append(
                 ImpactNode(
                     ticker=rel,
                     relationship=relationship,
                     direction=impact_direction,
-                    impact_score=round(min(0.92, base), 4),
-                    confidence=round(0.45 + min(0.35, len(evidence_payload) * 0.08), 4),
-                    rationale_ko=f"{ticker} 이벤트가 {relationship} 관계를 통해 {rel}에 연쇄 영향을 줄 수 있습니다.",
+                    impact_score=round(share, 4),
+                    # 표본이 클수록 이 비율을 믿을 만하다. 20건을 상한으로 본다.
+                    confidence=round(min(1.0, len(retrieved) / 20.0), 4),
+                    rationale_ko=rationale,
                     evidence=evidence_payload,
                 )
             )
@@ -316,6 +343,27 @@ def _risk_plan(*, direction_hint: str | None, confidence: float | None, market_d
         sizing_note_ko="모순/회피 리스크가 높으면 1/2 이하 포지션으로 축소합니다." if contradiction >= 0.5 or evasion >= 0.55 else "표준 리스크 한도 내 분할 진입을 우선합니다.",
         assumptions=["ATR 기반 일봉 근사", "실제 주문 전 스프레드/유동성 재확인 필요"],
     )
+
+
+def _mentions_ticker(document: ExternalRetrievedDocument, rel: str) -> bool:
+    """근거 문서가 이 종목을 실제로 언급하는지 본다.
+
+    티커는 짧아서 부분 문자열로 세면 오탐이 심하다 ("SPY" 가 "SPYING" 에 걸리는 식).
+    앞뒤가 영숫자가 아닌 경우만 언급으로 친다.
+    """
+    haystack = f"{document.title} {document.text}".upper()
+    needle = rel.upper()
+    start = 0
+    while True:
+        idx = haystack.find(needle, start)
+        if idx < 0:
+            return False
+        before = haystack[idx - 1] if idx > 0 else " "
+        after_idx = idx + len(needle)
+        after = haystack[after_idx] if after_idx < len(haystack) else " "
+        if not before.isalnum() and not after.isalnum():
+            return True
+        start = idx + 1
 
 
 def _related_tickers(ticker: str, explicit: list[str]) -> list[tuple[str, str]]:
