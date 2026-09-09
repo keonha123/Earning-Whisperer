@@ -87,7 +87,18 @@ export interface WatchlistItem {
 
 /** 시연 재생 시작 결과. 409(이미 재생 중)를 예외가 아니라 값으로 전달한다. */
 export type DemoStartResult =
-  | { ok: true; callId: string; segmentCount: number; intervalMs: number }
+  | {
+      ok: true
+      callId: string
+      segmentCount: number
+      intervalMs: number
+      /**
+       * 근거 저장소가 비었을 때만 채워진다. 재생은 그대로 시작된다.
+       * 이게 없으면 근거를 안 넣은 채 시연해도 화면에는 "근거 부족" 만 뜨고,
+       * 시연 중에 그것이 정상 판정인지 설정 실수인지 알 방법이 없다.
+       */
+      evidenceWarning?: string
+    }
   | { ok: false; reason: 'ALREADY_RUNNING' | 'FAILED'; message: string }
 
 export const BackendClient = {
@@ -155,6 +166,8 @@ export const BackendClient = {
         callId: String(data?.call_id ?? ''),
         segmentCount: Number(data?.segment_count ?? 0),
         intervalMs: Number(data?.interval_ms ?? 0),
+        evidenceWarning:
+          typeof data?.evidence_warning === 'string' ? data.evidence_warning : undefined,
       }
     } catch (e) {
       const status = (e as { response?: { status?: number } })?.response?.status

@@ -40,7 +40,7 @@ class DemoEarningsCallControllerTest {
         when(service.start(any())).thenReturn(
                 new DemoEarningsCallService.StartResult(
                         DemoEarningsCallService.StartResult.Outcome.STARTED,
-                        "ORCL", "demo-orcl-1", 6, 6000, null));
+                        "ORCL", "demo-orcl-1", 6, 6000, null, null));
 
         mockMvc.perform(post("/api/v1/demo/earnings-call/start")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -56,7 +56,7 @@ class DemoEarningsCallControllerTest {
         when(service.start(null)).thenReturn(
                 new DemoEarningsCallService.StartResult(
                         DemoEarningsCallService.StartResult.Outcome.STARTED,
-                        "ORCL", "demo-orcl-2", 6, 6000, null));
+                        "ORCL", "demo-orcl-2", 6, 6000, null, null));
 
         mockMvc.perform(post("/api/v1/demo/earnings-call/start"))
                 .andExpect(status().isAccepted())
@@ -69,7 +69,7 @@ class DemoEarningsCallControllerTest {
         when(service.start(any())).thenReturn(
                 new DemoEarningsCallService.StartResult(
                         DemoEarningsCallService.StartResult.Outcome.ALREADY_RUNNING,
-                        "ORCL", "demo-orcl-1", 0, 0, "이미 재생 중입니다. 먼저 중지하세요."));
+                        "ORCL", "demo-orcl-1", 0, 0, "이미 재생 중입니다. 먼저 중지하세요.", null));
 
         mockMvc.perform(post("/api/v1/demo/earnings-call/start")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -84,7 +84,7 @@ class DemoEarningsCallControllerTest {
         when(service.start(any())).thenReturn(
                 new DemoEarningsCallService.StartResult(
                         DemoEarningsCallService.StartResult.Outcome.SCRIPT_UNAVAILABLE,
-                        null, null, 0, 0, "스크립트 없음"));
+                        null, null, 0, 0, "스크립트 없음", null));
 
         mockMvc.perform(post("/api/v1/demo/earnings-call/start")
                         .contentType(MediaType.APPLICATION_JSON)

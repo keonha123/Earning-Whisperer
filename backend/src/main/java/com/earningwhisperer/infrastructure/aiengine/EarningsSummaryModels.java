@@ -67,6 +67,23 @@ public final class EarningsSummaryModels {
     ) {
     }
 
+    /**
+     * {@code GET /v1/engine/evidence/readiness} 응답.
+     *
+     * <p>근거 저장소가 비어 있는 채로 어닝콜을 재생하면 화면에는 "근거 부족" 만 줄줄이
+     * 뜬다. 그것이 <b>정말 근거 없는 주장</b>인지 <b>근거를 안 넣은 것</b>인지 화면에서
+     * 구별되지 않는다. 재생 시작 전에 확인해서 시연자에게 알린다.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record EvidenceReadiness(
+            String ticker,
+            @JsonProperty("document_count") int documentCount,
+            @JsonProperty("lookback_days") int lookbackDays,
+            boolean ready,
+            @JsonProperty("minimum_expected") int minimumExpected
+    ) {
+    }
+
     // ── analyze 응답 ────────────────────────────────────────────────────────
 
     @JsonIgnoreProperties(ignoreUnknown = true)

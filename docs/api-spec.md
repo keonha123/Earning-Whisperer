@@ -498,6 +498,11 @@ start 응답 예시:
 
     { "ticker": "ORCL", "call_id": "demo-orcl-q4fy26-1788886133461-1", "segment_count": 6, "interval_ms": 6000 }
 
+- **`evidence_warning`이 실려 오면 근거가 없다는 뜻입니다.** 근거 뉴스가 최소 기준(20건) 미만이면 start 응답에 이 필드가 붙습니다. 재생은 그대로 진행되지만 팩트체크는 대부분 `INSUFFICIENT_EVIDENCE`로 나옵니다. **클라이언트는 이 값을 반드시 사용자에게 보여줘야 합니다** — 없으면 시연 중에 "근거 없는 주장"과 "근거를 안 넣은 것"이 화면에서 구별되지 않습니다.
+
+      { "ticker": "WMT", "call_id": "...", "segment_count": 24, "interval_ms": 6000,
+        "evidence_warning": "근거 뉴스가 0건뿐입니다. 팩트체크가 대부분 '근거 부족'으로 나옵니다. 시연 전 뉴스를 적재하세요." }
+
 - **`call_id`는 재생 회차마다 새로 생성됩니다.** 같은 값을 재사용하면 `TranscriptSessionRegistry`가 종료된 세션으로 판단해 모든 세그먼트를 거부합니다(조용한 실패).
 - **status는 끝난 재생의 결과도 알려줍니다.** 재생 중이 아니면 `running:false`와 함께 `last_run`을 반환합니다. `outcome`은 `COMPLETED` / `STOPPED` / `NO_SEGMENT_PUBLISHED` 중 하나입니다. 세 번째는 스크립트 결함 등으로 세그먼트를 하나도 내보내지 못하고 끝난 경우로, 이것이 없으면 "정상 완료"·"시작한 적 없음"과 구별되지 않습니다.
 
@@ -508,6 +513,8 @@ start 응답 예시:
   1. `sequence`는 **0부터 1씩 증가**해야 합니다. 0에서 시작하지 않으면 AI Engine의 ticker 버퍼가 초기화되지 않습니다 — AI Engine은 `call_id`가 아니라 `ticker`로 버퍼를 잡고 `sentence_sequence=0`에서만 리셋하므로, 중지 후 재시작 시 트랜스크립트는 정상인데 팩트체크만 전부 조용히 사라집니다.
   2. `text`는 비어 있을 수 없습니다.
   3. 세그먼트 수는 **3의 배수**를 권장합니다. AI Engine이 3문장 단위로 검증하므로 나머지 1~2문장은 `DISCARDED`되어 마지막 발언들의 팩트체크가 나오지 않습니다. 위반해도 시작은 되지만 기동 로그에 경고가 남습니다.
+  4. **과거 어닝콜을 재생한다면 `call_started_at`(ISO-8601)을 반드시 채우세요.** 비워 두면 세그먼트 타임스탬프를 재생 시점의 현재 시각으로 찍는데, AI Engine은 그 값을 기준으로 "과거 30일"을 근거 검색 창으로 잡습니다. 작년 콜에 작년 뉴스를 넣어 두면 창 밖으로 밀려 **전부 근거 부족**이 됩니다. 값을 채우면 타임스탬프가 `call_started_at + start_ms`로 계산되어 검색 창이 그 콜 시점에 맞춰집니다. 형식이 틀리면 재생은 되지만 현재 시각으로 되돌아가며 경고 로그가 남습니다.
+  5. `related_tickers`와 `analyst_qa`는 종합 판단(§4.7)에 쓰입니다. 전자가 없으면 파급효과가 비고, 후자가 없으면 회피 지표가 생략됩니다. `analyst_qa`는 Q&A 세션에서 실제로 오간 질문·답변 한 쌍이어야 합니다 — `PLACEHOLDER`로 시작하는 문자열은 백엔드가 걸러 냅니다.
 - **관련 설정:** `demo.earnings-call.script-path`, `demo.earnings-call.interval-ms`, `ai-engine.base-url`, `ai-engine.fact-check-enabled`, `ai-engine.timeout-ms`. `fact-check-enabled=false`로 두면 AI Engine 없이 트랜스크립트 재생만 수행합니다.
 
 ---
@@ -657,3 +664,30 @@ start 응답 예시:
 > **`risk_plan.available=false`면 나머지 필드는 전부 `null`입니다.** 가격 정보가 없거나 방향성이 서지 않았다는 뜻이므로, 화면에서 0으로 채우지 말고 `invalidation_text`의 사유를 보여줍니다.
 >
 > **무료 등급 Gemini 키 주의.** 9.6은 리뷰 모델을 태웁니다. 무료 키는 pro 계열 할당량이 0이라 pro를 지정하면 매 호출이 429로 실패하고, 엔진은 `confidence: 0.0`의 폴백 응답을 돌려줍니다. 화면에는 늘 NEUTRAL만 뜹니다. 사용 가능 모델은 `gemini-3.6-flash`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`입니다.
+
+### 9.8. 근거 준비 확인 (`GET /v1/engine/evidence/readiness`)
+
+근거 저장소에 해당 종목 문서가 몇 건 있는지 센다. **임베딩 호출 없이 개수만 세므로 빠르고**, 재생 시작 버튼 경로에서 동기로 불러도 된다.
+
+| 쿼리 파라미터   | 필수 | 설명                                                                     |
+| :-------------- | :--: | :----------------------------------------------------------------------- |
+| `ticker`        |  Y   | 종목 심볼                                                                |
+| `as_of`         |  N   | 기준 시각(epoch seconds). **과거 콜 재생 시 그 콜의 시각.** 없으면 현재  |
+| `lookback_days` |  N   | 검색 창 길이. 없으면 `FACT_CHECK_NEWS_LOOKBACK_DAYS`                     |
+
+응답: `ticker`, `document_count`, `lookback_days`, `as_of_epoch`, `ready`, `minimum_expected`
+
+    { "ticker": "WMT", "document_count": 391, "lookback_days": 30,
+      "as_of_epoch": 1787230800, "ready": true, "minimum_expected": 20 }
+
+> **왜 필요한가.** 근거를 하나도 넣지 않은 채로 어닝콜을 재생하면 화면에는 "근거 부족" 판정만 줄줄이 뜬다. 그 화면은 **정말 근거 없는 주장을 검증한 결과**와 **근거 적재를 잊은 것**이 완전히 똑같이 보인다. 시연 도중에는 알아차릴 방법이 없다. 백엔드는 재생 시작 전에 이 값을 확인해 §7.8의 `evidence_warning`으로 내려보낸다.
+>
+> **`as_of`를 빠뜨리지 마세요.** 과거 콜을 재생하면서 기준 시각을 현재로 두면, 그 콜 시점의 뉴스가 검색 창 밖이라 `document_count`가 0으로 나온다. 실제로는 적재돼 있는데도 그렇다.
+
+### 9.9. 임베딩 설정 주의
+
+근거 검색 품질은 `EMBEDDING_PROVIDER`에 달려 있다. **기본값 `hash`는 SHA256 단어 겹침이라 의미 검색이 아니다.** 이 상태로는 뉴스를 아무리 넣어도 관련도가 임계값을 넘지 못해 대부분 `INSUFFICIENT_EVIDENCE`가 된다.
+
+OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-embedding-001`이 동작하는 것을 실측했다(3072차원, `outputDimensionality`로 768 축소, 배치 상한 20건 — 100건은 429).
+
+**관련도 임계값은 임베딩 모델에 종속된다.** Gemini 임베딩은 기준선 유사도가 높아서 무관한 문서도 0.48 수준이 나온다. 해시 임베딩 기준으로 잡힌 0.42/0.34를 그대로 쓰면 아무 기사나 근거로 통과한다. 모델을 바꾸면 `FACT_CHECK_STRONG_RELEVANCE_SCORE` / `FACT_CHECK_MODERATE_RELEVANCE_SCORE`를 실제 코퍼스로 재보정해야 한다.

@@ -29,6 +29,7 @@ public class AiEngineClient {
     private static final String SENTENCE_PATH = "/v1/engine/live-fact-check/sentence";
     private static final String ANALYZE_PATH = "/v1/engine/analyze";
     private static final String INTELLIGENCE_PATH = "/v1/engine/earnings/intelligence";
+    private static final String READINESS_PATH = "/v1/engine/evidence/readiness";
 
     private final RestClient restClient;
     private final boolean factCheckEnabled;
@@ -164,6 +165,37 @@ public class AiEngineClient {
             return Optional.of(response);
         } catch (Exception e) {
             log.warn("[AiEngine] {} 호출 실패 - ticker={} error={}", label, ticker, e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 근거 저장소 준비 상태를 확인한다 (Contract 9.8).
+     *
+     * <p>임베딩 호출 없이 개수만 세므로 빠르다. 재생 시작 버튼 경로에서 동기로 불러도 된다.
+     *
+     * @param asOfEpochSecond 기준 시각. 과거 콜을 재생할 때는 그 콜의 시각을 넘겨야 한다.
+     * @return 응답. 비활성화되었거나 호출이 실패하면 empty.
+     */
+    public Optional<EarningsSummaryModels.EvidenceReadiness> evidenceReadiness(String ticker, Long asOfEpochSecond) {
+        if (!summaryEnabled && !factCheckEnabled) {
+            return Optional.empty();
+        }
+        try {
+            EarningsSummaryModels.EvidenceReadiness response = restClient.get()
+                    .uri(uriBuilder -> {
+                        uriBuilder.path(READINESS_PATH).queryParam("ticker", ticker);
+                        if (asOfEpochSecond != null) {
+                            uriBuilder.queryParam("as_of", asOfEpochSecond);
+                        }
+                        return uriBuilder.build();
+                    })
+                    .retrieve()
+                    .body(EarningsSummaryModels.EvidenceReadiness.class);
+            return Optional.ofNullable(response);
+        } catch (Exception e) {
+            // 확인 자체가 실패한 것은 재생을 막을 이유가 아니다. 경고만 못 띄운다.
+            log.warn("[AiEngine] 근거 준비 확인 실패 - ticker={} error={}", ticker, e.toString());
             return Optional.empty();
         }
     }

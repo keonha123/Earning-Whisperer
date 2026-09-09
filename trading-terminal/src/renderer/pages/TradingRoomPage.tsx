@@ -195,9 +195,14 @@ export default function TradingRoomPage() {
     setDemoStarting(true)
     try {
       const result = (await ipc.invoke(IPC_CHANNELS.DEMO_EARNINGS_START, { ticker })) as
-        | { ok: true; segmentCount: number }
+        | { ok: true; segmentCount: number; evidenceWarning?: string }
         | { ok: false; reason: string; message: string }
       if (result.ok) {
+        // 재생은 시작됐지만 근거가 없으면 팩트체크가 전부 "근거 부족" 으로 나온다.
+        // 조용히 넘어가면 시연 중에 원인을 알 수 없다.
+        if (result.evidenceWarning) {
+          showIpcErrorToast(new Error(result.evidenceWarning))
+        }
         clearFactCheck(ticker)
         // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이
         // 계속 떠 있게 된다.

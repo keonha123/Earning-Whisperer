@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EarningsSummaryServiceTest {
 
     private static final DemoEarningsCallScript SCRIPT = new DemoEarningsCallScript(
-            "ORCL", "Oracle", "Q4", "demo",
+            "ORCL", "Oracle", "Q4", "demo", null,
             List.of("NVDA", "MSFT"),
             new DemoEarningsCallScript.AnalystQa("capex 전망은?", "수요 환경이 매우 좋습니다."),
             List.of(
@@ -157,7 +157,7 @@ class EarningsSummaryServiceTest {
     @Test
     void 전문이_비면_발행하지_않는다() {
         DemoEarningsCallScript empty = new DemoEarningsCallScript(
-                "ORCL", "Oracle", "Q4", "demo", null, null, List.of());
+                "ORCL", "Oracle", "Q4", "demo", null, null, null, List.of());
         AtomicReference<EarningsSummaryPublisher.Payload> published = new AtomicReference<>();
         EarningsSummaryService service = new EarningsSummaryService(
                 clientOf(Optional.of(analyzeResponse("BULLISH", 0.7)), Optional.of(intelligenceResponse())),
@@ -217,7 +217,7 @@ class EarningsSummaryServiceTest {
         // "회피도 0%" 가 떠서 "질문을 전혀 피하지 않았다" 로 읽힌다.
         AtomicReference<EarningsSummaryPublisher.Payload> published = new AtomicReference<>();
         DemoEarningsCallScript noQa = new DemoEarningsCallScript(
-                "ORCL", "Oracle", "Q4", "demo", List.of("NVDA"), null, SCRIPT.segments());
+                "ORCL", "Oracle", "Q4", "demo", null, List.of("NVDA"), null, SCRIPT.segments());
 
         new EarningsSummaryService(
                 clientOf(Optional.of(analyzeResponse("BULLISH", 0.7)), Optional.of(intelligenceResponse())),
@@ -234,7 +234,7 @@ class EarningsSummaryServiceTest {
     void 한쪽만_있는_QA_는_통째로_생략한다() {
         AtomicReference<EarningsSummaryModels.IntelligenceRequest> sent = new AtomicReference<>();
         DemoEarningsCallScript halfQa = new DemoEarningsCallScript(
-                "ORCL", "Oracle", "Q4", "demo", List.of("NVDA"),
+                "ORCL", "Oracle", "Q4", "demo", null, List.of("NVDA"),
                 new DemoEarningsCallScript.AnalystQa("capex 전망은?", "  "),
                 SCRIPT.segments());
         AiEngineClient client = new AiEngineClient(null, true, true) {

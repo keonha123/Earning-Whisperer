@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -192,7 +193,8 @@ public class DemoEarningsCallService {
         }
         log.info("[DemoCall] 재생 시작 - ticker={} call_id={} segments={} interval={}ms factCheck={}",
                 ticker, callId, script.segments().size(), intervalMs, aiEngineClient.isFactCheckEnabled());
-        return StartResult.started(ticker, callId, script.segments().size(), intervalMs);
+        return StartResult.started(ticker, callId, script.segments().size(), intervalMs,
+                evidenceWarning(ticker, script));
     }
 
     /** 재생을 중지한다. 진행 중인 세션이 없으면 false. */
@@ -251,13 +253,14 @@ public class DemoEarningsCallService {
     private void runPlayback(Session session, DemoEarningsCallScript script) {
         try {
             int lastIndex = script.segments().size() - 1;
+            Long callStartedAtEpochSecond = parseCallStartedAt(script.callStartedAt(), session.ticker);
             for (int i = 0; i <= lastIndex; i++) {
                 if (session.stopRequested.get() || Thread.currentThread().isInterrupted()) {
                     return;
                 }
                 DemoEarningsCallScript.Segment raw = script.segments().get(i);
                 boolean isLast = i == lastIndex;
-                long nowEpochSecond = Instant.now().getEpochSecond();
+                long segmentEpochSecond = segmentTimestamp(callStartedAtEpochSecond, raw);
 
                 TranscriptSegment segment = new TranscriptSegment(
                         session.ticker,
@@ -267,7 +270,7 @@ public class DemoEarningsCallService {
                         raw.endMs(),
                         raw.text(),
                         raw.speaker(),
-                        nowEpochSecond,
+                        segmentEpochSecond,
                         isLast
                 );
 
@@ -283,7 +286,7 @@ public class DemoEarningsCallService {
                             session.ticker, raw.sequence(), result);
                 } else {
                     session.publishedCount = i + 1;
-                    submitForFactCheck(session, raw, nowEpochSecond, isLast);
+                    submitForFactCheck(session, raw, segmentEpochSecond, isLast);
                 }
 
                 if (!isLast) {
@@ -324,6 +327,65 @@ public class DemoEarningsCallService {
                 recordLastRun(session, session.publishedCount == 0 ? "NO_SEGMENT_PUBLISHED" : "COMPLETED");
             }
             sessions.remove(session.ticker, session);
+        }
+    }
+
+    /**
+     * 근거 저장소가 비어 있으면 경고 문구를 만든다. 비어 있지 않으면 null.
+     *
+     * <p>재생을 막지는 않는다. 근거 없이 트랜스크립트 흐름만 보여주는 것도 유효한
+     * 시연이기 때문이다. 다만 그 상태라는 걸 시연자가 알아야 한다.
+     */
+    private String evidenceWarning(String ticker, DemoEarningsCallScript script) {
+        if (!aiEngineClient.isFactCheckEnabled()) {
+            return null;
+        }
+        Long asOf = parseCallStartedAt(script.callStartedAt(), ticker);
+        var readiness = aiEngineClient.evidenceReadiness(ticker, asOf);
+        if (readiness.isEmpty() || readiness.get().ready()) {
+            return null;
+        }
+        int count = readiness.get().documentCount();
+        log.warn("[DemoCall] 근거 부족 상태로 재생을 시작합니다 - ticker={} 문서={}건 (최소 {}건)",
+                ticker, count, readiness.get().minimumExpected());
+        return String.format(
+                "근거 뉴스가 %d건뿐입니다. 팩트체크가 대부분 '근거 부족'으로 나옵니다. "
+                        + "시연 전 뉴스를 적재하세요.", count);
+    }
+
+    /** 타임스탬프 계산 검증용. 재생 전체를 돌리지 않고 기준 시각 해석만 확인한다. */
+    static long segmentTimestampForTest(DemoEarningsCallScript script, DemoEarningsCallScript.Segment segment) {
+        return segmentTimestamp(parseCallStartedAt(script.callStartedAt(), script.ticker()), segment);
+    }
+
+    /**
+     * 세그먼트 타임스탬프.
+     *
+     * <p>AI Engine 은 이 값을 기준으로 뉴스 근거 검색 창을 잡는다. 과거 어닝콜을 재생할
+     * 때 현재 시각을 찍으면 그 콜 시점의 뉴스가 창 밖으로 밀려나 전부 근거 부족이 된다.
+     * 스크립트가 콜 시각을 명시하면 그 시각을 기준으로, 없으면 재생 시점을 쓴다.
+     */
+    private static long segmentTimestamp(Long callStartedAtEpochSecond, DemoEarningsCallScript.Segment segment) {
+        if (callStartedAtEpochSecond == null) {
+            return Instant.now().getEpochSecond();
+        }
+        return callStartedAtEpochSecond + (segment.startMs() / 1000L);
+    }
+
+    /**
+     * 스크립트의 콜 시각을 파싱한다. 형식이 틀려도 재생을 막지는 않고 현재 시각으로
+     * 되돌린다 — 다만 근거가 통째로 사라지는 원인이므로 경고를 남긴다.
+     */
+    private static Long parseCallStartedAt(String raw, String ticker) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw.trim()).getEpochSecond();
+        } catch (DateTimeParseException e) {
+            log.warn("[DemoCall] call_started_at 형식 오류 - ticker={} value={} (현재 시각을 사용합니다. "
+                    + "과거 콜이라면 뉴스 근거가 검색 창 밖으로 밀려 전부 근거 부족이 됩니다)", ticker, raw);
+            return null;
         }
     }
 
@@ -538,21 +600,30 @@ public class DemoEarningsCallService {
             String callId,
             int segmentCount,
             long intervalMs,
-            String message
+            String message,
+            /**
+             * 근거 저장소가 비어 있을 때의 경고. 재생은 그대로 진행된다.
+             *
+             * <p>이게 없으면 근거를 안 넣은 채로 시연을 시작해도 화면에는 "근거 부족" 만
+             * 줄줄이 뜨고, 시연자는 그것이 정상 판정인 줄 안다. 실제로 시연 도중에
+             * 알아차릴 방법이 없는 실패다.
+             */
+            String evidenceWarning
     ) {
         public enum Outcome { STARTED, ALREADY_RUNNING, SCRIPT_UNAVAILABLE }
 
-        static StartResult started(String ticker, String callId, int segmentCount, long intervalMs) {
-            return new StartResult(Outcome.STARTED, ticker, callId, segmentCount, intervalMs, null);
+        static StartResult started(String ticker, String callId, int segmentCount, long intervalMs,
+                                   String evidenceWarning) {
+            return new StartResult(Outcome.STARTED, ticker, callId, segmentCount, intervalMs, null, evidenceWarning);
         }
 
         static StartResult alreadyRunning(String ticker, String callId) {
             return new StartResult(Outcome.ALREADY_RUNNING, ticker, callId, 0, 0,
-                    "이미 재생 중입니다. 먼저 중지하세요.");
+                    "이미 재생 중입니다. 먼저 중지하세요.", null);
         }
 
         static StartResult scriptUnavailable(String message) {
-            return new StartResult(Outcome.SCRIPT_UNAVAILABLE, null, null, 0, 0, message);
+            return new StartResult(Outcome.SCRIPT_UNAVAILABLE, null, null, 0, 0, message, null);
         }
     }
 

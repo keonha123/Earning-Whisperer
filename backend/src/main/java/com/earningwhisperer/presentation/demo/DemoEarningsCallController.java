@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -41,12 +42,7 @@ public class DemoEarningsCallController {
         String ticker = request == null ? null : request.ticker();
         DemoEarningsCallService.StartResult result = service.start(ticker);
         return switch (result.outcome()) {
-            case STARTED -> ResponseEntity.accepted().body(Map.of(
-                    "ticker", result.ticker(),
-                    "call_id", result.callId(),
-                    "segment_count", result.segmentCount(),
-                    "interval_ms", result.intervalMs()
-            ));
+            case STARTED -> ResponseEntity.accepted().body(startedBody(result));
             case ALREADY_RUNNING -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "error", result.message(),
                     "ticker", result.ticker(),
@@ -100,6 +96,24 @@ public class DemoEarningsCallController {
     }
 
     /** 시작/중지 공통 요청 본문. */
+    /**
+     * 재생 시작 응답.
+     *
+     * <p>{@code evidence_warning} 은 근거 저장소가 비었을 때만 실린다. {@code Map.of} 는
+     * null 값을 허용하지 않으므로 직접 조립한다.
+     */
+    private static Map<String, Object> startedBody(DemoEarningsCallService.StartResult result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ticker", result.ticker());
+        body.put("call_id", result.callId());
+        body.put("segment_count", result.segmentCount());
+        body.put("interval_ms", result.intervalMs());
+        if (result.evidenceWarning() != null) {
+            body.put("evidence_warning", result.evidenceWarning());
+        }
+        return body;
+    }
+
     public record StartRequest(String ticker) {
     }
 }

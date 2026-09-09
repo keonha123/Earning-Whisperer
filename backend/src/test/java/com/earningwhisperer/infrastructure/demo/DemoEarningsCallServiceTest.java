@@ -336,7 +336,7 @@ class DemoEarningsCallServiceTest {
 
     @Test
     void text_가_비면_거부된다() {
-        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null,
+        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null,
                 List.of(new DemoEarningsCallScript.Segment(0, 0, 1, "CEO", "   ")));
 
         assertThat(DemoEarningsCallService.validateSegments(script)).contains("text");
@@ -347,7 +347,7 @@ class DemoEarningsCallServiceTest {
         for (int seq : sequences) {
             segments.add(new DemoEarningsCallScript.Segment(seq, 0, 1, "CEO", "sentence " + seq));
         }
-        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, segments);
+        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null, segments);
     }
 
     private static int countDemoThreads() {
@@ -374,6 +374,37 @@ class DemoEarningsCallServiceTest {
     /** 비활성 클라이언트. 공개 생성자를 쓰되 enabled=false 라 호출이 발생하지 않는다. */
     private static AiEngineClient disabledClient() {
         return new AiEngineClient("http://localhost:1", false, false, 100);
+    }
+
+    @Test
+    void call_started_at_이_있으면_그_시각_기준으로_타임스탬프를_찍는다() {
+        // 과거 어닝콜을 재생할 때 현재 시각을 찍으면, AI Engine 이 "지금부터 30일" 을
+        // 근거 검색 창으로 잡아 그 콜 시점의 뉴스가 통째로 창 밖으로 밀린다.
+        long callStart = Instant.parse("2026-08-20T13:00:00Z").getEpochSecond();
+        List<DemoEarningsCallScript.Segment> segments = List.of(
+                new DemoEarningsCallScript.Segment(0, 0, 5000, "CEO", "첫 문장"),
+                new DemoEarningsCallScript.Segment(1, 5000, 11000, "CEO", "둘째 문장"));
+        DemoEarningsCallScript script = new DemoEarningsCallScript(
+                "WMT", "Walmart", "Q2", "demo-wmt", "2026-08-20T13:00:00Z", null, null, segments);
+
+        assertThat(DemoEarningsCallService.segmentTimestampForTest(script, segments.get(0)))
+                .isEqualTo(callStart);
+        assertThat(DemoEarningsCallService.segmentTimestampForTest(script, segments.get(1)))
+                .isEqualTo(callStart + 5);
+    }
+
+    @Test
+    void call_started_at_형식이_틀리면_현재시각으로_되돌린다() {
+        // 재생 자체를 막지는 않는다. 다만 과거 콜이라면 근거가 사라지므로 로그로 남는다.
+        List<DemoEarningsCallScript.Segment> segments =
+                List.of(new DemoEarningsCallScript.Segment(0, 0, 5000, "CEO", "문장"));
+        DemoEarningsCallScript script = new DemoEarningsCallScript(
+                "WMT", "Walmart", "Q2", "demo-wmt", "2026년 8월 20일", null, null, segments);
+
+        long before = Instant.now().getEpochSecond();
+        long actual = DemoEarningsCallService.segmentTimestampForTest(script, segments.get(0));
+
+        assertThat(actual).isBetween(before, Instant.now().getEpochSecond());
     }
 
     @Test
