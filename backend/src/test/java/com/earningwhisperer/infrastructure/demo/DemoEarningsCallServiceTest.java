@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -81,16 +83,51 @@ class DemoEarningsCallServiceTest {
     }
 
     @Test
-    void 세그먼트_timestamp_는_스크립트값이_아니라_현재시각이다() {
-        // AI Engine 이 이 값으로 뉴스 근거 검색 창을 잡는다. 과거값을 넣으면 근거가 0건이 된다.
-        RecordingTranscriptService transcript = new RecordingTranscriptService();
-        DemoEarningsCallService svc = newService(transcript, disabledClient(), noopPublisher(), 1);
-        long before = Instant.now().getEpochSecond();
+    void 배포되는_스크립트는_과거_콜의_시작시각을_담고_있다() {
+        // AI Engine 이 세그먼트 timestamp 로 뉴스 근거 검색 창을 잡는다. 과거 콜을 재생하면서
+        // call_started_at 을 비워 두면 timestamp 가 현재 시각으로 찍히고, 그 콜 시점의 뉴스가
+        // 창 밖으로 밀려나 전부 근거 부족이 된다. 매핑 로직이 아니라 배포 데이터를 지키는 테스트다.
+        DemoEarningsCallService svc = newService(new RecordingTranscriptService(), disabledClient(),
+                noopPublisher(), 10_000);
 
-        svc.start("ORCL");
-        await().atMost(5, TimeUnit.SECONDS).until(() -> !transcript.accepted.isEmpty());
+        DemoEarningsCallScript script = loadDeployedScript(svc);
 
-        assertThat(transcript.accepted.get(0).timestamp()).isBetween(before, before + 30);
+        assertThat(script.callStartedAt())
+                .as("과거 콜 재생이므로 call_started_at 이 반드시 있어야 한다")
+                .isNotBlank();
+        assertThatCode(() -> Instant.parse(script.callStartedAt()))
+                .as("ISO-8601 이 아니면 재생 시 현재 시각으로 되돌아간다")
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void 배포되는_스크립트의_발화자_명부는_세그먼트_라벨과_맞물린다() {
+        // match_key 가 세그먼트 speaker 와 어긋나면 터미널의 발화자 프로필이 전원 "발언 0건"
+        // 으로 보인다. 실패해도 재생은 되기 때문에 화면만 봐서는 알아채지 못한다.
+        DemoEarningsCallService svc = newService(new RecordingTranscriptService(), disabledClient(),
+                noopPublisher(), 10_000);
+
+        DemoEarningsCallScript script = loadDeployedScript(svc);
+        assertThat(script.speakers()).isNotEmpty();
+
+        java.util.Set<String> segmentLabels = script.segments().stream()
+                .map(DemoEarningsCallScript.Segment::speaker)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> matchKeys = script.speakers().stream()
+                .map(DemoEarningsCallScript.Speaker::effectiveMatchKey)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // 세그먼트에 등장하는 화자는 반드시 명부에 있어야 한다. 반대 방향(명부에만 있는 사람)은
+        // 정상이다 — 발췌 구간에 발언이 안 들어간 애널리스트가 그렇다.
+        assertThat(matchKeys).containsAll(segmentLabels);
+    }
+
+    private static DemoEarningsCallScript loadDeployedScript(DemoEarningsCallService svc) {
+        try {
+            return svc.loadScript();
+        } catch (IOException e) {
+            throw new AssertionError("배포 스크립트를 읽지 못했습니다.", e);
+        }
     }
 
     @Test
@@ -336,7 +373,7 @@ class DemoEarningsCallServiceTest {
 
     @Test
     void text_가_비면_거부된다() {
-        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null,
+        DemoEarningsCallScript script = new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null, null,
                 List.of(new DemoEarningsCallScript.Segment(0, 0, 1, "CEO", "   ")));
 
         assertThat(DemoEarningsCallService.validateSegments(script)).contains("text");
@@ -347,7 +384,7 @@ class DemoEarningsCallServiceTest {
         for (int seq : sequences) {
             segments.add(new DemoEarningsCallScript.Segment(seq, 0, 1, "CEO", "sentence " + seq));
         }
-        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null, segments);
+        return new DemoEarningsCallScript("ORCL", "Oracle", "Q4", "demo", null, null, null, null, segments);
     }
 
     private static int countDemoThreads() {
@@ -385,7 +422,7 @@ class DemoEarningsCallServiceTest {
                 new DemoEarningsCallScript.Segment(0, 0, 5000, "CEO", "첫 문장"),
                 new DemoEarningsCallScript.Segment(1, 5000, 11000, "CEO", "둘째 문장"));
         DemoEarningsCallScript script = new DemoEarningsCallScript(
-                "WMT", "Walmart", "Q2", "demo-wmt", "2026-08-20T13:00:00Z", null, null, segments);
+                "WMT", "Walmart", "Q2", "demo-wmt", "2026-08-20T13:00:00Z", null, null, null, segments);
 
         assertThat(DemoEarningsCallService.segmentTimestampForTest(script, segments.get(0)))
                 .isEqualTo(callStart);
@@ -399,7 +436,7 @@ class DemoEarningsCallServiceTest {
         List<DemoEarningsCallScript.Segment> segments =
                 List.of(new DemoEarningsCallScript.Segment(0, 0, 5000, "CEO", "문장"));
         DemoEarningsCallScript script = new DemoEarningsCallScript(
-                "WMT", "Walmart", "Q2", "demo-wmt", "2026년 8월 20일", null, null, segments);
+                "WMT", "Walmart", "Q2", "demo-wmt", "2026년 8월 20일", null, null, null, segments);
 
         long before = Instant.now().getEpochSecond();
         long actual = DemoEarningsCallService.segmentTimestampForTest(script, segments.get(0));

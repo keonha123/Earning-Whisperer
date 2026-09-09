@@ -1,5 +1,6 @@
 package com.earningwhisperer.presentation.demo;
 
+import com.earningwhisperer.infrastructure.demo.DemoEarningsCallScript;
 import com.earningwhisperer.infrastructure.demo.DemoEarningsCallService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -11,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -93,6 +96,40 @@ public class DemoEarningsCallController {
                                 )
                         )))
                         .orElseGet(() -> ResponseEntity.ok(Map.of("running", false, "ticker", ticker))));
+    }
+
+    /**
+     * 콜 참가자 명부 조회.
+     *
+     * <p>터미널의 발화자 프로필이 쓴다. 스크립트에 명부가 없으면 빈 배열 — 그 경우 터미널은
+     * 프로필 진입점을 띄우지 않는다. 재생 중 여부와 무관하게 응답한다.
+     *
+     * <p>스크립트를 읽지 못하면 500 이다. 빈 배열로 내려보내면 "명부를 안 넣었다" 와
+     * "파일이 깨졌다" 가 구별되지 않는다.
+     *
+     * <p>{@code match_key} 는 세그먼트의 {@code speaker} 문자열과 정확히 같은 값이다.
+     * 스크립트가 비워 두면 이름으로 채워 내려보낸다 — 클라이언트가 매칭 규칙을 추측하지
+     * 않게 하는 것이 이 필드의 목적이다.
+     */
+    @GetMapping("/speakers")
+    public ResponseEntity<?> speakers() {
+        List<DemoEarningsCallScript.Speaker> speakers;
+        try {
+            speakers = service.speakers();
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "발화자 명부를 읽지 못했습니다: " + e.getMessage()));
+        }
+        List<Map<String, Object>> body = speakers.stream()
+                .map(s -> Map.<String, Object>of(
+                        "name", s.name() == null ? "" : s.name(),
+                        "match_key", s.effectiveMatchKey() == null ? "" : s.effectiveMatchKey(),
+                        "title", s.title() == null ? "" : s.title(),
+                        "affiliation", s.affiliation() == null ? "" : s.affiliation(),
+                        "analyst", s.analyst()
+                ))
+                .toList();
+        return ResponseEntity.ok(body);
     }
 
     /** 시작/중지 공통 요청 본문. */

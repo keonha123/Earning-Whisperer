@@ -1,60 +1,301 @@
 {
-  "_comment": "PLACEHOLDER — 파이프라인 검증용 최소 스크립트입니다. 시연 전에 실제 어닝콜 트랜스크립트 발췌로 반드시 교체하세요. 교체 규칙(시작 시 검증되며 위반 시 재생이 거부됩니다): (1) sequence 는 0 부터 1씩 증가. 0 에서 시작하지 않으면 AI Engine 의 ticker 버퍼가 초기화되지 않아 재시작 시 팩트체크만 조용히 사라집니다. (2) text 는 문장 1개 단위. AI Engine 이 3문장씩 묶어 검증합니다. (3) 세그먼트 수는 3의 배수 권장. 나머지 1~2문장은 DISCARDED 되어 팩트체크가 나오지 않습니다. (4) 검증 가능한 사실 주장이 담긴 문장과 수사적 문장을 섞을 것 — 후자가 excluded_count 로 걸러지는 동작을 보여줍니다. 상세는 docs/api-spec.md 7.8 참조. (5) related_tickers 에 이 종목의 공급망/경쟁 관계 종목을 적을 것 — AI Engine 의 정적 관계 그래프는 일부 종목만 담고 있어서, 여기 없으면 종합 화면의 파급효과가 빈 칸으로 나옵니다. (6) analyst_qa 에 Q&A 세션에서 실제로 오간 질문 하나와 그 답변을 옮겨 적을 것 — 회피 탐지 지표가 이 한 쌍으로만 계산됩니다.",
-  "ticker": "ORCL",
-  "company_name": "Oracle Corporation",
-  "session_label": "Q4 FY2026 Earnings Call",
-  "call_id_prefix": "demo-orcl-q4fy26",
+  "_comment": "월마트 FY2027 Q2 어닝콜(2026-08-20) 실제 트랜스크립트 발췌입니다. 세그먼트 텍스트·발화자·Q&A·참가자 명부는 모두 원문 그대로이며 지어낸 문장은 없습니다. 원본: data_pipeline/data/demo/wmt-2026q2-transcript.json. 다른 콜로 교체할 때의 규칙(시작 시 검증되며 위반 시 재생이 거부됩니다): (1) sequence 는 0 부터 1씩 증가. 0 에서 시작하지 않으면 AI Engine 의 ticker 버퍼가 초기화되지 않아 재시작 시 팩트체크만 조용히 사라집니다. (2) text 는 문장 1개 단위. AI Engine 이 3문장씩 묶어 검증합니다. (3) 세그먼트 수는 3의 배수. 나머지 1~2문장은 DISCARDED 되어 팩트체크가 나오지 않습니다. (4) 검증 가능한 사실 주장이 담긴 문장과 수사적 문장을 섞을 것 — 후자가 excluded_count 로 걸러지는 동작을 보여줍니다. 상세는 docs/api-spec.md 7.8 참조. (5) related_tickers 에 이 종목의 공급망/경쟁 관계 종목을 적을 것. (6) analyst_qa 는 Q&A 세션에서 실제로 오간 질문/답변 한 쌍. 회피 탐지가 이걸로만 계산됩니다. (7) speakers 에는 트랜스크립트에서 확인되는 사실만 — 성향/정확도 같은 추정값은 넣지 않습니다. (8) speakers[].match_key 는 세그먼트의 speaker 문자열과 정확히 같아야 합니다. 세그먼트에 등장하지 않는 참가자(발췌에 발언이 안 들어간 애널리스트 등)는 이름을 그대로 두면 됩니다 — 발언 0건으로 표시됩니다.",
+  "ticker": "WMT",
+  "company_name": "Walmart Inc.",
+  "session_label": "Q2 FY2027 Earnings Call",
+  "call_id_prefix": "demo-wmt-q2fy27",
+  "call_started_at": "2026-08-20T12:00:00Z",
   "related_tickers": [
-    "NVDA",
-    "MSFT",
+    "TGT",
+    "COST",
     "AMZN"
   ],
   "analyst_qa": {
-    "question": "PLACEHOLDER — Q&A 세션의 실제 애널리스트 질문 한 개로 교체하세요.",
-    "answer": "PLACEHOLDER — 위 질문에 대한 경영진의 실제 답변으로 교체하세요."
+    "question": "Good morning. Thank you for taking our question. We wanted to focus our question this morning on the tariff refunds and price investment. With your most recent incremental pricing investments, I know you mentioned you're expecting a slightly better second half as a result, but have you already started to see an acceleration in units? And just given the price investment is such a focus in the market, can you talk about vendor support versus how much Walmart is investing, and how do you sustain these lower prices and lap this investment in 2027?",
+    "answer": "Okay, thanks for the question. This is John. Let me just start by saying I'm really pleased with the quarter for Walmart. This is a good quarter of 5% in sales and strong operating income growth. We've been investing, as you know, in the last few years in the strategy to drive a very powerful omni business, and we're proud of the progress. I've been a part of building the strategy for a year and it's great to see it come together. We want to be really flexible for customers. Whether they shop at the counter or at the curb or delivery to their home, customers are looking for value and our team is executing that well. We had a good quarter in Walmart U.S., International, and Sam's Club. And the result of that is we have seen share gains and we're pleased with share gains across the business. There was an impact in pharmacies we talked about from MFP. Putting that aside, the second quarter for Walmart U.S. is the best second quarter we've had in the last three years. So we're proud of the performance. And as all these pieces come together, whether it's marketplace, advertising, our membership businesses, it's important to recognize that these businesses work together. They're reinforcing and they further develop our ability to serve customers with value. So on price specifically, as John David mentioned, we invested in price in the second quarter. We talked about at the end of the first quarter that customers are feeling some pressure. So we're proud of our investments. We're very thoughtful about those investments, the categories they went in, the timing of those investments, and we'll manage them across the two quarters. Our merchants have a lot of experience delivering value, mixing out. They're doing this in a way that, as I said, results in share gains. We're really pleased with the share gains that we saw in the food categories, and those type of share gains tend to be durable over time. So specifically, as we look forward, if you take the two quarters, you put those together, we're pleased with our forecast in terms of sales. We're pleased with the forecast in terms of operating income growth. You heard John David mention what those two are. And our purpose and mission is always to save people money and live better, and that's what we'll continue to focus on. And we'll do everything we can to keep prices as low as we can for customers throughout the rest of the year."
   },
+  "speakers": [
+    {
+      "name": "Steph Wissing",
+      "match_key": "Steph Wissing",
+      "title": "Senior Vice President, Investor Relations",
+      "affiliation": "Walmart Inc.",
+      "analyst": false
+    },
+    {
+      "name": "John Furner",
+      "match_key": "CEO · John Furner",
+      "title": "CEO",
+      "affiliation": "Walmart Inc.",
+      "analyst": false
+    },
+    {
+      "name": "John David Rainey",
+      "match_key": "CFO · John David Rainey",
+      "title": "CFO",
+      "affiliation": "Walmart Inc.",
+      "analyst": false
+    },
+    {
+      "name": "Kate McShane",
+      "match_key": "Kate McShane",
+      "title": "Analyst",
+      "affiliation": "Goldman Sachs",
+      "analyst": true
+    },
+    {
+      "name": "Simeon Gutman",
+      "match_key": "Simeon Gutman",
+      "title": "Analyst",
+      "affiliation": "Morgan Stanley",
+      "analyst": true
+    },
+    {
+      "name": "Greg Melich",
+      "match_key": "Greg Melich",
+      "title": "Analyst",
+      "affiliation": "Evercore ISI",
+      "analyst": true
+    },
+    {
+      "name": "Brad Thomas",
+      "match_key": "Brad Thomas",
+      "title": "Analyst",
+      "affiliation": "KeyBanc Capital Markets",
+      "analyst": true
+    },
+    {
+      "name": "Michael Lasser",
+      "match_key": "Michael Lasser",
+      "title": "Analyst",
+      "affiliation": "UBS",
+      "analyst": true
+    },
+    {
+      "name": "Chris Nardone",
+      "match_key": "Chris Nardone",
+      "title": "Analyst",
+      "affiliation": "Bank of America",
+      "analyst": true
+    },
+    {
+      "name": "Christopher Horvers",
+      "match_key": "Christopher Horvers",
+      "title": "Analyst",
+      "affiliation": "JP Morgan",
+      "analyst": true
+    },
+    {
+      "name": "Christina Katai",
+      "match_key": "Christina Katai",
+      "title": "Analyst",
+      "affiliation": "Deutsche Bank",
+      "analyst": true
+    },
+    {
+      "name": "Bob Durbal",
+      "match_key": "Bob Durbal",
+      "title": "Analyst",
+      "affiliation": "BTIG",
+      "analyst": true
+    },
+    {
+      "name": "Kelly Bania",
+      "match_key": "Kelly Bania",
+      "title": "Analyst",
+      "affiliation": "BMO Capital Markets",
+      "analyst": true
+    },
+    {
+      "name": "Paul Lejuez",
+      "match_key": "Paul Lejuez",
+      "title": "Analyst",
+      "affiliation": "Citi",
+      "analyst": true
+    },
+    {
+      "name": "Jihan Ma",
+      "match_key": "Jihan Ma",
+      "title": "Analyst",
+      "affiliation": "Bernstein",
+      "analyst": true
+    },
+    {
+      "name": "Seth Sigmund",
+      "match_key": "Seth Sigmund",
+      "title": "Analyst",
+      "affiliation": "Barclays",
+      "analyst": true
+    }
+  ],
   "segments": [
     {
       "sequence": 0,
       "start_ms": 0,
-      "end_ms": 9000,
-      "speaker": "CEO · Safra Catz",
-      "text": "Good afternoon, and thank you all for joining Oracle's fourth quarter fiscal 2026 earnings call."
+      "end_ms": 15000,
+      "speaker": "CEO · John Furner",
+      "text": "Good morning and thanks for joining us."
     },
     {
       "sequence": 1,
-      "start_ms": 9000,
-      "end_ms": 19000,
-      "speaker": "CEO · Safra Catz",
-      "text": "Oracle Cloud Infrastructure revenue grew 52 percent year over year this quarter."
+      "start_ms": 15000,
+      "end_ms": 30000,
+      "speaker": "CEO · John Furner",
+      "text": "This was a good quarter for Walmart and shows once again that our strategy is proving out."
     },
     {
       "sequence": 2,
-      "start_ms": 19000,
-      "end_ms": 28000,
-      "speaker": "CEO · Safra Catz",
-      "text": "We remain deeply committed to our customers and partners around the world."
+      "start_ms": 30000,
+      "end_ms": 45000,
+      "speaker": "CEO · John Furner",
+      "text": "Our core retail business had another strong quarter with sales growth at the top end of our guidance, up 5% in constant currency."
     },
     {
       "sequence": 3,
-      "start_ms": 28000,
-      "end_ms": 38000,
-      "speaker": "CFO",
-      "text": "Capital expenditures will exceed 25 billion dollars this fiscal year."
+      "start_ms": 45000,
+      "end_ms": 60000,
+      "speaker": "CEO · John Furner",
+      "text": "Comp sales for Walmart U.S. were 2.6%, led by transactions, and Sam's Club U.S. delivered comps of 4.4%."
     },
     {
       "sequence": 4,
-      "start_ms": 38000,
-      "end_ms": 48000,
-      "speaker": "CFO",
-      "text": "Total cloud revenue rose 27 percent compared with the same quarter last year."
+      "start_ms": 60000,
+      "end_ms": 75000,
+      "speaker": "CEO · John Furner",
+      "text": "International was up 7.9%, led by China and India."
     },
     {
       "sequence": 5,
-      "start_ms": 48000,
-      "end_ms": 58000,
-      "speaker": "CEO · Safra Catz",
-      "text": "We believe this positions Oracle exceptionally well for the years ahead."
+      "start_ms": 75000,
+      "end_ms": 90000,
+      "speaker": "CEO · John Furner",
+      "text": "Overall, we continue to gain market share."
+    },
+    {
+      "sequence": 6,
+      "start_ms": 90000,
+      "end_ms": 105000,
+      "speaker": "CEO · John Furner",
+      "text": "We delivered another quarter of strong eCommerce growth, up 23% globally, including the 10th consecutive quarter of growth over 20% for Walmart U.S."
+    },
+    {
+      "sequence": 7,
+      "start_ms": 105000,
+      "end_ms": 120000,
+      "speaker": "CEO · John Furner",
+      "text": "We grew units and transactions, and membership fee revenue was at an all-time high on growth of 17%."
+    },
+    {
+      "sequence": 8,
+      "start_ms": 120000,
+      "end_ms": 135000,
+      "speaker": "CEO · John Furner",
+      "text": "Turning to profits, adjusted operating income grew 17.4% in constant currency."
+    },
+    {
+      "sequence": 9,
+      "start_ms": 135000,
+      "end_ms": 150000,
+      "speaker": "CEO · John Furner",
+      "text": "The Walmart U.S. team delivered more than 11,000 rollbacks during the quarter, up from 7,200 rollbacks at the end of the first quarter, demonstrating our commitment to price investment."
+    },
+    {
+      "sequence": 10,
+      "start_ms": 150000,
+      "end_ms": 165000,
+      "speaker": "CEO · John Furner",
+      "text": "We're investing heavily in price because customers need us to and because we believe it drives market share gains over time."
+    },
+    {
+      "sequence": 11,
+      "start_ms": 165000,
+      "end_ms": 180000,
+      "speaker": "CEO · John Furner",
+      "text": "Marketplace grew 52% and advertising was up 38%."
+    },
+    {
+      "sequence": 12,
+      "start_ms": 180000,
+      "end_ms": 195000,
+      "speaker": "CEO · John Furner",
+      "text": "Fast delivery in the U.S. grew 48% for the quarter."
+    },
+    {
+      "sequence": 13,
+      "start_ms": 195000,
+      "end_ms": 210000,
+      "speaker": "CEO · John Furner",
+      "text": "We've now expanded sub-30-minute delivery into 38 markets here in the U.S., giving millions of additional customers access to faster fulfillment."
+    },
+    {
+      "sequence": 14,
+      "start_ms": 210000,
+      "end_ms": 225000,
+      "speaker": "CEO · John Furner",
+      "text": "Speed matters, and we have a significant competitive advantage."
+    },
+    {
+      "sequence": 15,
+      "start_ms": 225000,
+      "end_ms": 240000,
+      "speaker": "CEO · John Furner",
+      "text": "The number of customers using Sparky is up 70% from last year, and the customers and members who use Sparky for shopping spend 40% more per order than others who don't."
+    },
+    {
+      "sequence": 16,
+      "start_ms": 240000,
+      "end_ms": 255000,
+      "speaker": "CEO · John Furner",
+      "text": "Changes in regulation around maximum fair pricing for certain drugs negatively impacted comp sales by 125 basis points."
+    },
+    {
+      "sequence": 17,
+      "start_ms": 255000,
+      "end_ms": 270000,
+      "speaker": "CEO · John Furner",
+      "text": "I'm excited about the momentum we have, confident in the strategy we're executing, and even more optimistic about the opportunities ahead."
+    },
+    {
+      "sequence": 18,
+      "start_ms": 270000,
+      "end_ms": 285000,
+      "speaker": "CFO · John David Rainey",
+      "text": "Enterprise net sales growth in constant currency of 5% was at the top end of our guidance of 4% to 5%, driven by growth in e-commerce, Sam's Club and China."
+    },
+    {
+      "sequence": 19,
+      "start_ms": 285000,
+      "end_ms": 300000,
+      "speaker": "CFO · John David Rainey",
+      "text": "Enterprise adjusted operating income on a constant currency basis increased over 17% and adjusted EPS increased over 19%."
+    },
+    {
+      "sequence": 20,
+      "start_ms": 300000,
+      "end_ms": 315000,
+      "speaker": "CFO · John David Rainey",
+      "text": "Operating income growth included a net benefit of approximately 750 basis points related to tariff refunds received in Q2."
+    },
+    {
+      "sequence": 21,
+      "start_ms": 315000,
+      "end_ms": 330000,
+      "speaker": "CFO · John David Rainey",
+      "text": "As we shared with you in May, we were eligible for approximately $2.9 billion of tariff refunds, amounting to about half a percent of annual U.S. net sales."
+    },
+    {
+      "sequence": 22,
+      "start_ms": 330000,
+      "end_ms": 345000,
+      "speaker": "CFO · John David Rainey",
+      "text": "We're raising our fiscal year sales guidance to 4% to 5% from 3.5% to 4.5% previously."
+    },
+    {
+      "sequence": 23,
+      "start_ms": 345000,
+      "end_ms": 360000,
+      "speaker": "CFO · John David Rainey",
+      "text": "We're raising our full-year EPS guidance to $2.80 to $2.87 from $2.75 to $2.85 previously."
     }
   ]
 }

@@ -51,8 +51,50 @@ public record DemoEarningsCallScript(
         @JsonProperty("analyst_qa")
         AnalystQa analystQa,
 
+        /**
+         * 콜 참가자 명부. 트랜스크립트에 실제로 이름과 소속이 적혀 있는 사람만 담는다.
+         *
+         * <p>여기 담기는 건 <b>사실 정보뿐</b>이다 — 이름, 직책, 소속, 경영진/애널리스트 구분.
+         * 화법 성향이나 가이던스 달성률 같은 건 트랜스크립트에서 나오지 않으므로 넣지 않는다.
+         * 터미널은 이 명부에 이번 콜에서 실제로 수신한 발언량과 팩트체크 판정을 붙여 보여준다.
+         *
+         * <p>비어 있으면 터미널의 발화자 프로필이 열리지 않는다 (버튼 자체가 나오지 않음).
+         */
+        List<Speaker> speakers,
+
         List<Segment> segments
 ) {
+
+    /**
+     * 콜 참가자 1명.
+     *
+     * @param name        트랜스크립트에 적힌 이름.
+     * @param matchKey    세그먼트의 {@code speaker} 문자열과 <b>정확히</b> 같은 값.
+     *                    세그먼트 라벨은 표시용이라 "CEO · John Furner" 처럼 직책이 붙는 반면
+     *                    이름은 "John Furner" 라서, 이 키가 없으면 클라이언트가 부분 문자열
+     *                    매칭을 추측해야 한다. 그 추측은 동명이인·중간 이니셜에서 조용히 틀린다.
+     *                    비워 두면 {@code name} 을 키로 쓴다.
+     * @param title       직책. 애널리스트는 "Analyst".
+     * @param affiliation 소속. 경영진은 발표 기업, 애널리스트는 소속 하우스.
+     * @param analyst     애널리스트면 true, 경영진/IR 이면 false.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Speaker(
+            String name,
+
+            @JsonProperty("match_key")
+            String matchKey,
+
+            String title,
+            String affiliation,
+            boolean analyst
+    ) {
+
+        /** 세그먼트 라벨과 맞춰 볼 키. 스크립트가 비워 두면 이름을 쓴다. */
+        public String effectiveMatchKey() {
+            return matchKey == null || matchKey.isBlank() ? name : matchKey;
+        }
+    }
 
     /**
      * 회피 탐지 입력.

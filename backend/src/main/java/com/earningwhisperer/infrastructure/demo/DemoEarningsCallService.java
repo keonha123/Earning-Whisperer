@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -228,6 +229,28 @@ public class DemoEarningsCallService {
         }
         return Optional.ofNullable(sessions.get(key))
                 .map(s -> new Status(s.ticker, s.callId, s.publishedCount, s.totalSegments));
+    }
+
+    /**
+     * 스크립트에 적힌 콜 참가자 명부.
+     *
+     * <p>재생 중이 아니어도 읽을 수 있다 — 터미널은 트레이딩 룸에 들어가는 시점에 한 번
+     * 가져다 두고, 세그먼트가 도착할 때마다 {@code match_key} 로 맞춰 붙인다.
+     *
+     * <p>스크립트를 못 읽으면 {@link IOException} 을 그대로 올린다. 빈 리스트로 삼켜 버리면
+     * "명부를 일부러 안 넣었다" 와 "스크립트 파일이 깨졌다" 가 클라이언트에게 똑같이 보여서,
+     * 시연 중 프로필이 안 뜰 때 원인을 서버 로그로만 알 수 있게 된다. {@code start()} 도
+     * 같은 조건을 {@code SCRIPT_UNAVAILABLE} 로 올린다.
+     *
+     * @return 명부가 없으면 빈 리스트. null 원소는 걸러낸다.
+     * @throws IOException 스크립트를 읽거나 파싱하지 못한 경우.
+     */
+    public List<DemoEarningsCallScript.Speaker> speakers() throws IOException {
+        List<DemoEarningsCallScript.Speaker> speakers = loadScript().speakers();
+        if (speakers == null) {
+            return List.of();
+        }
+        return speakers.stream().filter(Objects::nonNull).toList();
     }
 
     /** 마지막으로 끝난 재생의 요약. 재생한 적이 없으면 empty. */

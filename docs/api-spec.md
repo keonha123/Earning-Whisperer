@@ -483,6 +483,7 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | POST   | `/api/v1/demo/earnings-call/start`  | 필요 | 준비된 어닝콜 스크립트 재생 시작 |
 | POST   | `/api/v1/demo/earnings-call/stop`   | 필요 | 재생 중지                        |
 | GET    | `/api/v1/demo/earnings-call/status` | 필요 | 진행 상황 조회 (`?ticker=ORCL`)  |
+| GET    | `/api/v1/demo/earnings-call/speakers` | 필요 | 콜 참가자 명부 조회              |
 
 - **설명:** 시연에서 Data Pipeline의 STT 단계를 사전 준비된 스크립트가 대신합니다. 재생된 세그먼트는 **실제 인입 경로**(`TranscriptService` 검증 → Contract 4.5 fan-out)를 그대로 통과하며, 동시에 Contract 9로 AI Engine 팩트체크를 거쳐 Contract 4.6으로 발행됩니다. 클라이언트가 가짜 데이터를 그리는 구조가 아닙니다.
 - **요청 본문(start/stop):** `{"ticker": "ORCL"}`. start에서 생략하면 스크립트에 지정된 기본 종목을 사용합니다.
@@ -515,6 +516,12 @@ start 응답 예시:
   3. 세그먼트 수는 **3의 배수**를 권장합니다. AI Engine이 3문장 단위로 검증하므로 나머지 1~2문장은 `DISCARDED`되어 마지막 발언들의 팩트체크가 나오지 않습니다. 위반해도 시작은 되지만 기동 로그에 경고가 남습니다.
   4. **과거 어닝콜을 재생한다면 `call_started_at`(ISO-8601)을 반드시 채우세요.** 비워 두면 세그먼트 타임스탬프를 재생 시점의 현재 시각으로 찍는데, AI Engine은 그 값을 기준으로 "과거 30일"을 근거 검색 창으로 잡습니다. 작년 콜에 작년 뉴스를 넣어 두면 창 밖으로 밀려 **전부 근거 부족**이 됩니다. 값을 채우면 타임스탬프가 `call_started_at + start_ms`로 계산되어 검색 창이 그 콜 시점에 맞춰집니다. 형식이 틀리면 재생은 되지만 현재 시각으로 되돌아가며 경고 로그가 남습니다.
   5. `related_tickers`와 `analyst_qa`는 종합 판단(§4.7)에 쓰입니다. 전자가 없으면 파급효과가 비고, 후자가 없으면 회피 지표가 생략됩니다. `analyst_qa`는 Q&A 세션에서 실제로 오간 질문·답변 한 쌍이어야 합니다 — `PLACEHOLDER`로 시작하는 문자열은 백엔드가 걸러 냅니다.
+  6. `speakers`에는 **트랜스크립트에서 확인되는 사실만** 적습니다 — 이름·직책·소속·애널리스트 여부. 화법 성향이나 과거 가이던스 달성률처럼 원문에서 확인할 수 없는 값은 넣지 않습니다. 터미널은 이 명부에 이번 회차에 실제로 수신한 발언량과 팩트체크 판정을 붙여 보여줍니다. 비어 있으면 터미널의 발화자 프로필 진입점이 나타나지 않습니다. `speakers[].match_key`는 세그먼트의 `speaker` 문자열과 **정확히 같아야** 합니다 — 세그먼트 라벨은 표시용이라 "CEO · John Furner"처럼 직책이 붙는 반면 이름은 "John Furner"라서, 이 키가 없으면 클라이언트가 부분 문자열 매칭을 추측하게 되고 그 추측은 동명이인·중간 이니셜에서 조용히 틀립니다. 비워 두면 `name`을 키로 씁니다. 세그먼트에 발언이 없는 참가자(발췌에 안 들어간 애널리스트 등)는 발언 0건으로 표시됩니다.
+- **`speakers` 응답.** 재생 중이 아니어도 조회됩니다. 명부가 없으면 빈 배열이고, **스크립트 파일을 읽지 못하면 500**입니다 — 둘을 같은 응답으로 내려보내면 "명부를 안 넣었다"와 "파일이 깨졌다"가 구별되지 않습니다.
+
+      [ { "name": "John Furner", "match_key": "CEO · John Furner", "title": "CEO", "affiliation": "Walmart Inc.", "analyst": false },
+        { "name": "Kate McShane", "match_key": "Kate McShane", "title": "Analyst", "affiliation": "Goldman Sachs", "analyst": true } ]
+
 - **관련 설정:** `demo.earnings-call.script-path`, `demo.earnings-call.interval-ms`, `ai-engine.base-url`, `ai-engine.fact-check-enabled`, `ai-engine.timeout-ms`. `fact-check-enabled=false`로 두면 AI Engine 없이 트랜스크립트 재생만 수행합니다.
 
 ---
@@ -660,6 +667,8 @@ start 응답 예시:
 - `warnings[]`
 
 > **`related_tickers`를 반드시 실어 보내세요.** AI Engine의 정적 관계 그래프에는 일부 종목(NVDA/AMD/TSMC/MSFT/META/TSLA/AAPL)만 들어 있습니다. 시연 종목이 거기 없으면 `impact_chain`이 빈 배열로 나옵니다. 요청에 실어 보내면 그래프를 고치지 않고도 잡힙니다.
+
+> **`impact_score` 는 null 일 수 있습니다.** 이 값은 그 종목이 이번 콜의 근거 문서에 함께 등장하는 비율입니다 (같이 언급된 문서 수 ÷ 전체 근거 문서 수). 근거 문서가 하나도 없으면 셀 것이 없으므로 `0.0` 이 아니라 `null` 로 내려갑니다 — `0.0`("영향 없음")과 "측정 못 함"을 같은 값으로 내려보내면 근거 적재를 빠뜨린 것을 화면에서 알아챌 수 없기 때문입니다. `confidence` 는 근거 문서 수를 20건 기준으로 환산한 값입니다.
 >
 > **`risk_plan.available=false`면 나머지 필드는 전부 `null`입니다.** 가격 정보가 없거나 방향성이 서지 않았다는 뜻이므로, 화면에서 0으로 채우지 말고 `invalidation_text`의 사유를 보여줍니다.
 >
