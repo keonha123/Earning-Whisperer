@@ -11,13 +11,10 @@ import EarningsTimeline from '../components/dashboard/EarningsTimeline'
 import HoldingsTable, { type HoldingsTableRow } from '../components/dashboard/HoldingsTable'
 import MiniLineChart from '../components/dashboard/MiniLineChart'
 
-import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
 import { useMarketIndices } from '../hooks/useMarketIndices'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { usePrices } from '../hooks/usePrices'
-import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
-// watchlistDevMock 은 이번 PR 에서 제거 (실 IPC 사용). holdings.dev-mock 파일 자체는 보존.
-import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
+import { COMPANY_META } from '../constants/companyMeta'
 import { useNavigate } from 'react-router-dom'
 import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
@@ -121,9 +118,9 @@ export default function DashboardPage() {
   const { prices } = usePrices()
 
   // 어닝콜 타임라인 — holdingRows/watchRows useMemo 보다 먼저 선언해야 TDZ 오류 없음.
-  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
-    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
-  )
+  // 초기값은 빈 상태다. DEV 에서 목업을 넣어 두면 백엔드가 죽어 있어도 화면이
+  // 정상으로 보여서, 연동이 끊긴 것을 알아차릴 수 없다.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>({ live: null, groups: [] })
 
   // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
@@ -135,9 +132,10 @@ export default function DashboardPage() {
     }, 0)
 
   // Holdings/Watchlist 표시 행:
-  //  - 실제 store 의 holdings 우선 사용. fixture 의 메타데이터 (회사명/로고색) 와 매핑.
-  //  - store 가 비어있는 DEV 환경에서는 fixture rows 자체를 표시.
-  //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
+  //  - 백엔드가 준 보유 종목만 표시한다. 비어 있으면 비어 있는 대로 둔다.
+  //    예전에는 DEV 에서 가짜 보유 내역을 대신 띄웠는데, 그러면 연동이 끊긴 것과
+  //    실제로 보유가 없는 것을 화면에서 구별할 수 없다.
+  //  - 회사명/로고색은 COMPANY_META 표시 상수에서 채운다(시세 아님).
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
     const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
@@ -149,21 +147,8 @@ export default function DashboardPage() {
       return null
     }
 
-    if (storeHoldings.length === 0 && import.meta.env.DEV) {
-      return holdingsDevMock.map((h) => ({
-        ticker: h.ticker,
-        name: h.name,
-        currentPrice: h.currentPrice,
-        dailyChangePercent: h.dailyChangePercent,
-        pnlPercent: h.pnlPercent,
-        earningsBadge: getEarningsBadge(h.ticker),
-        logoBg: h.logoBg,
-        logoFg: h.logoFg,
-        logoLabel: h.logoLabel,
-      }))
-    }
     return storeHoldings.map((h) => {
-      const meta = holdingsDevMock.find((m) => m.ticker === h.ticker)
+      const meta = COMPANY_META[h.ticker]
       // 폴러 가격 우선, 없으면 KIS_GET_BALANCE 응답에 포함된 currentPrice fallback.
       const livePrice = prices[h.ticker]?.currentPrice ?? h.currentPrice
       const prevClose = prices[h.ticker]?.previousClose ?? 0
@@ -214,11 +199,10 @@ export default function DashboardPage() {
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고
   //    indices/isLoaded/lastUpdatedAt 을 함께 반환 (store selector 중복 호출 회피).
-  //  - prod: backend 미연동 시 빈 배열 → MarketStrip placeholder.
-  //  - DEV: backend 미연동 (isLoaded === false) 시에만 mock fallback,
-  //         실제 데이터 수신 시 자동 전환.
-  const { indices, isLoaded } = useMarketIndices()
-  const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
+  //  - 백엔드가 준 값만 쓴다. 비면 MarketStrip 이 placeholder 를 보여준다.
+  //    DEV 목업 fallback 이 있었는데, 그것 때문에 실제 API 가 빈 값을 주는데도
+  //    화면에는 고정된 가짜 지수(SPX 5873.2)가 몇 달째 떠 있었다.
+  const { indices } = useMarketIndices()
   // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
   useEffect(() => {
     let cancelled = false
@@ -299,7 +283,7 @@ export default function DashboardPage() {
       )}
 
       {/* Row 1: Market strip */}
-      <MarketStrip items={marketItems} />
+      <MarketStrip items={indices} />
 
       {/* Row 2: Portfolio + Asset chart */}
       <div className="grid grid-cols-[40fr_60fr] gap-2.5 shrink-0 h-[180px]">

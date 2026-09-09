@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { HistoryMode, HistoryRow, HistoryStatus } from '../types/tradeHistory'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import Pagination from '../components/common/Pagination'
@@ -9,13 +10,6 @@ import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
-import {
-  historyRowsDevMock,
-  historySummaryDevMock,
-  type HistoryRowMock,
-  type HistoryMode,
-  type HistoryStatus,
-} from '../fixtures/historyRows.dev-mock'
 
 /**
  * HistoryPage — 체결 내역.
@@ -30,7 +24,7 @@ import {
  * Trade 인터페이스 정책:
  *  - 기존 Trade 타입 (id, ticker, side, executedQty, executedPrice, status, createdAt)
  *    그대로 유지. mode/ai_score 필드는 추가하지 않는다.
- *  - DEV 빌드: dev-mock 의 HistoryRowMock 으로 mode / AI 컬럼 표시.
+ *  - mode / AI 컬럼은 백엔드가 값을 주지 않으므로 "—" 로 표시한다.
  *  - PROD 빌드: 백엔드에서 받은 Trade 만 표시, mode / AI 셀은 "—".
  *
  * 보안 메모:
@@ -71,7 +65,7 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
-  const [detailRow, setDetailRow] = useState<HistoryRowMock | null>(null)
+  const [detailRow, setDetailRow] = useState<HistoryRow | null>(null)
 
   const navigate = useNavigate()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
@@ -159,11 +153,10 @@ export default function HistoryPage() {
     await ipc.invoke(IPC_CHANNELS.SHELL_SAVE_CSV, { filename, csvContent })
   }
 
-  // 표시 행: DEV 에서는 fixture (mode/AI 컬럼 시연용), PROD 에서는 실제 trades.
-  const displayRows: HistoryRowMock[] = useMemo(() => {
-    if (import.meta.env.DEV && trades.length === 0) {
-      return [...historyRowsDevMock]
-    }
+  // 표시 행: 백엔드가 준 체결 내역만 쓴다.
+  // DEV 에서 거래가 없으면 목업 내역을 대신 띄우고 있었는데, 그러면 체결이 없는 것과
+  // 연동이 끊긴 것을 화면에서 구별할 수 없다.
+  const displayRows: HistoryRow[] = useMemo(() => {
     return trades.map((t) => ({
       id: t.id,
       ticker: t.ticker,
@@ -197,11 +190,8 @@ export default function HistoryPage() {
     })
   }, [displayRows, segment, modeFilter, tickerFilter, search])
 
-  // 요약: DEV 에서는 fixture summary, PROD 에서는 페이지 단위 집계.
+  // 요약: 페이지 단위 집계. 거래가 없으면 0 이 맞다.
   const summary = useMemo(() => {
-    if (import.meta.env.DEV && trades.length === 0) {
-      return historySummaryDevMock
-    }
     return {
       todayCount: trades.length,
       buyCount: trades.filter((t) => t.side === 'BUY').length,
@@ -479,7 +469,7 @@ function SkeletonRow() {
   )
 }
 
-function Row({ row, onDetail }: { row: HistoryRowMock; onDetail: () => void }) {
+function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
   const isFailed = row.status === 'FAILED'
   const showAi = import.meta.env.DEV && row.ai_score != null
 
@@ -609,7 +599,7 @@ function StatusBadge({ status, reason }: { status: HistoryStatus; reason?: strin
   )
 }
 
-function TradeDetailModal({ row, onClose }: { row: HistoryRowMock; onClose: () => void }) {
+function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => void }) {
   const fields: [string, string][] = [
     ['일시', formatDateTime(row.createdAt)],
     ['종목', row.ticker],

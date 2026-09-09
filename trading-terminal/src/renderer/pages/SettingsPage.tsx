@@ -11,12 +11,10 @@ import Stepper from '../components/common/Stepper'
 import KisStatusTimeline, {
   type KisTimelineStep,
 } from '../components/settings/KisStatusTimeline'
-import { kisStatusDevMock } from '../fixtures/kisStatus.dev-mock'
 import { showIpcErrorToast } from '../components/common/Toast'
 
 // fixture 메타데이터(AppKey, 핑 지연 등)는 dev 빌드에서만 노출.
 // prod 에서는 generic 메시지만 표시 — 사용자가 더미 값을 진짜로 오인하지 않도록.
-const SHOW_DEV_KIS_META = import.meta.env.DEV
 
 /**
  * 카드 삭제 시 분기 결정 helper (테스트 친화적 순수 함수).
@@ -296,14 +294,7 @@ export default function SettingsPage() {
       id: 'apikey',
       title: activeModeRegistered ? 'API 키 등록됨' : 'API 키 미등록',
       sub: activeModeRegistered
-        ? SHOW_DEV_KIS_META
-          ? (
-              <>
-                AppKey: <b className="text-text-secondary font-medium">{kisStatusDevMock.appKey}</b> · 등록일{' '}
-                {kisStatusDevMock.registeredAt}
-              </>
-            )
-          : otherModeRegistered
+        ? otherModeRegistered
             ? `API 키가 안전하게 저장되어 있습니다 (${isPaperTrading ? '실전' : '모의'} 키도 등록됨)`
             : 'API 키가 안전하게 저장되어 있습니다'
         : otherModeRegistered
@@ -321,14 +312,7 @@ export default function SettingsPage() {
             : '액세스 토큰 미발급',
       sub:
         kisTokenStatus === 'VALID'
-          ? SHOW_DEV_KIS_META
-            ? (
-                <>
-                  만료까지 <b className="text-text-secondary font-medium">{kisStatusDevMock.tokenExpiresIn}</b> 남음 · 자동 갱신{' '}
-                  {kisStatusDevMock.autoRefresh ? 'ON' : 'OFF'}
-                </>
-              )
-            : '토큰이 정상 발급되어 있습니다'
+          ? '토큰이 정상 발급되어 있습니다'
           : '토큰 재발급이 필요합니다',
       status: kisTokenStatus === 'VALID' ? 'done' : kisTokenStatus === 'EXPIRED' ? 'error' : 'pending',
     },
@@ -340,14 +324,7 @@ export default function SettingsPage() {
           : '서버 연결 대기',
       sub:
         activeModeRegistered && kisTokenStatus === 'VALID'
-          ? SHOW_DEV_KIS_META
-            ? (
-                <>
-                  마지막 핑 <b className="text-text-secondary font-medium">{kisStatusDevMock.lastPingAgo}</b> · 지연{' '}
-                  <b className="text-text-secondary font-medium">{kisStatusDevMock.pingMs}ms</b>
-                </>
-              )
-            : '정상 연결됨'
+          ? '정상 연결됨'
           : 'API 키와 토큰 등록 후 연결됩니다',
       status:
         activeModeRegistered && kisTokenStatus === 'VALID' ? 'done' : 'pending',
