@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import logging
 import math
 import os
 from typing import Any
@@ -20,6 +21,9 @@ try:
 except ImportError:  # pragma: no cover
     from ..config import get_settings
     from .token_budgeter import TokenBudgeter
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -147,7 +151,10 @@ class GeminiClient:
                 text, usage = out
                 return GenerationUsage(text=text, prompt_tokens=usage.get("prompt_tokens", 0), output_tokens=usage.get("output_tokens", 0), total_tokens=usage.get("total_tokens", 0))
         except Exception:
-            pass
+            # 여기서 조용히 넘어가면 화면에는 confidence 0.0 의 NEUTRAL/HOLD 만 뜨고
+            # 원인은 아무데도 남지 않는다. 실제로 무료 등급 키가 pro 모델을 429 로
+            # 거절하는 동안 몇 시간을 "엔진이 이렇게 판단했나 보다" 로 흘려보냈다.
+            logger.warning("Gemini 호출 실패 — fallback 응답으로 대체한다. model=%s", model, exc_info=True)
         text = json.dumps(
             {
                 "direction": "NEUTRAL",

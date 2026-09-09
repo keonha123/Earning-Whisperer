@@ -33,9 +33,12 @@ class Settings(BaseSettings):
     gemini_model_fast: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL_FAST")
 
     gemini_primary_model: str | None = Field(default="gemini-3.1-flash-lite", alias="GEMINI_PRIMARY_MODEL")
-    gemini_review_model: str | None = Field(default="gemini-3.1-pro-preview", alias="GEMINI_REVIEW_MODEL")
+    # 무료 등급 키는 pro 계열 할당량이 0 이라 매 호출이 429 로 떨어지고,
+    # 엔진은 예외를 삼킨 뒤 confidence 0.0 의 fallback 응답을 조용히 반환한다.
+    # 기본값을 flash 계열로 두어 키를 새로 발급한 사람도 바로 실제 신호를 받는다.
+    gemini_review_model: str | None = Field(default="gemini-3.6-flash", alias="GEMINI_REVIEW_MODEL")
     gemini_review_model_candidates: str = Field(
-        default="gemini-3.1-pro-preview,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-2.5-pro",
+        default="gemini-3.6-flash,gemini-3-flash-preview,gemini-3.1-flash-lite",
         alias="GEMINI_REVIEW_MODEL_CANDIDATES",
     )
     enable_review_pass: bool = Field(default=True, alias="ENABLE_REVIEW_PASS")
