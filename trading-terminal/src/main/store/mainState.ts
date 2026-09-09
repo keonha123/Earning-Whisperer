@@ -10,6 +10,7 @@ export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
 interface MainState {
   /** EarningWhisperer 백엔드 JWT 액세스 토큰 */
   backendToken: string | null
+  backendRefreshToken: string | null
   /** KIS OAuth access_token */
   kisAccessToken: string | null
   /** KIS 토큰 만료 시각 (Unix ms, UI 표시용) */
@@ -43,6 +44,7 @@ interface MainState {
 
 const state: MainState = {
   backendToken: null,
+  backendRefreshToken: null,
   kisAccessToken: null,
   kisTokenExpiresAt: null,
   kisTokenIssuedAtMono: null,
@@ -63,6 +65,16 @@ const TOKEN_VALIDITY_MARGIN_SEC = 60
 export const mainState = {
   get backendToken() { return state.backendToken },
   setBackendToken(token: string | null) { state.backendToken = token },
+
+  /**
+   * 백엔드 refresh_token. 백엔드는 이 값을 HttpOnly 쿠키로만 주고받으므로
+   * (보안 검토 결정, `bf62972`), 메인 프로세스가 쿠키 값을 보관했다가 갱신 요청에
+   * 다시 실어 보낸다 — 브라우저가 하는 일을 대신할 뿐 계약을 바꾸지 않는다.
+   *
+   * 메모리에만 둔다. 디스크에 쓰면 앱을 꺼도 7일짜리 자격증명이 남는다.
+   */
+  get backendRefreshToken() { return state.backendRefreshToken },
+  setBackendRefreshToken(token: string | null) { state.backendRefreshToken = token },
 
   get kisAccessToken() { return state.kisAccessToken },
   setKisAccessToken(token: string | null, expiresIn?: number) {
@@ -134,6 +146,7 @@ export const mainState = {
    */
   clear() {
     state.backendToken = null
+    state.backendRefreshToken = null
     state.kisAccessToken = null
     state.kisTokenExpiresAt = null
     state.kisTokenIssuedAtMono = null

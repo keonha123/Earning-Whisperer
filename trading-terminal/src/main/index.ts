@@ -5,7 +5,8 @@ import keytar from 'keytar'
 import { join } from 'path'
 
 import { mainState } from './store/mainState'
-import { registerAuthHandlers } from './ipc/authHandlers'
+import { registerAuthHandlers, teardownSession } from './ipc/authHandlers'
+import { setRefreshFailedHandler } from './services/BackendClient'
 import { registerVaultHandlers } from './ipc/vaultHandlers'
 import { registerKisHandlers } from './ipc/kisHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
@@ -116,6 +117,9 @@ function createTray() {
 }
 
 function registerAllHandlers() {
+  // 액세스 토큰 갱신이 최종 실패하면 (RT 만료, rotation 재사용 감지) 로그아웃과 같은
+  // 정리를 태운다. 그러지 않으면 죽은 세션으로 폴러들이 계속 돌며 401 만 쌓는다.
+  setRefreshFailedHandler(() => teardownSession())
   registerAuthHandlers()
   registerVaultHandlers()
   registerKisHandlers()

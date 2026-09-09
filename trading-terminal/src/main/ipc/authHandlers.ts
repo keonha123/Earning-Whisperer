@@ -19,6 +19,28 @@ import { registerHandler } from './registerHandler'
  * 토큰 저장 → 유저 조회(필수) → 설정/활성 계좌/KIS 토큰 복원(선택) → 폴러 시작.
  * 유저 조회가 실패하면 인증되지 않은 토큰이 남지 않도록 mainState 를 비우고 rethrow 한다.
  */
+/**
+ * 세션 종료 시 메인 프로세스 정리.
+ *
+ * 명시적 로그아웃과 "갱신 실패로 세션이 끝난 경우" 가 같은 절차를 타야 한다.
+ * 예전에는 이 정리가 AUTH_LOGOUT 핸들러 안에만 있어서, 토큰이 조용히 만료되면
+ * 렌더러만 /auth 로 넘어가고 메인 프로세스의 폴러·소켓은 계속 돌았다. 죽은
+ * 토큰으로 5분마다 401 을 받아 내는 상태가 무한히 이어졌다.
+ */
+export function teardownSession(): void {
+  StompService.disconnect()
+  KisWebSocketService.disconnect()
+  SubscriptionManager.reset()
+  stopWatchlist()
+  stopEarnings()
+  stopPricePoller()
+  // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
+  clearStockDetailCache()
+  // KIS refreshTimer 취소 — 로그아웃 상태에서 타이머가 keytar 를 읽어 토큰을 재발급하는 것을 막는다.
+  KisService.invalidateRuntime()
+  mainState.clear()
+}
+
 export async function completeLogin(token: string) {
   mainState.setBackendToken(token)
 
@@ -88,18 +110,10 @@ export function registerAuthHandlers() {
     },
   )
 
-  registerHandler<undefined, void>(IPC_CHANNELS.AUTH_LOGOUT, () => {
-    StompService.disconnect()
-    KisWebSocketService.disconnect()
-    SubscriptionManager.reset()
-    stopWatchlist()
-    stopEarnings()
-    stopPricePoller()
-    // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
-    clearStockDetailCache()
-    // KIS refreshTimer 취소 — 로그아웃 상태에서 타이머가 keytar 를 읽어 토큰을 재발급하는 것을 막는다.
-    KisService.invalidateRuntime()
-    mainState.clear()
+  registerHandler<undefined, void>(IPC_CHANNELS.AUTH_LOGOUT, async () => {
+    // 서버측 폐기가 먼저다 — teardownSession 이 refresh token 을 지우고 나면 보낼 것이 없다.
+    await BackendClient.logout()
+    teardownSession()
   })
 
   /**
