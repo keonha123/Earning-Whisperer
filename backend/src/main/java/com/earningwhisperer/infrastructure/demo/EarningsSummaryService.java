@@ -73,8 +73,10 @@ public class EarningsSummaryService {
         }
         EarningsSummaryModels.Analysis judgment = analyzed.get().analysis();
 
-        Optional<EarningsSummaryModels.IntelligenceResponse> intel = aiEngineClient.earningsIntelligence(
-                intelligenceRequest(ticker, transcript, script, marketData, judgment));
+        EarningsSummaryModels.IntelligenceRequest intelRequest =
+                intelligenceRequest(ticker, transcript, script, marketData, judgment);
+        Optional<EarningsSummaryModels.IntelligenceResponse> intel =
+                aiEngineClient.earningsIntelligence(intelRequest);
         if (intel.isEmpty()) {
             // 조용히 넘기면 "회피 지표가 왜 안 뜨지" 를 조사할 때 어느 회차였는지 알 수 없다.
             log.warn("[Summary] 부가 정보 없이 판단만 발행합니다 - ticker={} call_id={}", ticker, callId);
@@ -94,7 +96,12 @@ public class EarningsSummaryService {
                 // 부가 정보 4종은 한 덩어리다. 이 값이 false 면 "엔진이 해당 없음이라 답한 것"
                 // 이 아니라 "조회 자체가 실패한 것" 이다. 화면이 둘을 구분할 수 있어야 한다.
                 .intelligenceAvailable(intel.isPresent())
-                .evasion(intel.map(EarningsSummaryModels.IntelligenceResponse::omissionEvasion).orElse(null))
+                // Q&A 를 안 보냈으면 엔진은 회피 점수 0.0 을 돌려준다. 그대로 내보내면
+                // 화면에 "회피도 0%" 가 뜨고, 이건 "질문을 전혀 피하지 않았다" 로 읽힌다.
+                // 분석을 안 한 것과 회피가 없는 것은 다른 이야기다.
+                .evasion(intelRequest.question() == null
+                        ? null
+                        : intel.map(EarningsSummaryModels.IntelligenceResponse::omissionEvasion).orElse(null))
                 .impactChain(intel.map(EarningsSummaryModels.IntelligenceResponse::impactChain).orElse(null))
                 .riskPlan(intel.map(EarningsSummaryModels.IntelligenceResponse::riskPlan).orElse(null))
                 .warnings(intel.map(EarningsSummaryModels.IntelligenceResponse::warnings).orElse(null))

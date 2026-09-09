@@ -212,6 +212,25 @@ class EarningsSummaryServiceTest {
     }
 
     @Test
+    void QA_가_없으면_회피_지표를_페이로드에서_뺀다() {
+        // 엔진은 Q&A 없이도 회피 점수 0.0 을 돌려준다. 그대로 실으면 화면에
+        // "회피도 0%" 가 떠서 "질문을 전혀 피하지 않았다" 로 읽힌다.
+        AtomicReference<EarningsSummaryPublisher.Payload> published = new AtomicReference<>();
+        DemoEarningsCallScript noQa = new DemoEarningsCallScript(
+                "ORCL", "Oracle", "Q4", "demo", List.of("NVDA"), null, SCRIPT.segments());
+
+        new EarningsSummaryService(
+                clientOf(Optional.of(analyzeResponse("BULLISH", 0.7)), Optional.of(intelligenceResponse())),
+                capturingPublisher(published), priceCache(Map.of()))
+                .summarizeAndPublish("ORCL", "call-1", noQa);
+
+        assertThat(published.get().getEvasion()).isNull();
+        // 회피만 빠지고 나머지 부가 정보는 그대로 실린다.
+        assertThat(published.get().getRiskPlan()).isNotNull();
+        assertThat(published.get().getIntelligenceAvailable()).isTrue();
+    }
+
+    @Test
     void 한쪽만_있는_QA_는_통째로_생략한다() {
         AtomicReference<EarningsSummaryModels.IntelligenceRequest> sent = new AtomicReference<>();
         DemoEarningsCallScript halfQa = new DemoEarningsCallScript(
