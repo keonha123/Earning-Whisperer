@@ -434,7 +434,47 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | Method | Endpoint                            |        인증         | 설명                                      |
 | :----- | :---------------------------------- | :-----------------: | :---------------------------------------- |
 | GET    | `/api/v1/trades?page=0&size=20`     |        필요         | 내 거래 내역 페이징 조회. 응답: Page 형태 |
+| POST   | `/api/v1/trades/manual`             |        필요         | 수동 주문 기록 (아래 참조). 201 `{tradeId}` |
 | POST   | `/api/v1/trades/{tradeId}/callback` | 필요 (Terminal JWT) | 체결 결과 콜백 (Contract 4.1 참조)        |
+
+**`GET /api/v1/trades` 응답 항목** (`TradeResponse`)
+
+| 필드 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | Long | 거래 ID |
+| `ticker` | String | 종목 |
+| `side` | Enum | `BUY` \| `SELL` |
+| `orderType` | Enum | `MARKET` \| `LIMIT` |
+| `orderQty` | Integer | 주문 수량 |
+| `price` | Double | 주문 지정가. 미체결 주문에도 존재 |
+| `executedQty` | Integer | 체결 수량. 미체결이면 0 |
+| `executedPrice` | Double | 체결 평균가. 미체결이면 `null` |
+| `status` | Enum | `PENDING` \| `EXECUTED` \| `FAILED` \| `EXPIRED` |
+| `brokerOrderId` | String | 증권사 주문번호 (KIS ODNO). 미체결 주문도 보존 |
+| `createdAt` | DateTime | 주문 생성 시각 |
+
+#### `POST /api/v1/trades/manual`
+
+- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록한다. 자동/반자동 경로(Contract 4.1)와 달리 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고한다. 활성 `BrokerAccount` 가 없으면 **422**.
+- **응답 201 `{"tradeId": 123}`** — `status: PENDING` 으로 기록된 미체결 주문을 나중에 `POST /api/v1/trades/{tradeId}/callback` 으로 종결시키기 위해 필요하다. 터미널에 아직 체결 폴링이 없어 현재는 이 경로를 쓰지 않지만, id 를 돌려주지 않으면 종결 자체가 구조적으로 불가능하다.
+- **PENDING 수동 주문의 TTL 은 자동 명령과 다르다.** 자동 명령은 `app.trade.pending-ttl-seconds`(기본 30초), 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간). 수동 주문은 증권사에 실제로 접수돼 체결을 기다리는 주문이라 30초로 만료시키면 살아 있는 주문이 "실패" 로 뜬다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 긴 TTL 을 준다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복한다.
+- **`status` 는 `EXECUTED` / `PENDING` / `FAILED` 세 값을 받는다.** `PENDING` 은 KIS 가 주문을 접수했으나(ODNO 반환) 아직 체결되지 않은 상태다 — 살아 있는 주문을 `FAILED` 로 적으면 안 된다.
+- **`order_type` 은 항상 `LIMIT` 이다.** KIS 해외주식 매수에는 시장가 코드가 없어(`ORD_DVSN` 매수는 `00` 지정가 / `32` LOO / `34` LOC, 모의투자는 `00` 만) UI 의 "즉시 체결" 도 현재가 ±1% 지정가로 환산해 나간다. `price` 는 브로커에 실제로 보낸 지정가다. 단, 가격 확정 전에 실패한 경우(현재가 조회 불가)는 주문이 나가지 않았으므로 `MARKET` / `price: 0` 으로 기록된다.
+
+```json
+{
+  "ticker": "WMT",
+  "side": "BUY",
+  "order_type": "LIMIT",
+  "order_qty": 1,
+  "price": 107.47,
+  "executed_qty": 0,
+  "executed_price": null,
+  "broker_order_id": "0000044600",
+  "status": "PENDING",
+  "error_message": null
+}
+```
 
 ### 7.4. 포트폴리오 (Portfolio)
 
@@ -531,7 +571,8 @@ start 응답 예시:
 1. **인증 방식:** JWT Bearer 토큰. 로그인 응답의 `accessToken`을 모든 인증 필요 요청의 `Authorization: Bearer {token}` 헤더에 포함. WebSocket STOMP 연결 시 CONNECT 프레임의 `Authorization` 헤더로 전달.
 2. **플랜 접근 제어:** 유저 role은 `FREE` / `PRO` 두 가지. `action` (BUY/SELL 신호) 및 Trading Terminal 사용은 PRO 전용. FREE 유저는 `raw_score` 시각화까지만 접근 가능.
 3. **내부 API 인증:** Data Pipeline → 백엔드 내부 전용 엔드포인트(`/api/v1/internal/*`)는 `X-Internal-Secret` 헤더로 공유 시크릿 검증.
-4. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
+4. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
+
    - **401 과 403 을 구분합니다.** 인증이 없거나 토큰이 만료·위조된 경우는 **401** 입니다. 권한 부족(**403**)은 핸들러만 마련해 둔 상태입니다 — 현재 모든 엔드포인트 규칙이 `permitAll` 아니면 `authenticated()` 라서 실제로 403 이 나가는 경로는 없습니다. §8.2 의 FREE/PRO 접근 제어를 구현하면 그때 쓰입니다. 클라이언트(터미널·웹 프론트)는 **401 에서만** refresh 토큰으로 갱신하고 원 요청을 재시도합니다. 전에는 Spring Security 기본값(`Http403ForbiddenEntryPoint`) 때문에 만료된 토큰에도 403 이 나갔고, 그래서 양쪽 클라이언트의 갱신 로직이 한 번도 실행되지 않았습니다 — 액세스 토큰 수명(15분)마다 로그인 화면으로 튕겼습니다. `SecurityConfig.exceptionHandling` 이 이 규약을 지킵니다.
    - 만료와 위조를 응답에서 구분해 알려주지 않습니다. 둘 다 `{"error": "인증이 필요합니다."}` 입니다.
 5. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.

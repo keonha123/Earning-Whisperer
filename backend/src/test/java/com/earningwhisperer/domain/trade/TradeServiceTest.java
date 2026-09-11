@@ -267,18 +267,18 @@ class TradeServiceTest {
     @Test
     @DisplayName("expireStalePending - Repository 의 단일 UPDATE 결과를 그대로 반환")
     void expireStalePending_UPDATE_결과_반환() {
-        given(tradeRepository.expirePendingBefore(any(LocalDateTime.class))).willReturn(3);
+        given(tradeRepository.expirePendingBefore(any(LocalDateTime.class), any(LocalDateTime.class))).willReturn(3);
 
         int count = tradeService.expireStalePending();
 
         assertThat(count).isEqualTo(3);
-        verify(tradeRepository).expirePendingBefore(any(LocalDateTime.class));
+        verify(tradeRepository).expirePendingBefore(any(LocalDateTime.class), any(LocalDateTime.class));
     }
 
     @Test
     @DisplayName("expireStalePending - 대상이 없으면 0 반환")
     void expireStalePending_대상_없음() {
-        given(tradeRepository.expirePendingBefore(any(LocalDateTime.class))).willReturn(0);
+        given(tradeRepository.expirePendingBefore(any(LocalDateTime.class), any(LocalDateTime.class))).willReturn(0);
 
         int count = tradeService.expireStalePending();
 

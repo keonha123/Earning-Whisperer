@@ -95,6 +95,10 @@ app:
     # 콜백을 보내지 않으면 scheduler 가 EXPIRED 로 전환한다. 자동매매 신호의 시의성을
     # 고려해 짧게 잡는다.
     pending-ttl-seconds: ${TRADE_PENDING_TTL_SECONDS:30}
+    # 수동 주문 PENDING 의 유효시간(초). 자동 명령과 달리 증권사에 실제로 들어가 체결을
+    # 기다리는 지정가 주문이므로 30초로 만료시키면 살아 있는 주문이 "실패"로 뜬다.
+    # KIS 당일 주문은 장 마감 시 취소되므로 하루를 기본값으로 둔다.
+    manual-pending-ttl-seconds: ${TRADE_MANUAL_PENDING_TTL_SECONDS:86400}
 
 management:
   endpoints:

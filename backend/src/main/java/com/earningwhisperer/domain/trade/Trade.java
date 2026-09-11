@@ -120,7 +120,7 @@ public class Trade {
     @Builder
     public Trade(User user, Long brokerAccountId, SignalHistory signal, String ticker, TradeAction side,
                  OrderType orderType, Integer orderQty, Double price,
-                 Double orderRatio, Double aiScore) {
+                 String brokerOrderId, Double orderRatio, Double aiScore) {
         this.user = user;
         this.brokerAccountId = brokerAccountId;
         this.signal = signal;
@@ -129,6 +129,10 @@ public class Trade {
         this.orderType = orderType;
         this.orderQty = orderQty;
         this.price = price;
+        // 미체결(PENDING) 주문도 증권사 주문번호를 보존한다. 없으면 체결 확인/취소를 위해
+        // 주문을 다시 찾을 수단이 사라진다 — 생성 시 버려지고 executed() 에서만 채워지던 탓에
+        // 체결되지 않은 주문은 영구히 추적 불가였다.
+        this.brokerOrderId = brokerOrderId;
         this.orderRatio = orderRatio;
         this.aiScore = aiScore;
         this.executedQty = 0;

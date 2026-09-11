@@ -50,6 +50,14 @@ public class TradeService {
     @Value("${app.trade.pending-ttl-seconds:30}")
     private long pendingTtlSeconds;
 
+    /**
+     * 수동 주문 PENDING 의 TTL. 자동 명령(초 단위) 보다 훨씬 길다 — 증권사에 실제로 들어가
+     * 체결을 기다리는 지정가 주문이기 때문이다. KIS 당일 주문은 장 마감 시 취소되므로
+     * 하루가 지난 PENDING 은 죽은 주문으로 본다.
+     */
+    @Value("${app.trade.manual-pending-ttl-seconds:86400}")
+    private long manualPendingTtlSeconds;
+
     @Transactional(readOnly = true)
     public Page<TradeResponse> getMyTrades(Long userId, Pageable pageable, LocalDateTime startDate) {
         if (startDate == null) {
@@ -133,7 +141,7 @@ public class TradeService {
      * 주문은 Terminal 에서 이미 실행된 상태이므로 PENDING 단계 없이 EXECUTED/FAILED 로 직접 저장.
      */
     @Transactional
-    public void createManualTrade(Long userId, Long brokerAccountId, ManualTradeRequest req) {
+    public Long createManualTrade(Long userId, Long brokerAccountId, ManualTradeRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
 
@@ -146,19 +154,25 @@ public class TradeService {
                 .orderType(req.getOrderType())
                 .orderQty(req.getOrderQty())
                 .price(req.getPrice())
+                .brokerOrderId(req.getBrokerOrderId())
                 .orderRatio(null)
                 .aiScore(null)
                 .build();
 
+        // Trade 는 생성 시 PENDING 이다. 미체결 주문은 그 상태를 그대로 둔다 —
+        // FAILED 로 적으면 살아 있는 주문을 실패로 기록하는 것이 된다.
         if ("EXECUTED".equals(req.getStatus())) {
             trade.executed(req.getExecutedQty(), req.getExecutedPrice(), req.getBrokerOrderId());
-        } else {
+        } else if ("FAILED".equals(req.getStatus())) {
             trade.failed();
         }
 
-        tradeRepository.save(trade);
-        log.info("[TradeService] 수동 주문 기록 - userId={} ticker={} side={} status={}",
-                userId, req.getTicker(), req.getSide(), req.getStatus());
+        Trade saved = tradeRepository.save(trade);
+        log.info("[TradeService] 수동 주문 기록 - userId={} ticker={} side={} status={} tradeId={}",
+                userId, req.getTicker(), req.getSide(), req.getStatus(), saved.getId());
+        // tradeId 를 돌려줘야 PENDING 으로 기록된 미체결 주문을 나중에 콜백으로 종결시킬 수
+        // 있다. void 였던 동안에는 호출자가 id 를 알 수 없어 종결 경로 자체가 없었다.
+        return saved.getId();
     }
 
     /**
@@ -171,11 +185,13 @@ public class TradeService {
      */
     @Transactional
     public int expireStalePending() {
-        LocalDateTime threshold = LocalDateTime.now().minusSeconds(pendingTtlSeconds);
-        int affected = tradeRepository.expirePendingBefore(threshold);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime autoThreshold = now.minusSeconds(pendingTtlSeconds);
+        LocalDateTime manualThreshold = now.minusSeconds(manualPendingTtlSeconds);
+        int affected = tradeRepository.expirePendingBefore(autoThreshold, manualThreshold);
         if (affected > 0) {
-            log.info("[TradeService] PENDING TTL 만료 전환 - count={} threshold={}",
-                    affected, threshold);
+            log.info("[TradeService] PENDING TTL 만료 전환 - count={} auto={} manual={}",
+                    affected, autoThreshold, manualThreshold);
         }
         return affected;
     }
