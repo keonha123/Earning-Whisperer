@@ -8,6 +8,7 @@ import * as PricePoller from '../services/PricePoller'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { IpcError } from '../../lib/types/ipcError'
 import { registerHandler } from './registerHandler'
+import { KisWebSocketService } from '../services/KisWebSocketService'
 
 const KEYTAR_SERVICE = 'EarningWhisperer'
 const PAPER_TRADING_KEY = 'kis-isPaperTrading'
@@ -99,6 +100,12 @@ export function registerSettingsHandlers() {
 
       // 옛 baseURL 로 폴링한 가격이 새 모드 화면에 잠시라도 노출되지 않도록 캐시 무효화 + 사이클 재시작
       PricePoller.clearCache()
+
+      // WebSocket 도 함께 갈아야 한다. 자격증명(storedAppKey)은 연결 시점 모드로 고정되는데
+      // 엔드포인트/TR_ID 는 호출 시점의 mainState 를 읽으므로, 끊지 않으면 재연결 때
+      // 실전 키로 모의 서버에 붙는 식의 어긋난 조합이 만들어진다.
+      KisWebSocketService.disconnect()
+      void KisWebSocketService.connectWithStoredKey()
 
       broadcast(IPC_CHANNELS.SETTINGS_PAPER_TRADING_CHANGED, { value })
       return { ok: true }

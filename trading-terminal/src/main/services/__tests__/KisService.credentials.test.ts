@@ -63,26 +63,57 @@ describe('KisService.saveCredentials — 모드별 slot 분리', () => {
 describe('KisService.hasCredentials — 모드별 등록 여부 객체', () => {
   it('아무것도 등록되지 않음 → { paper: false, real: false }', async () => {
     const result = await KisService.hasCredentials()
-    expect(result).toEqual({ paper: false, real: false })
+    expect(result).toEqual({ paper: false, real: false, paperHtsId: false, realHtsId: false })
   })
 
   it('paper 만 등록 → { paper: true, real: false }', async () => {
     await KisService.saveCredentials('k', 's', 'a', true)
     const result = await KisService.hasCredentials()
-    expect(result).toEqual({ paper: true, real: false })
+    expect(result).toEqual({ paper: true, real: false, paperHtsId: false, realHtsId: false })
   })
 
   it('real 만 등록 → { paper: false, real: true }', async () => {
     await KisService.saveCredentials('k', 's', 'a', false)
     const result = await KisService.hasCredentials()
-    expect(result).toEqual({ paper: false, real: true })
+    expect(result).toEqual({ paper: false, real: true, paperHtsId: false, realHtsId: false })
   })
 
   it('양쪽 모두 등록 → { paper: true, real: true }', async () => {
     await KisService.saveCredentials('pk', 'ps', 'pa', true)
     await KisService.saveCredentials('rk', 'rs', 'ra', false)
     const result = await KisService.hasCredentials()
-    expect(result).toEqual({ paper: true, real: true })
+    expect(result).toEqual({ paper: true, real: true, paperHtsId: false, realHtsId: false })
+  })
+
+  it('htsId 를 저장하면 해당 모드만 paperHtsId/realHtsId 가 true', async () => {
+    await KisService.saveCredentials('k', 's', 'a', true, 'myhtsid')
+
+    const result = await KisService.hasCredentials()
+    expect(result.paperHtsId).toBe(true)
+    expect(result.realHtsId).toBe(false)
+    expect(await KisService.getHtsId(true)).toBe('myhtsid')
+  })
+
+  it('htsId 를 생략하면(undefined) 기존 값이 유지된다', async () => {
+    // 설정 폼은 항상 빈 값으로 열린다. 자격증명만 갱신할 때 htsId 가 지워지면
+    // 실시간 체결통보가 조용히 끊긴다.
+    await KisService.saveCredentials('k', 's', 'a', true, 'myhtsid')
+    await KisService.saveCredentials('k2', 's2', 'a2', true)
+
+    expect(await KisService.getHtsId(true)).toBe('myhtsid')
+    expect((await KisService.hasCredentials()).paperHtsId).toBe(true)
+  })
+
+  it('htsId 를 빈 문자열로 넘기면 삭제된다 (명시적 지우기)', async () => {
+    await KisService.saveCredentials('k', 's', 'a', true, 'myhtsid')
+    await KisService.saveCredentials('k', 's', 'a', true, '')
+
+    expect(await KisService.getHtsId(true)).toBeNull()
+  })
+
+  it('공백만 있는 htsId 는 저장하지 않는다', async () => {
+    await KisService.saveCredentials('k', 's', 'a', true, '   ')
+    expect(await KisService.getHtsId(true)).toBeNull()
   })
 
   it('한 모드의 키 일부만 누락 → 그 모드는 false (정확한 부분 등록 차단)', async () => {

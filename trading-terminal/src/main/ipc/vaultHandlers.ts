@@ -17,7 +17,14 @@ function assertNonBlankString(value: unknown, fieldName: string): asserts value 
 
 export function registerVaultHandlers() {
   registerHandler<
-    { appKey: string; appSecret: string; accountNo: string; isPaperTrading: boolean },
+    {
+      appKey: string
+      appSecret: string
+      accountNo: string
+      isPaperTrading: boolean
+      /** 선택. 실시간 체결통보 구독의 tr_key 로 쓰인다. */
+      htsId?: string
+    },
     { success: true }
   >(
     IPC_CHANNELS.VAULT_SAVE,
@@ -31,14 +38,24 @@ export function registerVaultHandlers() {
       assertNonBlankString(payload?.appSecret, 'appSecret')
       assertNonBlankString(payload?.accountNo, 'accountNo')
 
-      const { appKey, appSecret, accountNo, isPaperTrading } = payload
+      // htsId 는 선택 입력 — 없으면 체결통보만 못 받고 나머지 기능은 정상이다.
+      if (payload?.htsId !== undefined && typeof payload.htsId !== 'string') {
+        throw new IpcError('VALIDATION', 'htsId must be a string')
+      }
+      const { appKey, appSecret, accountNo, isPaperTrading, htsId } = payload
       // 계좌번호 정규화 — '12345678-01' 처럼 구분자가 섞이면 ACNT_PRDT_CD 가 '-01' 로 나간다.
       // 숫자만 남긴 뒤 10자리(계좌 8 + 상품코드 2)가 아니면 저장 자체를 거부.
       const normalizedAccountNo = accountNo.replace(/\D/g, '')
       if (normalizedAccountNo.length !== 10) {
         throw new IpcError('VALIDATION', '계좌번호는 숫자 10자리여야 합니다 (계좌번호 8자리 + 상품코드 2자리)')
       }
-      await KisService.saveCredentials(appKey, appSecret, normalizedAccountNo, isPaperTrading)
+      await KisService.saveCredentials(
+        appKey,
+        appSecret,
+        normalizedAccountNo,
+        isPaperTrading,
+        htsId,
+      )
       // 저장 대상 모드와 현재 활성 모드가 일치할 때만 토큰 발급 시도.
       // 다른 모드 키 등록(예: paper 활성 상태에서 real 키 등록)은 발급 skip — A3 의 양쪽 등록 UX 지원.
       if (isPaperTrading === mainState.isPaperTrading) {
@@ -55,7 +72,10 @@ export function registerVaultHandlers() {
     },
   )
 
-  registerHandler<void, { paper: boolean; real: boolean }>(
+  registerHandler<
+    void,
+    { paper: boolean; real: boolean; paperHtsId: boolean; realHtsId: boolean }
+  >(
     IPC_CHANNELS.VAULT_HAS,
     async () => {
       return KisService.hasCredentials()

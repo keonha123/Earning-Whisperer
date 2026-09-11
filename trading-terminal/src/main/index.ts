@@ -8,7 +8,7 @@ import { mainState } from './store/mainState'
 import { registerAuthHandlers, teardownSession } from './ipc/authHandlers'
 import { setRefreshFailedHandler } from './services/BackendClient'
 import { registerVaultHandlers } from './ipc/vaultHandlers'
-import { registerKisHandlers } from './ipc/kisHandlers'
+import { registerKisHandlers, reconcilePendingTrades } from './ipc/kisHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerWsHandlers } from './ipc/wsHandlers'
 import { registerMarketHandlers } from './ipc/marketHandlers'
@@ -120,6 +120,13 @@ function registerAllHandlers() {
   // 액세스 토큰 갱신이 최종 실패하면 (RT 만료, rotation 재사용 감지) 로그아웃과 같은
   // 정리를 태운다. 그러지 않으면 죽은 세션으로 폴러들이 계속 돌며 401 만 쌓는다.
   setRefreshFailedHandler(() => teardownSession())
+  // KIS 실시간 체결통보가 오면 그 즉시 미체결 주문의 상태를 맞춘다. 통보 자체에는
+  // 백엔드 tradeId 가 없으므로, ODNO 로 PENDING 을 찾아 확정하는 기존 경로를 재사용한다.
+  KisWebSocketService.setFillNoticeHandler((fill) => {
+    void reconcilePendingTrades().catch((e) =>
+      console.warn(`[main] 체결통보 반영 실패 — ODNO=${fill.orderId}:`, e),
+    )
+  })
   registerAuthHandlers()
   registerVaultHandlers()
   registerKisHandlers()
