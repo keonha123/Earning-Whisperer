@@ -67,6 +67,14 @@ const TR_IDS = {
  */
 const ORDER_FILL_INQUIRE_WAIT_MS = process.env.NODE_ENV === 'test' ? 0 : 500
 
+/**
+ * KIS 는 주문일자를 한국시간 기준으로 기록한다. 체결조회의 주문일자 범위를 로컬 타임존이나
+ * UTC 로 계산하면 KST 00:00~09:00 구간에서 하루가 어긋나 조회 범위에 주문이 빠지고,
+ * 체결된 주문이 미체결(0)로 오판된다. 미국 정규장은 KST 22:30~05:00 이므로 그 중
+ * 00:00~05:00 — 장의 대부분 — 이 이 구간에 걸린다.
+ */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000
+
 function trId(key: keyof typeof TR_IDS): string {
   return mainState.isPaperTrading ? TR_IDS[key].paper : TR_IDS[key].real
 }
@@ -554,6 +562,13 @@ export const KisService = {
       const base = Number(data.output?.base ?? 0)
       const currentPrice = Number.isFinite(last) && last > 0 ? last : 0
       const previousClose = Number.isFinite(base) && base > 0 ? base : 0
+      // rt_cd 는 성공인데 시세가 비어 오는 경우가 있다 (모의투자 계좌의 해외 시세 제약,
+      // 장 시간 외 등). 조용히 0 을 반환하면 호출자가 원인을 알 수 없으므로 남긴다.
+      if (currentPrice === 0) {
+        console.warn(
+          `[KisService] HHDFS00000300 시세 없음 — ticker=${ticker} last=${data.output?.last ?? 'undefined'} base=${data.output?.base ?? 'undefined'}`,
+        )
+      }
       return { currentPrice, previousClose }
     } catch (e: any) {
       // 모드 전환 abort는 0 반환 (PricePoller 0 가드와 일관)
@@ -782,6 +797,15 @@ export function maskAccountNo(accountNo: string): string {
  * 응답 필드명은 KIS 명세에 따라 다를 수 있으며 (실제 운영 시 검증 필요),
  * 일반적인 KIS 컨벤션 (`output1` 배열 + `odno`/`tot_ccld_qty`/`avg_prvs`) 을 가정한다.
  */
+/** KST(UTC+9) 기준 yyyyMMdd. */
+function kstDateString(): string {
+  const kst = new Date(Date.now() + KST_OFFSET_MS)
+  const yyyy = kst.getUTCFullYear()
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(kst.getUTCDate()).padStart(2, '0')
+  return `${yyyy}${mm}${dd}`
+}
+
 async function inquireOrderFill(
   appKey: string,
   appSecret: string,
@@ -790,11 +814,7 @@ async function inquireOrderFill(
   orderId: string,
 ): Promise<{ executedQty: number; avgPrice: number | null } | null> {
   try {
-    const today = new Date()
-    const yyyy = today.getUTCFullYear()
-    const mm = String(today.getUTCMonth() + 1).padStart(2, '0')
-    const dd = String(today.getUTCDate()).padStart(2, '0')
-    const yyyymmdd = `${yyyy}${mm}${dd}`
+    const yyyymmdd = kstDateString()
 
     await kisLimiter.acquire('HIGH')
     const { data } = await kisHttp.get(

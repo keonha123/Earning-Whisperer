@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react'
 import Stepper from '../common/Stepper'
 import type { TradingMode } from '../../store/useTradingStore'
+import { IMMEDIATE_FILL_BUFFER, immediateFillPrice } from '../../../lib/orderPricing'
 
 export type OrderSide = 'BUY' | 'SELL'
 
 export interface OrderBarSubmitPayload {
   side: OrderSide
   qty: number
-  /** 시장가 = null, 지정가 = 가격값. */
+  /**
+   * 즉시 체결 = null (main 이 현재가 기준 버퍼 지정가로 환산), 지정가 = 가격값.
+   * KIS 해외주식에는 매수 시장가 코드가 없다 — `lib/orderPricing` 주석 참고.
+   */
   price: number | null
 }
 
@@ -55,7 +59,7 @@ const MAX_LIMIT_PRICE = 1_000_000
  *  2. bs-toggle      BUY/SELL 탭
  *  3. ord-qty        Stepper 수량 + MAX 버튼
  *  4. ord-calc       예상 체결액 + 예수금
- *  5. ord-actions    시장가 토글 + 주문 버튼
+ *  5. ord-actions    즉시 체결/지정가 토글 + 주문 버튼
  *
  * AUTO_PILOT 가드:
  *  - 모든 입력 비활성, 주문 버튼 자리에 안내 라벨.
@@ -87,25 +91,32 @@ export default function OrderBar({
   const inputsLocked = isAuto || disabled === true
   const hasPrice = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
 
-  // 예상 체결액 (시장가는 현재가 기준, 지정가는 입력가 기준).
+  // 예상 체결액 (즉시 체결은 현재가+버퍼 기준, 지정가는 입력가 기준).
   // 가드: 음수 / NaN / Infinity / 비현실적 상한 초과 → null 처리.
   //   사용자가 `1e308` 등을 paste 했을 때 estimatedTotal 이 Infinity 로 표시되는 것을 방지.
   //   prod 연결 시 main 측에서 동일 검증을 KIS_PLACE_MANUAL_ORDER 핸들러에 적용해야 한다.
   const effectivePrice = useMemo(() => {
-    if (isMarket) return hasPrice ? (currentPrice as number) : null
+    // 즉시 체결은 main 이 주문 시점 현재가로 다시 계산하지만, 예상 체결액·MAX 수량은
+    // 실제로 나갈 가격(버퍼 포함)을 기준으로 보여줘야 예수금 부족 거부를 피할 수 있다.
+    if (isMarket) return hasPrice ? immediateFillPrice(side, currentPrice as number) : null
     const parsed = parseFloat(limitPrice)
     if (!Number.isFinite(parsed)) return null
     if (parsed <= 0 || parsed >= MAX_LIMIT_PRICE) return null
     return parsed
-  }, [isMarket, limitPrice, currentPrice, hasPrice])
+  }, [isMarket, limitPrice, currentPrice, hasPrice, side])
 
   const estimatedTotal = effectivePrice != null ? effectivePrice * qty : null
 
   // MAX = 예수금으로 살 수 있는 최대 수량 (BUY 한정). 0 으로 나누기 방지.
+  // 기준가는 실제 주문가 — 즉시 체결이면 버퍼가 얹힌 가격이다.
   const maxBuyQty = useMemo(() => {
-    if (!hasPrice || (currentPrice as number) <= 0 || orderableCash <= 0) return 0
-    return Math.floor(orderableCash / (currentPrice as number))
-  }, [orderableCash, currentPrice, hasPrice])
+    if (!hasPrice || orderableCash <= 0) return 0
+    const basis = isMarket
+      ? immediateFillPrice('BUY', currentPrice as number)
+      : (currentPrice as number)
+    if (basis == null || basis <= 0) return 0
+    return Math.floor(orderableCash / basis)
+  }, [orderableCash, currentPrice, hasPrice, isMarket])
 
   function handleSubmit() {
     // TODO(impl): main 측 KIS_PLACE_MANUAL_ORDER 채널 추가 시
@@ -208,8 +219,17 @@ export default function OrderBar({
           <span className="text-text-tertiary uppercase tracking-[0.06em]">
             예상 체결액
           </span>
-          <span className="num text-[13px] font-semibold text-text-primary tabular-nums">
-            {estimatedTotal != null ? formatUsd(estimatedTotal) : '—'}
+          <span className="flex items-baseline gap-1.5">
+            {/* 즉시 체결은 현재가+버퍼가 주문 단가다. 이 단가를 같이 보여주지 않으면
+                상단의 현재가 × 수량과 1% 어긋나 계산 오류로 오인된다. */}
+            {effectivePrice != null && (
+              <span className="num text-[10px] text-text-tertiary tabular-nums">
+                @ {formatUsd(effectivePrice)}
+              </span>
+            )}
+            <span className="num text-[13px] font-semibold text-text-primary tabular-nums">
+              {estimatedTotal != null ? formatUsd(estimatedTotal) : '—'}
+            </span>
           </span>
         </div>
         <div className="flex justify-between items-baseline gap-3 text-[11px]">
@@ -229,12 +249,22 @@ export default function OrderBar({
           type="button"
           onClick={() => setIsMarket((v) => !v)}
           disabled={inputsLocked}
+          aria-pressed={isMarket}
           className="h-9 px-3.5 rounded-md bg-surface-2 border border-border-strong
                      text-text-primary text-xs font-semibold inline-flex items-center gap-1.5
                      hover:bg-surface-3 disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label={isMarket ? '시장가 (클릭하여 지정가로 변경)' : '지정가 (클릭하여 시장가로 변경)'}
+          aria-label={
+            isMarket
+              ? `즉시 체결 — 현재가 ±${(IMMEDIATE_FILL_BUFFER * 100).toFixed(0)}% 지정가로 주문 (클릭하여 지정가 직접 입력)`
+              : '지정가 직접 입력 (클릭하여 즉시 체결로 변경)'
+          }
+          title={
+            isMarket
+              ? `KIS 해외주식은 시장가를 지원하지 않아 현재가 ±${(IMMEDIATE_FILL_BUFFER * 100).toFixed(0)}% 지정가로 주문합니다`
+              : undefined
+          }
         >
-          {isMarket ? '시장가' : '지정가'}
+          {isMarket ? '즉시 체결' : '지정가'}
           <span className="text-[9px] text-text-tertiary">▾</span>
         </button>
 

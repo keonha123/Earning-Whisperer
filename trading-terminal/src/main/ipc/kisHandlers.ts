@@ -4,6 +4,7 @@ import { TradeExecutor, type TradeSignal } from '../services/TradeExecutor'
 import { BackendClient, type AssetHistoryPoint } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
+import { immediateFillPrice } from '../../lib/orderPricing'
 import { IpcError, sanitizeAxiosErrorDetails } from '../../lib/types/ipcError'
 import { registerHandler } from './registerHandler'
 
@@ -95,6 +96,32 @@ async function executeSelfPaperManual(req: ManualOrderRequest) {
   return result
 }
 
+/**
+ * "즉시 체결" 수동 주문이 KIS 로 나갈 때 쓸 지정가를 조회·산출한다.
+ *
+ * 기준가는 KIS 현재가(HHDFS00000300) 를 먼저 쓰고, 비어 오면 백엔드 시세 스트림이
+ * 채운 pricesCache 로 폴백한다. KIS 모의투자 계좌는 해외주식 시세가 비어 오는 경우가
+ * 있고, 그때 캐시 값은 화면에 표시된 현재가와 같은 출처라 사용자가 본 값과 일치한다.
+ *
+ * 양쪽 모두 없으면 주문을 보내지 않고 실패시킨다 — 0달러 지정가로 나가서
+ * 영원히 미체결로 남는 것보다 즉시 에러가 낫다.
+ */
+async function resolveImmediateFillPrice(side: 'BUY' | 'SELL', ticker: string): Promise<number> {
+  const { currentPrice } = await KisService.getCurrentPrice(ticker)
+  let basis = currentPrice
+  if (!(basis > 0)) {
+    basis = mainState.getPriceFromCache(ticker) ?? 0
+    if (basis > 0) {
+      console.warn(`[kisHandlers] KIS 현재가 없음 — 시세 캐시로 폴백 ticker=${ticker} price=${basis}`)
+    }
+  }
+  const price = immediateFillPrice(side, basis)
+  if (price == null) {
+    throw new IpcError('KIS_ERROR', '현재가를 조회할 수 없어 주문을 보내지 않았습니다.')
+  }
+  return price
+}
+
 function toKisError(e: unknown, fallbackMessage: string): IpcError {
   if (e instanceof IpcError) return e
   const message = e instanceof Error ? e.message : fallbackMessage
@@ -161,16 +188,30 @@ export function registerKisHandlers() {
     }
 
     mainState.setOrderInProgress(true)
+    // catch 블록의 기록 payload 도 실제로 보낸 가격을 남겨야 하므로 try 밖에서 선언한다.
+    // null = 아직 가격이 확정되지 않음 (현재가 조회 실패 등) → KIS 로 아무것도 나가지 않았다.
+    let orderPrice: number | null = req.price
     try {
-      const price = req.price ?? undefined
-      const orderResult = await KisService.placeOrder(req.side, req.ticker, req.qty, price)
+      // req.price == null 은 "즉시 체결" 의도다. KIS 해외주식 매수에는 시장가 코드가
+      // 없으므로 현재가 기준 버퍼 지정가로 환산해서 보낸다 (orderPricing 주석 참고).
+      if (req.price == null) {
+        orderPrice = await resolveImmediateFillPrice(req.side, req.ticker)
+      }
+      // 위 분기를 통과했으므로 orderPrice 는 확정값이다.
+      const orderResult = await KisService.placeOrder(
+        req.side,
+        req.ticker,
+        req.qty,
+        orderPrice as number,
+      )
 
       const payload = {
         ticker: req.ticker,
         side: req.side,
-        order_type: req.price != null ? ('LIMIT' as const) : ('MARKET' as const),
+        // 브로커에 실제로 나간 주문은 항상 지정가다.
+        order_type: 'LIMIT' as const,
         order_qty: req.qty,
-        price: req.price ?? 0,
+        price: orderPrice as number,
         executed_qty: orderResult.executedQty,
         executed_price: orderResult.executedPrice,
         broker_order_id: orderResult.orderId || null,
@@ -212,9 +253,11 @@ export function registerKisHandlers() {
       const failPayload = {
         ticker: req.ticker,
         side: req.side,
-        order_type: req.price != null ? ('LIMIT' as const) : ('MARKET' as const),
+        // 가격 확정 전에 실패했다면 KIS 로 나간 주문이 없다 — 존재하지 않는 "$0 지정가"
+        // 시도를 기록하지 않도록 주문 유형을 원래 의도(즉시 체결)대로 남긴다.
+        order_type: orderPrice != null ? ('LIMIT' as const) : ('MARKET' as const),
         order_qty: req.qty,
-        price: req.price ?? 0,
+        price: orderPrice ?? 0,
         executed_qty: 0,
         executed_price: null,
         broker_order_id: null,
