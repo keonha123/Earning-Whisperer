@@ -49,6 +49,14 @@ function accountNoSlot(isPaperTrading: boolean): string {
 }
 
 /**
+ * HTS ID slot. 실시간 체결통보(H0GSCNI0/9) 의 tr_key 가 종목이 아니라 HTS ID 라서
+ * 별도로 보관해야 한다. 앱키/시크릿과 달리 비밀은 아니지만 같은 저장소에 둔다.
+ */
+function htsIdSlot(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-htsId-paper' : 'kis-htsId-real'
+}
+
+/**
  * KIS TR_ID 모드별 매핑.
  * 모의(paper)는 V로 시작 / 실전(real)은 T로 시작 — 첫 글자만 다르다.
  * baseURL/keytar는 분기되어 있어도 TR_ID가 모의용이면 실전 호출이 거부되므로 필수.
@@ -246,10 +254,18 @@ export const KisService = {
     appSecret: string,
     accountNo: string,
     isPaperTrading: boolean,
+    htsId?: string | null,
   ): Promise<void> {
     await keytar.setPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading), appKey)
     await keytar.setPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading), appSecret)
     await keytar.setPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading), accountNo)
+    // htsId 는 선택 입력이다. 없으면 체결통보 구독만 못 하고 나머지는 정상 동작하므로
+    // 빈 값이면 기존 값을 지운다 (사용자가 지우려 한 것으로 본다).
+    if (htsId && htsId.trim()) {
+      await keytar.setPassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading), htsId.trim())
+    } else if (htsId !== undefined) {
+      await keytar.deletePassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading))
+    }
 
     // 옛 키 기준의 access token 은 새 키와 결합 시 정합성이 깨지므로 항상 해당 모드 slot 정리.
     // 비활성 모드여도 다음 활성화 시 재발급되도록 (옛 토큰 부활 차단).
@@ -311,18 +327,29 @@ export const KisService = {
    * UI 가 paper/real 카드를 분리해 표시하려면 boolean 단일 값으로는 부족하므로
    * 객체 응답으로 전환 — A3 의 카드 분리 UI 에 필요.
    */
-  async hasCredentials(): Promise<{ paper: boolean; real: boolean }> {
-    const [pk, ps, pa, rk, rs, ra] = await Promise.all([
+  async hasCredentials(): Promise<{
+    paper: boolean
+    real: boolean
+    paperHtsId: boolean
+    realHtsId: boolean
+  }> {
+    const [pk, ps, pa, ph, rk, rs, ra, rh] = await Promise.all([
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(false)),
     ])
     return {
       paper: !!(pk && ps && pa),
       real: !!(rk && rs && ra),
+      // HTS ID 는 자격증명 필수 요건이 아니라 별도로 알린다. UI 가 이걸 모르면
+      // "이미 등록됨" 표시도, 유실 인지도 불가능하다.
+      paperHtsId: !!ph,
+      realHtsId: !!rh,
     }
   },
 
@@ -342,6 +369,7 @@ export const KisService = {
       keytar.deletePassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, tokenKey(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, expiryKey(isPaperTrading)),
     ])
@@ -648,6 +676,40 @@ export const KisService = {
       executedPrice: fill.executedQty > 0 ? fill.avgPrice : null,
       executedQty: fill.executedQty,
     }
+  },
+
+  /** 현재 활성 모드의 HTS ID. 미등록이면 null. */
+  async getHtsId(isPaperTrading?: boolean): Promise<string | null> {
+    const paper = isPaperTrading ?? mainState.isPaperTrading
+    return keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(paper))
+  },
+
+  /**
+   * 이미 접수된 주문의 체결 상태를 다시 조회한다.
+   *
+   * <p>주문 직후 1회 조회로 확정하는 경로(placeOrder) 와 달리, 나중에 다시 확인하기 위한
+   * 진입점이다. 즉시 체결 지정가라도 0.5초 안에 체결이 반영되지 않으면 PENDING 으로
+   * 기록되는데, 그 뒤로 아무도 확인하지 않으면 체결된 주문이 영구히 미체결로 남는다.
+   *
+   * @returns 조회 실패 시 null (호출자가 "모른다" 로 처리해야 한다 — 체결/미체결로 단정하면 안 된다)
+   */
+  async inquireFill(
+    ticker: string,
+    orderId: string,
+  ): Promise<{ executedQty: number; avgPrice: number | null } | null> {
+    if (!ticker || !orderId) return null
+    await KisService.ensureToken()
+
+    const paper = mainState.isPaperTrading
+    const [appKey, appSecret, accountNo] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(paper)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper)),
+    ])
+    if (!appKey || !appSecret || !accountNo) {
+      throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
+    }
+    return inquireOrderFill(appKey, appSecret, accountNo, ticker, orderId)
   },
 
   /**

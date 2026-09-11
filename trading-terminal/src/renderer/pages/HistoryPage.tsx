@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { HistoryMode, HistoryRow, HistoryStatus } from '../types/tradeHistory'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
@@ -72,11 +72,15 @@ export default function HistoryPage() {
   const navigate = useNavigate()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
   const clearUser = useUserStore((s) => s.clear)
+  /** 체결 동기화 중복 실행 가드. */
+  const reconcilingRef = useRef(false)
+  /** 목록 요청 세대 — 늦게 도착한 옛 응답이 최신 목록을 덮지 않도록. */
+  const loadGenerationRef = useRef(0)
 
   useEffect(() => {
     setPage(0)
-    loadTrades(0)
-    // period 변경 시 첫 페이지부터 재조회
+    // 화면 진입/기간 변경 시 미체결 주문을 한 번 확인한 뒤 목록을 읽는다.
+    reconcileThenLoad(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
@@ -96,7 +100,44 @@ export default function HistoryPage() {
     return d.toISOString().replace('Z', '')
   }
 
-  async function loadTrades(p: number, sizeOverride?: number) {
+  /**
+   * 미체결(PENDING) 주문의 체결 여부를 KIS 에 재조회해 백엔드 상태를 맞춘 뒤 목록을 다시 읽는다.
+   *
+   * 주문 직후 1회 조회로 확정하는 구조라 그 순간 체결이 반영되지 않은 주문은 PENDING 으로
+   * 남고 이후 아무도 확인하지 않았다. 주기 폴링을 두는 대신(KIS 초당 호출 제한) 이 화면에
+   * 들어올 때 1회와 새로고침 때만 확인한다. 실패는 조용히 넘긴다 — 목록 조회 자체는 되어야
+   * 하고, 동기화는 부가 작업이다.
+   */
+  async function reconcileThenLoad(p: number) {
+    // 새로고침 연타나 mount effect 와의 중첩을 막는다. 중복 실행은 KIS 조회를 낭비하고,
+    // loadTrades 가 요청 순서와 무관하게 setTrades 하므로 옛 응답이 최신을 덮을 수 있다.
+    if (reconcilingRef.current) return
+    reconcilingRef.current = true
+    setLoading(true)
+    try {
+      await ipc.invoke<{ checked: number; reconciled: number; failed: number }>(
+        IPC_CHANNELS.TRADES_RECONCILE_PENDING,
+      )
+    } catch (e) {
+      // 동기화는 부가 작업이다 — 실패해도 목록 조회는 그대로 진행한다.
+      console.warn('체결 상태 동기화 실패:', e)
+    }
+    try {
+      // setLoading(false) 를 여기서 하지 않는다. 중간에 false 프레임이 렌더되면
+      // 갱신 전 데이터가 "로딩 아님" 으로 잠깐 보인다.
+      await loadTrades(p, undefined, { keepLoading: true })
+    } finally {
+      setLoading(false)
+      reconcilingRef.current = false
+    }
+  }
+
+  async function loadTrades(
+    p: number,
+    sizeOverride?: number,
+    opts?: { keepLoading?: boolean },
+  ) {
+    const generation = ++loadGenerationRef.current
     setLoading(true)
     try {
       const size = sizeOverride ?? Number(pageSize)
@@ -105,6 +146,8 @@ export default function HistoryPage() {
         IPC_CHANNELS.TRADES_GET,
         { page: p, size, ...(startDate ? { startDate } : {}) },
       )
+      // 더 새로운 요청이 이미 떠 있으면 이 응답은 버린다.
+      if (generation !== loadGenerationRef.current) return
       setTrades(data.content ?? [])
       setTotalPages(data.totalPages ?? 0)
       setLastUpdatedAt(Date.now())
@@ -121,7 +164,9 @@ export default function HistoryPage() {
             : undefined,
       })
     } finally {
-      setLoading(false)
+      // reconcileThenLoad 가 감싸는 경우에는 그쪽에서 내린다 — 중간에 로딩이 풀려
+      // 옛 데이터가 노출되는 프레임을 막기 위해.
+      if (!opts?.keepLoading) setLoading(false)
     }
   }
 
@@ -249,7 +294,7 @@ export default function HistoryPage() {
           )}
           <button
             type="button"
-            onClick={() => loadTrades(page)}
+            onClick={() => reconcileThenLoad(page)}
             className="px-2.5 py-1 rounded-md inline-flex items-center gap-1.5
                        text-text-secondary hover:bg-surface-2 hover:text-text-primary
                        text-[11px] font-medium"

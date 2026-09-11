@@ -122,6 +122,94 @@ async function resolveImmediateFillPrice(side: 'BUY' | 'SELL', ticker: string): 
   return price
 }
 
+/**
+ * 백엔드가 PENDING 으로 들고 있는 주문의 체결 여부를 KIS 에 다시 물어 상태를 맞춘다.
+ *
+ * <p>주문 직후 1회 조회(placeOrder)로 확정하는 구조라, 그 순간 체결이 반영되지 않은
+ * 주문은 PENDING 으로 남고 이후 아무도 확인하지 않았다. 체결된 주문이 영구히 미체결로
+ * 기록되는 문제를 이 경로가 닫는다.
+ *
+ * <p>주기 폴링을 두지 않는다 — KIS 는 초당 호출 제한이 있고, 대기 주문이 없는 대부분의
+ * 시간에는 조회할 것도 없다. 체결 내역 화면 진입 시 1회와 사용자의 새로고침으로만 돈다.
+ *
+ * <p>조회 실패(null)나 미체결(0)은 그대로 둔다. "모른다" 를 체결/실패로 단정하면 살아 있는
+ * 주문을 잘못 확정하게 된다.
+ */
+/**
+ * 최신 N건만 훑는다. 백엔드에 status 필터 조회가 없어 PENDING 만 좁혀 받을 수 없다.
+ * 이 범위를 벗어난 오래된 PENDING 은 이 경로로 정리되지 않지만, 수동 주문 TTL(24시간)
+ * 이 EXPIRED 로 회수하므로 영구 고아는 되지 않는다.
+ */
+const PENDING_SCAN_SIZE = 50
+/** 한 번에 KIS 에 물을 최대 건수. 초당 호출 제한이 있어 상한을 둔다. */
+const PENDING_RECONCILE_MAX = 20
+
+interface PendingTradeRow {
+  id: number
+  ticker: string
+  status: string
+  brokerOrderId: string | null
+}
+
+type ReconcileResult = { checked: number; reconciled: number; failed: number }
+
+/**
+ * 진행 중인 동기화. 호출 경로가 셋(화면 진입, 새로고침 버튼, 체결통보 콜백)이고 서로를
+ * 모르기 때문에 겹쳐 돌 수 있다. 겹치면 같은 PENDING 을 중복 조회해 KIS 초당 호출 예산을
+ * 잠식한다 — 주기 폴링을 두지 않은 이유를 스스로 어기는 셈이다. 진행 중이면 그 결과를
+ * 함께 기다린다.
+ */
+let reconcileInFlight: Promise<ReconcileResult> | null = null
+
+export function reconcilePendingTrades(): Promise<ReconcileResult> {
+  if (reconcileInFlight) return reconcileInFlight
+  reconcileInFlight = runReconcile().finally(() => {
+    reconcileInFlight = null
+  })
+  return reconcileInFlight
+}
+
+async function runReconcile(): Promise<ReconcileResult> {
+  // SELF_PAPER 는 KIS 를 경유하지 않고 즉시 가상 체결되므로 PENDING 이 생기지 않는다.
+  if (mainState.accountType === 'SELF_PAPER') {
+    return { checked: 0, reconciled: 0, failed: 0 }
+  }
+
+  const page = (await BackendClient.getTrades(0, PENDING_SCAN_SIZE)) as {
+    content?: PendingTradeRow[]
+  } | null
+  const pending = (page?.content ?? [])
+    .filter((t) => t.status === 'PENDING' && !!t.brokerOrderId)
+    .slice(0, PENDING_RECONCILE_MAX)
+
+  let reconciled = 0
+  let failed = 0
+  for (const trade of pending) {
+    try {
+      const fill = await KisService.inquireFill(trade.ticker, trade.brokerOrderId as string)
+      if (!fill || fill.executedQty <= 0) continue
+      await BackendClient.sendCallback(String(trade.id), {
+        status: 'EXECUTED',
+        broker_order_id: trade.brokerOrderId,
+        executed_price: fill.avgPrice,
+        executed_qty: fill.executedQty,
+        error_message: null,
+      })
+      reconciled += 1
+      console.info(
+        `[kisHandlers] 미체결 주문 체결 확인 — tradeId=${trade.id} ticker=${trade.ticker} qty=${fill.executedQty}`,
+      )
+    } catch (e) {
+      failed += 1
+      console.warn(
+        `[kisHandlers] 체결 재조회 실패 — tradeId=${trade.id}:`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+  return { checked: pending.length, reconciled, failed }
+}
+
 function toKisError(e: unknown, fallbackMessage: string): IpcError {
   if (e instanceof IpcError) return e
   const message = e instanceof Error ? e.message : fallbackMessage
@@ -269,6 +357,14 @@ export function registerKisHandlers() {
       throw err
     } finally {
       mainState.setOrderInProgress(false)
+    }
+  })
+
+  registerHandler(IPC_CHANNELS.TRADES_RECONCILE_PENDING, async () => {
+    try {
+      return await reconcilePendingTrades()
+    } catch (e) {
+      throw toKisError(e, '체결 상태 동기화 실패')
     }
   })
 

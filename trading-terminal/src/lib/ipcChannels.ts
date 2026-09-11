@@ -50,6 +50,8 @@ export const IPC_CHANNELS = {
   WS_DISCONNECT: 'terminal:ws:disconnect',
 
   TRADES_GET: 'terminal:trades:get',
+  /** 미체결(PENDING) 주문의 체결 여부를 KIS 에 재조회해 백엔드 상태를 맞춘다. */
+  TRADES_RECONCILE_PENDING: 'terminal:trades:reconcile-pending',
   /**
    * CSV 파일 저장 (Renderer → Main, invoke).
    * payload: { filename: string; csvContent: string }
