@@ -2,6 +2,8 @@ package com.earningwhisperer.domain.trade;
 
 import com.earningwhisperer.domain.portfolio.TradingMode;
 import com.earningwhisperer.domain.signal.TradeAction;
+import com.earningwhisperer.domain.portfolio.BrokerAccountRepository;
+import com.earningwhisperer.domain.portfolio.PositionService;
 import com.earningwhisperer.domain.user.User;
 import com.earningwhisperer.infrastructure.websocket.TradeCommandMessage;
 import com.earningwhisperer.presentation.trade.TradeCallbackRequest;
@@ -30,6 +32,11 @@ import static org.mockito.Mockito.*;
 class TradeServiceTest {
 
     @Mock private TradeRepository tradeRepository;
+    // processCallback 이 SELF_PAPER 가상 체결을 반영하려고 이 둘을 쓴다. mock 이 없으면
+    // @InjectMocks 가 null 을 주입해 NPE 로 죽는다 (Optional 반환 mock 은 기본값이 empty
+    // 라 SELF_PAPER 분기는 그대로 건너뛴다).
+    @Mock private BrokerAccountRepository brokerAccountRepository;
+    @Mock private PositionService positionService;
     @Mock private User mockUser;
 
     @InjectMocks
