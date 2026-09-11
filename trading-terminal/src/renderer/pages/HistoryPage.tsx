@@ -38,7 +38,9 @@ interface Trade {
   id: number
   ticker: string
   side: 'BUY' | 'SELL'
-  orderQty: number
+  orderType?: 'MARKET' | 'LIMIT' | null
+  orderQty?: number | null
+  price?: number | null
   executedQty: number
   executedPrice: number | null
   status: string
@@ -131,7 +133,7 @@ export default function HistoryPage() {
   async function handleCsvExport() {
     const rows = filtered
     if (rows.length === 0) return
-    const headers = ['일시', '종목', '방향', '모드', '수량', '체결가', '체결금액', '상태']
+    const headers = ['일시', '종목', '방향', '모드', '주문수량', '체결수량', '주문가', '체결가', '체결금액', '상태']
     const lines = [
       headers.join(','),
       ...rows.map((r) =>
@@ -140,7 +142,9 @@ export default function HistoryPage() {
           r.ticker,
           r.side,
           r.mode,
+          r.orderQty ?? '',
           r.executedQty,
+          r.price ?? '',
           r.executedPrice ?? '',
           r.amount ?? '',
           r.status,
@@ -162,6 +166,9 @@ export default function HistoryPage() {
       ticker: t.ticker,
       side: t.side,
       mode: 'MANUAL' as HistoryMode, // prod fallback — 실제 mode 정보 없음
+      orderType: t.orderType ?? null,
+      orderQty: t.orderQty ?? null,
+      price: t.price ?? null,
       executedQty: t.executedQty,
       executedPrice: t.executedPrice,
       amount:
@@ -350,7 +357,7 @@ export default function HistoryPage() {
                 <Th>종목</Th>
                 <Th>방향</Th>
                 <Th>모드</Th>
-                <Th align="right">수량</Th>
+                <Th align="right">체결수량</Th>
                 <Th align="right">체결가 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th align="right">체결금액 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th align="right">AI</Th>
@@ -605,7 +612,10 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
     ['종목', row.ticker],
     ['방향', row.side],
     ['모드', row.mode],
-    ['주문수량', String(row.executedQty)],
+    ['주문유형', row.orderType ?? '—'],
+    ['주문수량', row.orderQty != null ? String(row.orderQty) : '—'],
+    ['주문가', row.price != null ? `$${row.price.toFixed(2)}` : '—'],
+    ['체결수량', String(row.executedQty)],
     ['체결가', row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'],
     ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
     ['상태', row.status],
@@ -618,7 +628,7 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
       onClick={onClose}
     >
       <div
-        className="bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[420px] max-w-[90vw] p-6"
+        className="bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[420px] max-w-[90vw] max-h-[80vh] overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">

@@ -18,6 +18,12 @@ export interface HistoryRow {
   ticker: string
   side: 'BUY' | 'SELL'
   mode: HistoryMode
+  /** 주문 유형. 백엔드가 주지 않던 값이라 nullable. */
+  orderType: 'MARKET' | 'LIMIT' | null
+  /** 사용자가 낸 주문 수량. 미체결 주문에도 존재한다. */
+  orderQty: number | null
+  /** 주문 지정가. 체결가와 달리 미체결 주문에도 존재한다. */
+  price: number | null
   executedQty: number
   executedPrice: number | null
   amount: number | null
