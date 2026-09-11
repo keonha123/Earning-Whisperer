@@ -22,6 +22,7 @@ import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { useConnectionStore } from '../store/useConnectionStore'
+import { useStockMarketStore } from '../store/useStockMarketStore'
 import { isIpcError } from '../../lib/types/ipcError'
 
 /**
@@ -131,11 +132,25 @@ export default function DashboardPage() {
       return sum + h.qty * px
     }, 0)
 
+  // 보유종목 회사명 출처. 마켓 화면과 같은 목록을 쓰고, 이미 로드돼 있으면 재요청하지 않는다.
+  const stockList = useStockMarketStore((st) => st.list)
+  const loadStockList = useStockMarketStore((st) => st.loadList)
+  useEffect(() => {
+    void loadStockList()
+  }, [loadStockList])
+  const nameByTicker = useMemo(
+    () => new Map(stockList.map((st) => [st.ticker, st.companyName])),
+    [stockList],
+  )
+
   // Holdings/Watchlist 표시 행:
   //  - 백엔드가 준 보유 종목만 표시한다. 비어 있으면 비어 있는 대로 둔다.
   //    예전에는 DEV 에서 가짜 보유 내역을 대신 띄웠는데, 그러면 연동이 끊긴 것과
   //    실제로 보유가 없는 것을 화면에서 구별할 수 없다.
-  //  - 회사명/로고색은 COMPANY_META 표시 상수에서 채운다(시세 아님).
+  //  - 회사명은 백엔드의 S&P 500 목록에서 찾는다. COMPANY_META 는 7종목만 담은
+  //    표시 상수라 그것만 쓰면 목록에 없는 종목이 티커로만 나온다(WMT 가 그랬다).
+  //    관심종목 행은 이미 백엔드 companyName 을 쓰고 있어서 둘이 어긋나 있었다.
+  //  - 로고 색은 COMPANY_META 에만 있다(디자인 토큰). 없으면 기본 색으로 떨어진다.
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
     const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
@@ -149,6 +164,7 @@ export default function DashboardPage() {
 
     return storeHoldings.map((h) => {
       const meta = COMPANY_META[h.ticker]
+      const companyName = nameByTicker.get(h.ticker) ?? meta?.name ?? h.ticker
       // 폴러 가격 우선, 없으면 KIS_GET_BALANCE 응답에 포함된 currentPrice fallback.
       const livePrice = prices[h.ticker]?.currentPrice ?? h.currentPrice
       const prevClose = prices[h.ticker]?.previousClose ?? 0
@@ -157,7 +173,7 @@ export default function DashboardPage() {
         h.avgPrice > 0 ? ((livePrice - h.avgPrice) / h.avgPrice) * 100 : 0
       return {
         ticker: h.ticker,
-        name: meta?.name ?? h.ticker,
+        name: companyName,
         currentPrice: livePrice,
         dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
@@ -167,7 +183,7 @@ export default function DashboardPage() {
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings, prices, earningsData])
+  }, [storeHoldings, prices, earningsData, nameByTicker])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
   // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
