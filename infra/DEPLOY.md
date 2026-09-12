@@ -57,7 +57,7 @@ systemd 유닛 두 개는 `/etc/systemd/system/` 에 있고, 저장소의 `infra
 
 ---
 
-## 3. 팀원 연결 방법
+## 3. 연결 방법
 
 서버에 붙어서 앱을 띄우는 절차입니다. DB · Redis · 백엔드는 각자 설치하지 않아도 됩니다.
 
@@ -81,11 +81,11 @@ Windows 를 쓰신다면 **WSL 터미널과 Windows 터미널을 섞어 쓰지 �
 
 ```
 BACKEND_URL=http://43.200.26.70:8082
-OAUTH_GOOGLE_CLIENT_ID=<팀 채널 참고>
-OAUTH_KAKAO_CLIENT_ID=<팀 채널 참고>
+OAUTH_GOOGLE_CLIENT_ID=<keonha 에게 요청>
+OAUTH_KAKAO_CLIENT_ID=<keonha 에게 요청>
 ```
 
-두 OAuth client ID 는 새로 발급받지 않고 팀이 쓰는 값을 그대로 쓰면 됩니다. client secret 은 서버만 가지고 있어서 앱에는 필요하지 않습니다. **client ID 값은 저장소에 두지 않기로 했습니다** — 팀 채널에 공유된 값을 쓰시면 됩니다.
+두 OAuth client ID 는 새로 발급받지 않고 팀이 쓰는 값을 그대로 쓰면 됩니다. client secret 은 서버만 가지고 있어서 앱에는 필요하지 않습니다. **client ID 값은 저장소에 두지 않기로 했습니다** — `keonha` 에게 요청하시면 됩니다.
 
 앱의 OAuth 콜백은 `http://localhost:9000/auth/callback` 이라 서버 위치와 무관하고, 서버 `backend.env` 의 허용 목록에도 들어 있습니다. **9000 포트를 쓰는 다른 프로그램이 떠 있으면 미리 종료해 주세요.**
 
@@ -99,15 +99,15 @@ Electron 창이 뜨면 정상입니다. 로그인은 구글 또는 카카오로 
 
 ### 3-4. 각자 준비해야 하는 것 / 서버에 이미 있는 것
 
-| 키 | 어디에 있나 | 팀원이 발급해야 하나 |
+| 키 | 어디에 있나 | 별도 발급이 필요한가 |
 |---|---|---|
 | KIS 앱 키 · 시크릿 · 계좌번호 · HTS ID | **각자 노트북의 OS 키체인** | **네.** 각자 KIS 계정으로 발급하고 앱 설정 화면에서 등록합니다 |
-| OAuth client ID (Google · Kakao) | 각자 `.env.local` | 아니요. 팀 공유 값을 그대로 씁니다 |
+| OAuth client ID (Google · Kakao) | 각자 `.env.local` | 아니요. `keonha` 에게 요청하면 됩니다 |
 | `GEMINI_API_KEY` | 서버 `ai-engine.env` | 아니요 |
 | `FINNHUB_API_KEY` · `FMP_API_KEY` | 서버 `backend.env` | 아니요 |
 | OAuth client secret, `JWT_SECRET`, `INTERNAL_SECRET`, DB 비밀번호 | 서버 `backend.env` | 아니요. 클라이언트가 쓰지 않습니다 |
 
-정리하면 **각자 발급해야 하는 것은 KIS 자격증명뿐입니다.** 나머지 API 키는 서버에서만 쓰이고 터미널은 백엔드를 통해 결과만 받습니다. 터미널이 Finnhub · FMP · Gemini 를 직접 호출하는 경로는 없습니다.
+정리하면 **각자 발급해야 하는 것은 KIS 자격증명뿐입니다.** OAuth client ID 두 개는 `keonha` 에게 요청하시면 됩니다. 나머지 API 키는 서버에서만 쓰이고 터미널은 백엔드를 통해 결과만 받습니다. 터미널이 Finnhub · FMP · Gemini 를 직접 호출하는 경로는 없습니다.
 
 KIS 자격증명이 각자인 이유는 주문이 각자 계좌로 나가기 때문입니다. 이 값들은 OS 키체인에 저장되고 백엔드 DB 에는 없어서, 붙는 서버를 바꿔도 다시 입력할 필요가 없습니다.
 
@@ -196,7 +196,7 @@ aws ec2 stop-instances  --region ap-northeast-2 --instance-ids i-0e9321676625427
 
 | 역할 | 필요한 것 |
 |---|---|
-| 앱만 쓰는 경우 | 없음. [3장](#3-팀원-연결-방법) 의 `.env.local` 설정만 하면 됩니다 |
+| 앱만 쓰는 경우 | 없음. [3장](#3-연결-방법) 의 `.env.local` 설정만 하면 됩니다 |
 | 개발 중 서버를 직접 켜야 하는 경우 | IAM |
 | ai-engine 재배포 | IAM + 백엔드 인스턴스 SSH |
 | data_pipeline 배포 | IAM + 파이프라인 인스턴스 SSH ([11장](#11-data_pipeline-배포-계획)) |
