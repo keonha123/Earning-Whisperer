@@ -1,0 +1,93 @@
+# EarningWhisperer 시연 서버용 (AWS t3.small, 2GB RAM)
+# MySQL + Redis + PostgreSQL + Qdrant 를 띄운다. backend jar 와 ai-engine 은
+# 호스트에서 systemd 로 실행하므로 네 서비스는 모두 127.0.0.1 에만 노출한다.
+#
+# PostgreSQL 과 Qdrant 는 ai-engine 전용이다. PostgreSQL 은 이벤트 스토어라
+# 기동 시 필수이고, Qdrant 는 팩트체크가 참조하는 근거 뉴스 벡터 저장소다.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ew-redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "48mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    ports:
+      - "127.0.0.1:6379:6379"
+    mem_limit: 64m
+
+  db:
+    image: mysql:8.0
+    container_name: ew-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD 필요}
+      MYSQL_DATABASE: earning_whisperer
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD 필요}
+    # 1GB 서버용 메모리 절감. 기본값(buffer pool 128M + performance_schema)은 400MB+ 를 먹는다.
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --performance-schema=OFF
+      - --innodb-log-buffer-size=4M
+      - --max-connections=30
+      - --table-open-cache=200
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 300m
+
+  # --- ai-engine 전용 ---
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ew-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: earningwhisperer
+    # 이벤트 스토어 용도라 쓰기량이 적다. 기본 shared_buffers(128M) 를 낮춘다.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - max_connections=20
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d earningwhisperer"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 200m
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    container_name: ew-qdrant
+    restart: unless-stopped
+    # 근거 뉴스 395건(4.4MB) 뿐이라 실제 데이터는 작다. 로컬에서 491MB 를 쓴 것은
+    # 기본 설정의 캐시 때문이고, 상한을 두어도 이 규모에서는 문제가 없었다.
+    # 태그는 로컬과 같은 v1.19.1 로 고정한다 — 스냅샷은 하위 버전으로 복원되지 않는다.
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__TELEMETRY_DISABLED: "true"
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    mem_limit: 384m
+
+volumes:
+  mysql-data:
+  postgres-data:
+  qdrant-data:
