@@ -750,7 +750,7 @@ function KisCredentialCard({
   mode: 'paper' | 'real'
   isActive: boolean
   registered: boolean
-  masked: { appKeyMasked: string; accountNoMasked: string } | null
+  masked: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   onSaved: () => Promise<void> | void
   onDelete: () => void | Promise<void>
 }) {
@@ -827,6 +827,7 @@ function KisCredentialCard({
       {editing && (
         <KisCredentialEditor
           mode={mode}
+          existing={registered ? masked : null}
           onCancel={() => setEditing(false)}
           onSaved={async () => {
             setEditing(false)
@@ -882,10 +883,17 @@ function KisCredentialCard({
 /* -------------------------------------------------------------------------- */
 function KisCredentialEditor({
   mode,
+  existing,
   onCancel,
   onSaved,
 }: {
   mode: 'paper' | 'real'
+  /**
+   * 이미 등록된 자격증명. 있으면 수정 흐름이다 — 빈 칸은 "기존 유지" 로 저장되므로
+   * 바꾸려는 항목만 입력하면 된다. appSecret 은 화면에 되돌려주지 않으므로(보안)
+   * 프리필 대신 안내 문구만 띄운다.
+   */
+  existing: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   onCancel: () => void
   onSaved: () => Promise<void> | void
 }) {
@@ -894,7 +902,8 @@ function KisCredentialEditor({
   const [accountNo, setAccountNo] = useState('')
   // 선택 입력. 실시간 체결통보(H0GSCNI0/9) 의 tr_key 가 HTS ID 라서 이것만 별도로 필요하다.
   // 없으면 체결통보를 못 받고 나머지 기능은 그대로 동작한다.
-  const [htsId, setHtsId] = useState('')
+  // HTS ID 는 비밀값이 아니라 로그인 아이디라 기존 값을 그대로 채운다.
+  const [htsId, setHtsId] = useState(existing?.htsId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -923,8 +932,9 @@ function KisCredentialEditor({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (appKey.trim() === '' || appSecret.trim() === '' || accountNo.trim() === '') {
-      setError('모든 필드를 입력해주세요.')
+    const isNew = existing === null
+    if (isNew && (appKey.trim() === '' || appSecret.trim() === '' || accountNo.trim() === '')) {
+      setError('App Key, App Secret, 계좌번호를 모두 입력해주세요.')
       return
     }
     setSaving(true)
@@ -934,10 +944,9 @@ function KisCredentialEditor({
         appSecret: appSecret.trim(),
         accountNo: accountNo.trim(),
         isPaperTrading: mode === 'paper',
-        // 폼은 항상 빈 값으로 열린다(비밀값을 되보여주지 않는 기존 관행). 빈 문자열을
-        // 보내면 main 이 "지우려는 의도" 로 해석해 기존 HTS ID 가 조용히 삭제되고
-        // 체결통보가 끊긴다. 입력이 있을 때만 보낸다.
-        ...(htsId.trim() ? { htsId: htsId.trim() } : {}),
+        // 이 필드는 기존 값이 프리필되므로 빈 칸은 사용자가 의도적으로 지운 것이다.
+        // 그대로 보내야 "삭제" 가 반영된다.
+        htsId: htsId.trim(),
       })
       // 폼 메모리에서 입력값 폐기 — secret 잔류 회피.
       setAppKey('')
@@ -956,25 +965,34 @@ function KisCredentialEditor({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 mt-1">
+      {existing && (
+        <p className="text-[11px] text-text-tertiary leading-snug">
+          바꿀 항목만 입력하세요. 비워두면 기존 값이 그대로 유지됩니다.
+        </p>
+      )}
       <AuthInputField
         label="App Key"
         value={appKey}
+        placeholder={existing?.appKeyMasked}
         onChange={(e) => setAppKey(e.target.value)}
       />
       <AuthInputField
         label="App Secret"
         isPassword
         value={appSecret}
+        placeholder={existing ? '변경할 때만 입력' : undefined}
         onChange={(e) => setAppSecret(e.target.value)}
       />
       <AuthInputField
         label="계좌번호"
         value={accountNo}
+        placeholder={existing?.accountNoMasked}
         onChange={(e) => setAccountNo(e.target.value)}
       />
       <AuthInputField
         label="HTS ID (선택)"
         value={htsId}
+        placeholder="한국투자증권 로그인 아이디"
         onChange={(e) => setHtsId(e.target.value)}
       />
       <p className="text-[11px] text-text-tertiary leading-snug">

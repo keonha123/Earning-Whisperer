@@ -307,6 +307,7 @@ describe('KisService.getMaskedCredentials — 모드별 마스킹 응답', () =>
     expect(result.paper).toEqual({
       appKeyMasked: 'PSDK****ABCD',
       accountNoMasked: '5012****01',
+      htsId: null,
     })
     expect(result.real).toBeNull()
   })
@@ -320,6 +321,7 @@ describe('KisService.getMaskedCredentials — 모드별 마스킹 응답', () =>
     expect(result.real).toEqual({
       appKeyMasked: 'PSDK****RRRR',
       accountNoMasked: '8888****99',
+      htsId: null,
     })
   })
 
@@ -340,6 +342,7 @@ describe('KisService.getMaskedCredentials — 모드별 마스킹 응답', () =>
     expect(result.paper).toEqual({
       appKeyMasked: 'PSDK****ABCD',
       accountNoMasked: '5012****01',
+      htsId: null,
     })
     expect(result.real).toBeNull()
   })

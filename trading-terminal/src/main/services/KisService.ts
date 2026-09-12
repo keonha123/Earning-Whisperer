@@ -291,6 +291,8 @@ export const KisService = {
    *
    * 보안:
    *   - **appSecret 은 절대 응답에 포함하지 않는다.** 사용자가 다시 보고 싶다면 재등록(수정) 흐름으로만.
+   *   - htsId 는 원문 그대로 반환한다 — 비밀값이 아니라 사용자의 로그인 아이디이고,
+   *     수정 폼에 채워 넣어야 이것만 바꾸려고 나머지를 다시 입력하는 일이 없다.
    *   - appKey/accountNo 도 평문이 아니라 마스킹 형식으로 노출 (prefix + 마스크 + suffix).
    *
    * 마스킹 규칙:
@@ -301,23 +303,25 @@ export const KisService = {
    * (appSecret 등록 여부는 반환에 영향 없음 — 표시 페이로드에 포함되지 않으므로.)
    */
   async getMaskedCredentials(): Promise<{
-    paper: { appKeyMasked: string; accountNoMasked: string } | null
-    real: { appKeyMasked: string; accountNoMasked: string } | null
+    paper: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
+    real: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   }> {
-    const [pk, pa, rk, ra] = await Promise.all([
+    const [pk, pa, ph, rk, ra, rh] = await Promise.all([
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(false)),
     ])
     return {
       paper:
         pk && pa
-          ? { appKeyMasked: maskAppKey(pk), accountNoMasked: maskAccountNo(pa) }
+          ? { appKeyMasked: maskAppKey(pk), accountNoMasked: maskAccountNo(pa), htsId: ph }
           : null,
       real:
         rk && ra
-          ? { appKeyMasked: maskAppKey(rk), accountNoMasked: maskAccountNo(ra) }
+          ? { appKeyMasked: maskAppKey(rk), accountNoMasked: maskAccountNo(ra), htsId: rh }
           : null,
     }
   },
@@ -676,6 +680,25 @@ export const KisService = {
       executedPrice: fill.executedQty > 0 ? fill.avgPrice : null,
       executedQty: fill.executedQty,
     }
+  },
+
+  /**
+   * 수정 흐름에서 빈 칸을 "기존 값 유지" 로 해석하기 위한 내부 조회.
+   *
+   * **main 프로세스 전용이다.** 반환값에 appSecret 평문이 들어 있으므로 IPC 로 렌더러에
+   * 내보내면 안 된다 — 화면에 되돌려주지 않는다는 기존 원칙을 깨뜨린다.
+   */
+  async getCredentialsForEdit(isPaperTrading: boolean): Promise<{
+    appKey: string | null
+    appSecret: string | null
+    accountNo: string | null
+  }> {
+    const [appKey, appSecret, accountNo] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading)),
+    ])
+    return { appKey, appSecret, accountNo }
   },
 
   /** 현재 활성 모드의 HTS ID. 미등록이면 null. */

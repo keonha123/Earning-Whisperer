@@ -281,6 +281,7 @@ export const IPC_CHANNELS = {
  * Renderer 는 이 응답을 렌더 후 보존하지 말고 (예: zustand 에 박지 말고) drawer/카드 닫힐 때 폐기.
  */
 export interface MaskedCredentialsResponse {
-  paper: { appKeyMasked: string; accountNoMasked: string } | null
-  real: { appKeyMasked: string; accountNoMasked: string } | null
+  /** htsId 는 비밀값이 아니라 로그인 아이디라 원문으로 내려온다 (수정 폼 프리필용). */
+  paper: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
+  real: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
 }
