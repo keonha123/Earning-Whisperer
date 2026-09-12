@@ -533,72 +533,29 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 ## 11. data_pipeline 배포 계획
 
-아직 배포하지 않았습니다. 방향만 정해져 있고 사양은 측정 후 확정합니다 (#116).
+아직 배포하지 않았습니다. 현재 시연은 과거 콜 재생이라 STT 가 필요하지 않습니다.
 
-### 구조
-
-**DB 와 인스턴스를 모두 분리합니다.**
+**별도 인스턴스에 DB 도 따로 두고 배포합니다.**
 
 ```
 [인스턴스 1] ew-backend (t3.small)          [인스턴스 2] 미생성
-  backend (systemd)                           data_pipeline (scheduler + STT 워커)
-  ai-engine (systemd)                          MySQL (파이프라인 전용)
-  MySQL · Redis · PostgreSQL · Qdrant
+  backend · ai-engine (systemd)               data_pipeline (스케줄러 + STT 워커)
+  MySQL · Redis · PostgreSQL · Qdrant         MySQL (파이프라인 전용)
         ▲
         └──── POST /api/v1/internal/transcript-segment ────┘
 ```
 
-각 인스턴스가 자기 MySQL 컨테이너를 갖고 `127.0.0.1` 바인딩을 유지합니다. 그래서 **DB 포트를 외부에 열지 않습니다.** 두 인스턴스 사이의 통신은 HTTP 하나뿐입니다.
+두 인스턴스 사이의 통신은 위 HTTP 하나뿐입니다. 각 인스턴스가 자기 MySQL 을 갖고 `127.0.0.1` 에만 바인딩하므로 DB 포트를 외부에 열지 않습니다.
 
-### 왜 분리하나
+테이블은 이미 분리되어 있습니다. data_pipeline 은 `calls` · `prices` · `financial_statement_items` · `transcript_segments` · `webcast_*` 를 쓰고 백엔드 테이블을 참조하지 않습니다. 반대 방향도 참조가 없습니다. 겹치는 것은 `stocks` 하나이고, 백엔드는 S&P 500 CSV 에서, data_pipeline 은 위키백과에서 각자 채웁니다 — DB 가 나뉘면 쓰기 충돌은 사라지고 수집 중복은 남습니다.
 
-**테이블이 이미 거의 완전히 분리되어 있습니다.**
+비용은 분리가 낮습니다. t3 는 등급마다 시간당 단가가 2배라 t3.small + t3.medium(월 약 $69)이 t3.large 한 대(월 약 $83)보다 쌉니다.
 
-| | 테이블 |
-|---|---|
-| 백엔드 전용 | `users`, `trades`, `positions`, `broker_accounts`, `portfolio_settings`, `watchlist_items`, `signal_history`, `earnings_calendar`, `earnings_result`, `daily_bar`, `stock_meta` |
-| data_pipeline 전용 | `calls`, `prices`, `financial_statement_items`, `transcript_segments`, `webcast_recipes`, `webcast_replay_targets`, `webcast_learning_targets`, `webcast_replay_discovery` |
-| 공유 | `stocks` |
+### 확정되지 않은 것
 
-data_pipeline 코드에서 백엔드 테이블 11개를 찾으면 참조가 0건이고, 백엔드 Java 에서 data_pipeline 테이블 8개도 0건입니다. DB 를 한 대로 유지하면 오히려 MySQL 을 VPC 사설 IP 로 열고 보안 그룹에 3306 규칙을 추가해야 합니다.
-
-**비용도 분리가 낮습니다.** t3 는 유형이 한 단계 오를 때마다 시간당 단가가 2배라서, 작은 인스턴스 두 대가 큰 것 한 대보다 쌉니다.
-
-| 방안 | 구성 | 월 비용 (근사) |
-|---|---|---|
-| 통합 | t3.large 8GB 1대 | 약 $83 |
-| **분리 (상시)** | t3.small + t3.medium | **약 $69** |
-| 분리 + 어닝콜 시간만 기동 | t3.small 상시 + t3.medium 온디맨드 | 약 $29 |
-
-*ap-northeast-2 온디맨드 Linux 기준입니다. t3.small $0.026/h, t3.medium $0.052/h, t3.large $0.104/h. 실제 청구는 AWS 계산기로 확인하는 편이 정확합니다.*
-
-**격리**도 얻습니다. STT 는 처리 중 CPU 와 메모리를 크게 쓰는 작업이라, 같은 인스턴스에 두면 OOM 이 났을 때 커널이 가장 큰 프로세스(JVM 378MB)를 종료할 수 있습니다. 분리하면 STT 실패가 백엔드로 번지지 않습니다.
-
-### `stocks` 중복
-
-DB 가 나뉘면 각자 자기 `stocks` 를 갖게 되어 쓰기 충돌은 사라집니다. 다만 **같은 S&P 500 목록을 서로 다른 출처에서 각자 긁는 중복**은 남습니다.
-
-| | 출처 | 채우는 컬럼 |
-|---|---|---|
-| 백엔드 `Sp500SyncScheduler` | `raw.githubusercontent.com/datasets/s-and-p-500-companies` CSV | ticker, company_name, sector, active |
-| data_pipeline `sync_stock_master` | 위키백과 `List_of_S&P_500_companies` | ticker, company_name, sector, **ir_url**, active |
-
-`ir_url` 은 data_pipeline 만 쓰는 컬럼이고 웹캐스트 수집의 출발점입니다. 백엔드 `Stock` 엔티티에는 이 필드가 없어서, **같은 DB 를 쓰는 현재 상태에서는 백엔드의 `save()` 가 이 값에 영향을 주는지 확인이 필요합니다.** DB 를 분리하면 이 위험은 사라집니다.
-
-### 확정 전에 필요한 것
-
-인스턴스 유형은 **#116 측정 결과로 결정합니다.** 측정 없이 정하면 두 가지를 놓칩니다.
-
-- **실시간 처리 가능 여부** — RTF(처리시간 ÷ 오디오 길이)가 1.0 미만이어야 합니다. 넘으면 인스턴스 크기 문제가 아니라 외부 STT API 로 갈지 결정해야 합니다
-- **t3 버스트 크레딧** — t3 는 크레딧이 소진되면 기준 성능(t3.medium 은 2 vCPU 의 40% 수준)으로 제한됩니다. STT 처럼 CPU 를 계속 쓰는 작업에는 불리해서, 소진 이후에도 RTF 가 유지되는지 확인해야 합니다. 안 되면 t3 unlimited 모드나 비버스트 계열(c6i · c6g)로 가야 합니다
-
-### 어닝콜 시간에만 기동하는 구조
-
-비용이 가장 낮은 방안이지만 **별개 사안으로 추후 결정합니다.** 인스턴스가 분리되어 있으면 나중에 전환하기 쉽습니다.
-
-전환한다면 **백엔드가 깨우는 구조**가 되어야 합니다. 현재 일정을 감시하는 주체는 data_pipeline 의 `monitor_and_trigger_stt`(1분 주기, `ENABLE_STT_MONITOR=true` 일 때만 활성)인데, 그 코드가 꺼진 인스턴스 안에 있어서 자기를 깨울 수 없습니다.
-
-그 변경에는 부수 효과가 하나 있습니다 — 어닝콜 일정의 소유자가 정해집니다. 지금은 백엔드 `earnings_calendar`(FMP)와 data_pipeline `calls`(자체 수집)에 일정이 이중으로 있습니다.
+- **인스턴스 사양** — #116 의 측정 결과로 정합니다. STT 가 CPU 로 실시간 처리가 되는지, 메모리가 얼마나 필요한지가 아직 측정되지 않았습니다
+- **어닝콜 시간대에만 인스턴스를 켤지** — 비용이 가장 낮지만(월 약 $29) 백엔드가 인스턴스를 깨우는 구조가 필요합니다. 별개 사안으로 추후 결정합니다
+- **어닝콜 일정의 소유자** — 지금은 백엔드 `earnings_calendar`(FMP)와 data_pipeline `calls`(자체 수집)에 일정이 이중으로 있습니다
 
 ---
 
@@ -606,59 +563,17 @@ DB 가 나뉘면 각자 자기 `stocks` 를 갖게 되어 쓰기 충돌은 사�
 
 개발 단계에서는 각자 `npm run dev` 로 실행합니다 ([3장](#3-연결-방법)). **최종 목표는 인스톨러 배포입니다.**
 
-### 인스톨러 배포가 어떤 형태인가
+인스톨러가 나오면 GitHub Releases 에서 내려받아 설치하는 방식이 됩니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
 
-빌드 설정은 이미 있습니다 (`trading-terminal/electron-builder.config.ts`, `package.json` 의 `npm run package`). 실행하면 `dist/` 에 Windows NSIS 인스톨러(`.exe`) 하나가 나옵니다. Electron 이 Chromium 과 Node 런타임을 포함하므로 80~120MB 정도입니다.
+빌드 설정(`trading-terminal/electron-builder.config.ts`, `npm run package`)은 이미 있지만 **실행한 적이 없습니다.**
 
-**저장소에 `.exe` 를 커밋하지 않습니다.** 100MB 바이너리는 git 히스토리를 영구히 무겁게 만듭니다. GitHub Releases 에 첨부파일로 올리면 히스토리와 별개로 저장됩니다.
+### 확정되지 않은 것
 
-팀원 · 사용자는 Releases 에서 내려받아 설치합니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴와 바탕화면에 바로가기가 생기고, 설정의 앱 목록에 등록되어 제거할 수 있습니다. 사용자 데이터는 `%APPDATA%\earning-whisperer-terminal\` 에 저장됩니다. Node 나 저장소 클론이 필요하지 않습니다.
+- **패키징 빌드에 `BACKEND_URL` 을 주입하는 방법** — `src/main/loadEnv.ts` 가 `app.isPackaged` 가 아닐 때만 `.env` 파일을 읽습니다. 현재 상태로 패키징하면 기본값 `localhost:8082` 로 굳어 서버에 붙지 못합니다
+- **도메인과 HTTPS** — 지금은 탄력적 IP 에 평문 HTTP 입니다. 주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 하고, 팀 밖으로 배포하면 JWT 가 평문으로 오갑니다. 도메인 등록비(연 $10~15) 외에 인증서 비용은 들지 않습니다(Let's Encrypt, Cloudflare Tunnel). 실무 기준으로는 TLS 도입이 맞고, 시점과 방법이 결정 대상입니다
+- **인스톨러 동작 검증** — 아이콘 리소스, `keytar`(KIS 자격증명 저장), 시연 화면 표시, 무서명 경고 처리. #115 에 정리되어 있습니다
 
-현재 설정은 `oneClick: false`, `allowToChangeInstallationDirectory: true` 라 설치 경로를 고를 수 있는 마법사 형태입니다.
-
-### 먼저 해결해야 하는 것 — 패키징 빌드에 BACKEND_URL 이 주입되지 않습니다
-
-`src/main/loadEnv.ts` 는 `app.isPackaged` 가 아닐 때만 `.env.local` 과 `.env` 를 읽습니다. 파일 주석에도 "패키징 빌드는 .env 파일을 읽지 않는다 — 빌드 타임 주입은 별도 과제" 로 남아 있습니다.
-
-`BackendClient.ts:12` 와 `StompService.ts:11` 이 `process.env.BACKEND_URL ?? 'http://localhost:8082'` 를 쓰므로, **패키징된 앱은 값이 비어 `localhost:8082` 로 굳습니다.** 설치본이 서버에 붙지 못합니다. 인스톨러 배포에는 빌드 타임 주입이 선행되어야 합니다.
-
-설치본을 받는 사람이 서버 주소를 바꿀 필요는 없습니다. 빌드 시점에 주소가 확정되는 것이 일반적인 앱의 동작입니다.
-
-### 고려할 지점 — 도메인과 HTTPS
-
-현재 주소는 탄력적 IP `43.200.26.70` 이고 프로토콜은 평문 HTTP 입니다. 인스톨러를 배포하면 이 두 가지가 문제로 바뀝니다.
-
-**주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 합니다.** 시연이 끝나고 인스턴스를 종료하며 탄력적 IP 를 릴리스하면([8장](#8-비용과-메모리)) 설치된 앱 전부가 서버를 찾지 못합니다. 도메인을 두고 그 이름을 빌드에 넣으면, 서버가 바뀌어도 DNS 레코드만 고치면 됩니다.
-
-**평문 HTTP 는 실무 기준으로는 맞지 않습니다.** 이유가 셋입니다.
-
-- **자격증명이 그대로 노출됩니다.** JWT 가 평문으로 오가므로 같은 네트워크(공용 와이파이 등)나 경로상의 누구든 읽어 재사용할 수 있습니다. 이 앱은 실제 증권사 주문을 내는 클라이언트입니다
-- **응답을 위조할 수 있습니다.** TLS 는 기밀성뿐 아니라 무결성을 줍니다. 평문이면 중간에서 시세나 판정을 바꿔 넣을 수 있습니다
-- **브라우저 클라이언트를 추가할 수 없습니다.** HTTPS 페이지에서 `ws://` 는 mixed content 정책으로 차단됩니다. Electron 은 이 제약이 없어 지금 동작하는 것입니다
-
-이미 코드에 영향이 나타나 있습니다. `BackendClient.ts:44` 는 브라우저와 같은 규칙으로 `Secure` 쿠키를 비보안 연결에서 저장하지 않습니다.
-
-```
-[Backend] Secure refresh 쿠키를 비보안 연결에서 받아 보관하지 않는다.
-```
-
-7일짜리 refresh 토큰이 평문으로 반복 전송되는 것을 막는 의도적인 처리인데, 그 결과 **평문 HTTP 에서는 refresh 토큰 보관이 동작하지 않습니다.** TLS 를 도입하면 이 경로가 정상화됩니다.
-
-인증서 비용은 장애물이 아닙니다. Let's Encrypt 가 무료이고, Cloudflare Tunnel 을 쓰면 인증서를 직접 관리하지 않아도 됩니다. 실제 비용은 도메인 등록비(연 $10~15) 수준입니다.
-
-가능한 방법은 이렇습니다.
-
-| 방법 | 필요한 것 | 비용 | 비고 |
-|---|---|---|---|
-| Cloudflare Tunnel | Cloudflare 계정, 도메인 | 도메인 등록비만 | 서버에 포트를 열지 않습니다. 구성이 `infra/docker-compose.prod.yml` 에 이미 있습니다 |
-| 도메인 + Let's Encrypt + 리버스 프록시 | 도메인, nginx 또는 Caddy | 도메인 등록비만 | 인스턴스에서 직접 인증서를 갱신합니다 |
-| ALB + ACM | 도메인 | ALB 월 $16~20 | 인스턴스 비용($24)에 비해 큽니다 |
-
-**결정 필요**: 도메인을 등록할지, 어느 방법으로 TLS 를 붙일지. 현재 시연은 팀 내부에서 터미널로 진행하므로 급하지는 않지만, 인스톨러를 팀 밖으로 배포하는 시점에는 선행되어야 합니다.
-
-### 검증되지 않은 것
-
-`npm run package` 를 실행한 적이 없습니다. 확인이 필요한 항목은 #115 에 정리되어 있습니다 — `resources/` 아이콘 파일 부재, `keytar` 네이티브 모듈의 패키징 후 동작(KIS 자격증명 저장에 쓰입니다), 시연 화면 표시 여부, 무서명 인스톨러의 SmartScreen 경고 처리.
+코드 서명은 하지 않을 경우 Windows SmartScreen 경고가 뜹니다. 차단은 아니고 **추가 정보 → 실행** 으로 넘어갈 수 있습니다. macOS 는 Gatekeeper 가 실행을 거부하므로 별도 판단이 필요합니다.
 
 ---
 
