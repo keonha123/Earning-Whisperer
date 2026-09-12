@@ -1,0 +1,7 @@
+# 양식 없이 올라온 이슈는 "무엇을 어디까지 하면 끝인지" 가 남지 않아서, 며칠 뒤에
+# 작성자 본인도 다시 읽기 어려워집니다. 그래서 빈 이슈를 막아 두었습니다.
+blank_issues_enabled: false
+contact_links:
+  - name: 질문 · 논의
+    url: https://github.com/keonha123/Earning-Whisperer/discussions
+    about: 아직 작업으로 확정되지 않은 아이디어나 질문은 Discussions 에서 이야기하면 좋습니다. 결론이 나면 이슈로 옮기면 됩니다.

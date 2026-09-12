@@ -1,0 +1,110 @@
+name: 버그
+description: 있어야 할 동작이 안 되는 것
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        원인 추정은 "원인 추정" 칸에 적어 주시면 좋습니다. 추정을 제목이나 커밋 메시지에
+        먼저 넣으면, 나중에 그 추정이 틀렸을 때 기록이 사실과 달라집니다.
+
+        이 저장소에서도 한 번 있었던 일입니다 — `cc4d594` 의 커밋 메시지가 "UTC/KST 하루 차이"
+        를 원인으로 적었지만, 실제 원인은 모의투자 파라미터 제약과 ODNO 제로패딩이어서
+        `df945c9` 에서 정정해야 했습니다. 증상과 근거를 먼저 적고 원인은 따로 두면
+        이런 일을 줄일 수 있습니다.
+
+  - type: dropdown
+    id: modules
+    attributes:
+      label: 발생 모듈
+      multiple: true
+      options:
+        - ai-engine
+        - backend
+        - trading-terminal
+        - frontend
+        - data_pipeline
+        - infra (AWS · docker · CI)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: 환경
+      options:
+        - 로컬 (localhost 백엔드)
+        - AWS 시연 서버 (43.200.26.70)
+        - 둘 다
+        - 미확인
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: 기대 동작 / 실제 동작
+      value: |
+        **기대:** 
+        **실제:** 
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 재현 절차
+      description: |
+        다른 사람이 그대로 따라 할 수 있게 적어 주세요. 재현이 안 되는 경우에는
+        "재현 실패" 라고 적고 관찰된 정황만 남겨 주셔도 도움이 됩니다. 간헐적 문제를
+        한 번 보고 넘기지 않는 데 쓸 수 있습니다.
+      placeholder: |
+        1. 터미널 실행 (BACKEND_URL=http://43.200.26.70:8082)
+        2. 로그인 → Market → WMT → TradingRoom
+        3. "시연 시작" 클릭
+        4. 3번째 세그먼트에서 팩트체크 카드가 뜨지 않음
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그 · 근거
+      description: |
+        로그는 원문 그대로 붙여 주시면 좋습니다. 요약하면 원인을 좁히기 어려울 때가 있습니다.
+        서버는 `journalctl -u earning-whisperer-backend -u earning-whisperer-ai-engine`,
+        터미널은 Electron 콘솔과 dev 로그에서 볼 수 있습니다.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected-cause
+    attributes:
+      label: 원인 추정 (확정 아님)
+      description: |
+        추정이라는 점만 함께 적어 주시면 됩니다. "이 로그로는 A 와 B 를 구분할 수 없다" 도
+        유용한 정보입니다 — 그런 경우에는 구분할 수 있는 로그를 넣는 것이 먼저일 수 있습니다.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 심각도
+      options:
+        - 시연을 못 한다 (차단)
+        - 시연 중 화면이 틀린 값을 보여준다
+        - 시연은 되지만 기능이 빠져 보인다
+        - 개발 편의 문제 (시연 무관)
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 임시 회피책
+      description: 발표 전까지 고치기 어려운 경우 어떻게 넘길지 적어 주세요. 없으면 "없음" 으로 두셔도 됩니다.

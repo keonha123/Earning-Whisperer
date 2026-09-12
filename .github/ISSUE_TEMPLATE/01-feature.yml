@@ -1,0 +1,144 @@
+name: 기능 · 개선
+description: 새로 만들 것, 또는 이미 있는 것을 바꿀 것
+title: "[feat] "
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        이 양식은 두 가지를 남기는 데 초점을 두고 있습니다.
+
+        1. **확인한 사실과 추측의 구분** — 확인한 것은 `파일:라인` 으로, 확인하지 못한 것은
+           "미확인" 으로 적어 주시면 좋습니다. 나중에 이 이슈를 읽는 사람이 무엇을 믿어도
+           되는지 알 수 있습니다.
+        2. **끝나는 조건** — 완료 조건을 먼저 적어 두면 작업이 어디서 끝나는지 분명해집니다.
+
+        빈 칸이 있어도 괜찮습니다. 모르는 부분은 "미확인" 으로 남겨 두셔도 됩니다.
+
+  - type: dropdown
+    id: modules
+    attributes:
+      label: 대상 모듈
+      description: 코드가 바뀌는 모듈을 골라 주세요. 계약(API · STOMP)이 바뀌면 양쪽 모두 해당됩니다.
+      multiple: true
+      options:
+        - ai-engine
+        - backend
+        - trading-terminal
+        - frontend
+        - data_pipeline
+        - infra (AWS · docker · CI)
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 문제 · 배경
+      description: |
+        무엇이 불편한지, 왜 지금 필요한지를 적어 주세요. 해결책보다 문제를 먼저 적으면
+        다른 방법도 함께 검토할 수 있습니다. 기획 논의에서 나온 판단이라면 그 근거도
+        함께 있으면 좋습니다.
+      placeholder: |
+        예) 팩트체크가 뉴스만 근거로 씁니다. 그런데 경영진은 확정 숫자를 거짓으로 말하지
+        않습니다 (보도자료에 이미 공개되고 허위 진술은 증권사기이기 때문입니다). 그래서
+        뉴스 대조로 판정되는 것은 "이미 공개된 숫자가 맞다" 뿐입니다. 실측 4건 중 1건만
+        SUPPORTED 였고 나머지는 INSUFFICIENT_EVIDENCE 였는데, 튜닝 문제가 아니라 근거
+        종류의 문제로 보입니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: 현재 코드 상태 (확인한 것)
+      description: |
+        이미 구현되어 있는 것을 모르고 다시 만드는 일을 줄이기 위한 칸입니다.
+        `파일:라인` 을 함께 적어 주시고, 확인하지 못한 것은 "미확인" 으로 남겨 주세요.
+      placeholder: |
+        - 있음: `ai-engine/api/routers/transcript_diff.py:18` — POST /v1/engine/transcript/diff
+        - 있음: `ai-engine/services/transcript_diff_service.py` — 주제 7축 + 톤 사전 + LLM 요약
+        - 없음: `backend/.../AiEngineClient.java:29-32` — 호출 경로 4개뿐, diff 없음
+        - 비어 있음: Qdrant `earningwhisperer_transcripts` 컬렉션 0건
+        - 미확인: 터미널에서 표시 칸을 넣을 자리
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안하는 작업
+      description: 순서대로 적어 주세요. 각 항목이 커밋 하나 정도의 크기면 진행 상황을 보기 좋습니다.
+      placeholder: |
+        1. 직전 콜 트랜스크립트 확보 (WMT Q1 FY2027)
+        2. transcripts 컬렉션에 적재 — 임베딩 호출 수를 먼저 계산
+        3. 백엔드 AiEngineClient 에 diff 호출 추가
+        4. 터미널에 "지난 분기 대비" 표시
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건
+      description: |
+        체크박스로 적어 주세요. "동작한다" 보다는 **무엇을 보고 동작한다고 판단하는지**가
+        있으면 리뷰할 때 서로 편합니다. 실패했을 때 어떻게 보여야 하는지도 조건에
+        넣어 주시면 좋습니다.
+      value: |
+        - [ ] 
+        - [ ] 실패 시 화면이 "데이터 없음" 과 "조회 실패" 를 구분해서 보여준다
+        - [ ] 없는 값을 지어내지 않는다 (available=false + 사유)
+        - [ ] 테스트 추가 · 기존 테스트 통과
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 검증 방법
+      description: |
+        머지 전에 실제로 돌려서 확인할 절차를 적어 주세요. 단위 테스트로 덮기 어려운
+        부분이 있으면 그 부분을 중심으로 적으면 됩니다. 시연 경로가 바뀌는 작업이라면
+        시연을 한 번 처음부터 돌려 보는 것도 포함해 주세요.
+      placeholder: |
+        1. `curl -X POST localhost:8000/v1/engine/transcript/diff -d '{...}'` → available=true, items 1건 이상
+        2. 터미널에서 시연 시작 → 세그먼트 진행 중 "지난 분기 대비" 칸에 항목 표시
+        3. transcripts 컬렉션을 비운 뒤 재실행 → previous_transcript_not_found 로 표시
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: 이번에 하지 않을 것
+      description: |
+        범위가 번지는 것을 막아 줍니다. "이것도 같이 하면 좋겠다" 싶은 것은 여기에 적고
+        별도 이슈로 옮기면 됩니다.
+      placeholder: |
+        - 뉴스 조회 창 30일 → 90일 확대 (별도 이슈, 임베딩 할당량 계산이 필요)
+        - 4개 분기 이상 누적 비교
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: 리스크 · 비용
+      description: |
+        API 할당량, 메모리, 시연 중 실패 가능성, 팀원 작업과의 충돌 등을 적어 주세요.
+        비용이 드는 작업이라면 숫자가 함께 있으면 판단하기 좋습니다.
+      placeholder: |
+        - Gemini 임베딩 무료 등급 하루 1,000요청 (KST 16:00 리셋). 청크당 1요청
+        - 세그먼트마다 diff 를 부르면 LLM 호출이 2배가 되어 6초 간격을 못 따라갈 수 있음
+        - ai-engine 은 전현규님 영역이라, 엔진 수정이 필요해지면 먼저 공유가 필요합니다
+
+  - type: dropdown
+    id: demo-impact
+    attributes:
+      label: 시연 영향
+      options:
+        - 시연 경로가 바뀐다 (발표 전 리허설 필요)
+        - 시연에 영향 없음
+        - 시연 중 실패 가능성이 생긴다 (폴백 동작을 함께 정리)
+    validations:
+      required: true
