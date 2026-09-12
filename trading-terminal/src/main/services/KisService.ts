@@ -882,13 +882,29 @@ export function maskAccountNo(accountNo: string): string {
  * 응답 필드명은 KIS 명세에 따라 다를 수 있으며 (실제 운영 시 검증 필요),
  * 일반적인 KIS 컨벤션 (`output1` 배열 + `odno`/`tot_ccld_qty`/`avg_prvs`) 을 가정한다.
  */
-/** KST(UTC+9) 기준 yyyyMMdd. */
-function kstDateString(): string {
-  const kst = new Date(Date.now() + KST_OFFSET_MS)
+/** KST(UTC+9) 기준 yyyyMMdd. offsetDays 로 며칠 전을 구할 수 있다. */
+function kstDateString(offsetDays = 0): string {
+  const kst = new Date(Date.now() + KST_OFFSET_MS - offsetDays * 86_400_000)
   const yyyy = kst.getUTCFullYear()
   const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(kst.getUTCDate()).padStart(2, '0')
   return `${yyyy}${mm}${dd}`
+}
+
+/**
+ * KIS 주문번호 비교용 정규화.
+ *
+ * 주문 API(`output.ODNO`) 는 0 을 채워 `0000044600` 으로 주는데 체결조회
+ * 응답(`odno`) 은 `44600` 으로 온다. 같은 주문인데 표기가 달라서 문자열 정확 비교로는
+ * 영원히 매칭되지 않는다 — 실제로 체결된 주문이 계속 미체결로 보고됐다.
+ */
+function normalizeOdno(value: string): string {
+  return value.trim().replace(/^0+/, '')
+}
+
+function sameOdno(a: string | undefined, b: string): boolean {
+  if (!a) return false
+  return a.trim() === b.trim() || normalizeOdno(a) === normalizeOdno(b)
 }
 
 async function inquireOrderFill(
@@ -899,7 +915,13 @@ async function inquireOrderFill(
   orderId: string,
 ): Promise<{ executedQty: number; avgPrice: number | null } | null> {
   try {
-    const yyyymmdd = kstDateString()
+    // 어제~오늘(KST) 을 조회한다. 미국 정규장은 KST 22:30~05:00 이라 한 세션이 항상
+    // 한국 날짜 두 개에 걸친다 — 하루만 조회하면 세션의 절반을 놓친다. 실제로 KST
+    // 02:22 에 낸 주문(현지 09-11 13:22)이 한국일자 09-12 로 조회했을 때 0건이었다.
+    // ODNO 로 걸러내므로 범위를 넓혀도 다른 주문이 섞이지 않는다.
+    const startDate = kstDateString(1)
+    const endDate = kstDateString(0)
+    const paper = mainState.isPaperTrading
 
     await kisLimiter.acquire('HIGH')
     const { data } = await kisHttp.get(
@@ -910,16 +932,22 @@ async function inquireOrderFill(
         params: {
           CANO: parseAccountNo(accountNo).cano,
           ACNT_PRDT_CD: parseAccountNo(accountNo).acntPrdtCd,
-          PDNO: ticker,
-          ORD_STRT_DT: yyyymmdd,
-          ORD_END_DT: yyyymmdd,
-          SLL_BUY_DVSN: '00',     // 전체
-          CCLD_NCCS_DVSN: '00',   // 전체
-          OVRS_EXCG_CD: REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
-          SORT_SQN: 'DS',
+          // 모의투자는 종목코드/거래소코드/정렬순서를 지원하지 않는다 — 값을 채워 보내면
+          // 조건에 맞는 주문이 있어도 0건이 돌아온다. 공식 샘플
+          // examples_llm/overseas_stock/inquire_ccnl 의 제약 설명 기준.
+          // 실전은 그대로 좁혀 조회한다.
+          PDNO: paper ? '' : ticker,
+          OVRS_EXCG_CD: paper ? '' : REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
+          SORT_SQN: paper ? '' : 'DS',
+          ORD_STRT_DT: startDate,
+          ORD_END_DT: endDate,
+          SLL_BUY_DVSN: '00',     // 전체 (모의는 00 만 허용)
+          CCLD_NCCS_DVSN: '00',   // 전체 (모의는 00 만 허용)
           ORD_DT: '',
           ORD_GNO_BRNO: '',
-          ODNO: orderId,
+          // ODNO 는 빈 값으로 둔다(문서 규격). 주문번호 매칭은 응답에서 직접 필터한다 —
+          // 모의에서는 종목으로도 좁힐 수 없으므로 어차피 클라이언트 필터가 필요하다.
+          ODNO: '',
           CTX_AREA_NK200: '',
           CTX_AREA_FK200: '',
         },
@@ -934,9 +962,17 @@ async function inquireOrderFill(
     const rows: Array<Record<string, string>> = Array.isArray(data.output) ? data.output
       : Array.isArray(data.output1) ? data.output1
       : []
-    const row = rows.find((r) => r.odno === orderId || r.ODNO === orderId)
+    const row = rows.find((r) => sameOdno(r.odno, orderId) || sameOdno(r.ODNO, orderId))
     if (!row) {
-      console.warn(`[KisService] inquireCcnl 응답에 ODNO=${orderId} 매칭 row 없음 — 미체결(0) 반환`)
+      // row 0건과 "row 는 왔는데 ODNO 만 안 맞음" 은 원인이 전혀 다르다. 전자는 조회
+      // 조건(주문일자 범위, 거래소, 모의투자 미지원) 문제이고 후자는 ODNO 불일치다.
+      // 구분 없이 같은 로그를 남기면 원인을 좁힐 수 없다. 주문번호는 민감정보가 아니다.
+      const seen = rows.map((r) => r.odno ?? r.ODNO ?? '?').join(',')
+      console.warn(
+        `[KisService] inquireCcnl ODNO=${orderId} 매칭 실패 — 응답 row ${rows.length}건` +
+          (rows.length > 0 ? ` (응답 ODNO: ${seen})` : ` (조회일자 ${startDate}~${endDate}, EXCD ${REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd})`) +
+          ' — 미체결(0) 반환',
+      )
       return { executedQty: 0, avgPrice: null }
     }
 

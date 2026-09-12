@@ -95,7 +95,8 @@ describe('체결 조회(inquire-ccnl) 거래소 코드', () => {
     }
   }
 
-  it('NYSE 종목(JPM) 주문 후 체결 조회 → OVRS_EXCG_CD=NYSE', async () => {
+  it('실전: NYSE 종목(JPM) 체결 조회 → OVRS_EXCG_CD=NYSE, PDNO 로 좁힌다', async () => {
+    mainState.setPaperTrading(false)
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-CCNL-NYS') })
     kisHttpMock.get.mockResolvedValueOnce(ccnlResponse('OD-CCNL-NYS', 'JPM'))
@@ -106,12 +107,13 @@ describe('체결 조회(inquire-ccnl) 거래소 코드', () => {
     expect(kisHttpMock.get).toHaveBeenCalledWith(
       '/uapi/overseas-stock/v1/trading/inquire-ccnl',
       expect.objectContaining({
-        params: expect.objectContaining({ OVRS_EXCG_CD: 'NYSE', PDNO: 'JPM' }),
+        params: expect.objectContaining({ OVRS_EXCG_CD: 'NYSE', PDNO: 'JPM', SORT_SQN: 'DS' }),
       }),
     )
   })
 
-  it('NASDAQ 종목(AAPL) 주문 후 체결 조회 → OVRS_EXCG_CD=NASD', async () => {
+  it('실전: NASDAQ 종목(AAPL) 체결 조회 → OVRS_EXCG_CD=NASD', async () => {
+    mainState.setPaperTrading(false)
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-CCNL-NAS') })
     kisHttpMock.get.mockResolvedValueOnce(ccnlResponse('OD-CCNL-NAS', 'AAPL'))
@@ -124,6 +126,90 @@ describe('체결 조회(inquire-ccnl) 거래소 코드', () => {
       expect.objectContaining({
         params: expect.objectContaining({ OVRS_EXCG_CD: 'NASD', PDNO: 'AAPL' }),
       }),
+    )
+  })
+
+  it('모의: 종목코드/거래소코드/정렬순서를 빈 값으로 보낸다', async () => {
+    // 모의투자는 이 세 파라미터를 지원하지 않는다. 값을 채워 보내면 조건에 맞는 주문이
+    // 있어도 응답이 0건으로 온다 — 실제로 체결된 주문이 미체결로 보고됐다.
+    mainState.setPaperTrading(true)
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-PAPER') })
+    kisHttpMock.get.mockResolvedValueOnce(ccnlResponse('OD-PAPER', 'WMT'))
+
+    const result = await KisService.placeOrder('BUY', 'WMT', 1)
+
+    expect(result.executedQty).toBe(1)
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          PDNO: '',
+          OVRS_EXCG_CD: '',
+          SORT_SQN: '',
+          SLL_BUY_DVSN: '00',
+          CCLD_NCCS_DVSN: '00',
+        }),
+      }),
+    )
+  })
+
+  it('0 패딩이 다른 ODNO 도 같은 주문으로 매칭한다', async () => {
+    // 주문 API 는 0000044600, 체결조회는 44600 으로 준다. 문자열 정확 비교로는
+    // 영원히 안 맞아서, 체결된 주문이 계속 미체결로 보고됐다.
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('0000044600') })
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: {
+        rt_cd: '0',
+        output: [{ odno: '44600', tot_ccld_qty: '1', avg_prvs: '107.47', pdno: 'WMT' }],
+      },
+    })
+
+    const result = await KisService.placeOrder('BUY', 'WMT', 1)
+
+    expect(result.executedQty).toBe(1)
+    expect(result.executedPrice).toBe(107.47)
+  })
+
+  it('패딩만 다른 다른 주문번호는 섞지 않는다', async () => {
+    // 0 제거 후 비교하므로 44600 과 4460 이 섞이지 않는지 확인한다.
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('0000044600') })
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: {
+        rt_cd: '0',
+        output: [{ odno: '4460', tot_ccld_qty: '9', avg_prvs: '1.00', pdno: 'WMT' }],
+      },
+    })
+
+    const result = await KisService.placeOrder('BUY', 'WMT', 1)
+
+    expect(result.executedQty).toBe(0)
+  })
+
+  it('ODNO 는 빈 값으로 보내고 응답에서 직접 매칭한다', async () => {
+    // 문서 규격상 ODNO 는 빈 값이다. 모의에서는 종목으로도 좁힐 수 없으므로 어차피
+    // 클라이언트 필터가 필요하다 — 다른 종목 row 가 섞여 와도 골라내야 한다.
+    await seedCredentials()
+    kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-MINE') })
+    kisHttpMock.get.mockResolvedValueOnce({
+      data: {
+        rt_cd: '0',
+        output: [
+          { odno: 'OD-OTHER', tot_ccld_qty: '5', avg_prvs: '1.00', pdno: 'AAPL' },
+          { odno: 'OD-MINE', tot_ccld_qty: '2', avg_prvs: '107.47', pdno: 'WMT' },
+        ],
+      },
+    })
+
+    const result = await KisService.placeOrder('BUY', 'WMT', 2)
+
+    expect(result.executedQty).toBe(2)
+    expect(result.executedPrice).toBe(107.47)
+    expect(kisHttpMock.get).toHaveBeenCalledWith(
+      '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+      expect.objectContaining({ params: expect.objectContaining({ ODNO: '' }) }),
     )
   })
 })
