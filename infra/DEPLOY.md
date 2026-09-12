@@ -14,7 +14,7 @@
 |---|---|
 | backend (Spring Boot jar, systemd) | data_pipeline (STT · 웹캐스트 수집 — [10장](#10-제약) 참고) |
 | ai-engine (FastAPI/uvicorn, systemd) | frontend (보류 — [부록 B](#부록-b--보류된-웹-배포-경로)) |
-| MySQL 8, Redis 7, PostgreSQL 16, Qdrant 1.19 (Docker) | trading-terminal (각자 노트북에서 실행) |
+| MySQL 8, Redis 7, PostgreSQL 16, Qdrant 1.19 (Docker) | trading-terminal (각자 노트북에서 실행 — [12장](#12-trading-terminal-배포-계획)) |
 
 시연은 백엔드가 월마트 FY2027 Q2 어닝콜(2026-08-20) 트랜스크립트를 재생하는 방식입니다. 스크립트는 `backend/src/main/resources/data/demo-earnings-call.json` 이고 실제 원문 발췌 24세그먼트입니다. STT 는 돌지 않습니다.
 
@@ -520,7 +520,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 운영상 알고 있어야 하는 것들입니다.
 
-- **HTTPS 가 없습니다.** Electron 은 브라우저와 달리 mixed content 제약이 없어 `ws://` 도 동작합니다. JWT 가 평문으로 오가지만 시연과 테스트 계정 범위에서는 감수하기로 했습니다. 웹 프론트를 외부에 공개하려면 TLS 가 필요합니다([부록 B](#부록-b--보류된-웹-배포-경로)).
+- **HTTPS 가 없습니다.** Electron 은 브라우저와 달리 mixed content 제약이 없어 `ws://` 도 동작합니다. JWT 가 평문으로 오가지만 시연과 테스트 계정 범위에서는 감수하기로 했습니다. 웹 프론트를 외부에 공개하거나 터미널 인스톨러를 배포하려면 TLS 가 필요합니다([12장](#12-trading-terminal-배포-계획), [부록 B](#부록-b--보류된-웹-배포-경로)).
 - **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
@@ -533,72 +533,57 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 ## 11. data_pipeline 배포 계획
 
-아직 배포하지 않았습니다. 방향만 정해져 있고 사양은 측정 후 확정합니다 (#116).
+아직 배포하지 않았습니다. 현재 시연은 과거 콜 재생이라 STT 가 필요하지 않습니다.
 
-### 구조
-
-**DB 와 인스턴스를 모두 분리합니다.**
+**별도 인스턴스에 DB 도 따로 두고 배포합니다.**
 
 ```
 [인스턴스 1] ew-backend (t3.small)          [인스턴스 2] 미생성
-  backend (systemd)                           data_pipeline (scheduler + STT 워커)
-  ai-engine (systemd)                          MySQL (파이프라인 전용)
-  MySQL · Redis · PostgreSQL · Qdrant
+  backend · ai-engine (systemd)               data_pipeline (스케줄러 + STT 워커)
+  MySQL · Redis · PostgreSQL · Qdrant         MySQL (파이프라인 전용)
         ▲
         └──── POST /api/v1/internal/transcript-segment ────┘
 ```
 
-각 인스턴스가 자기 MySQL 컨테이너를 갖고 `127.0.0.1` 바인딩을 유지합니다. 그래서 **DB 포트를 외부에 열지 않습니다.** 두 인스턴스 사이의 통신은 HTTP 하나뿐입니다.
+두 인스턴스 사이의 통신은 위 HTTP 하나뿐입니다. 각 인스턴스가 자기 MySQL 을 갖고 `127.0.0.1` 에만 바인딩하므로 DB 포트를 외부에 열지 않습니다.
 
-### 왜 분리하나
+테이블은 이미 분리되어 있습니다. data_pipeline 은 `calls` · `prices` · `financial_statement_items` · `transcript_segments` · `webcast_*` 를 쓰고 백엔드 테이블을 참조하지 않습니다. 반대 방향도 참조가 없습니다. 겹치는 것은 `stocks` 하나이고, 백엔드는 S&P 500 CSV 에서, data_pipeline 은 위키백과에서 각자 채웁니다 — DB 가 나뉘면 쓰기 충돌은 사라지고 수집 중복은 남습니다.
 
-**테이블이 이미 거의 완전히 분리되어 있습니다.**
+비용은 분리가 낮습니다. t3 는 등급마다 시간당 단가가 2배라 t3.small + t3.medium(월 약 $69)이 t3.large 한 대(월 약 $83)보다 쌉니다.
 
-| | 테이블 |
+### 남은 작업
+
+- **인스턴스 사양** — STT 가 CPU 로 실시간 처리가 되는지, 메모리가 얼마나 필요한지가 아직 측정되지 않았습니다 (#116)
+- **어닝콜 시간대에만 인스턴스를 켤지** — 비용이 가장 낮지만(월 약 $29) 백엔드가 인스턴스를 깨우는 구조가 필요합니다. 별개 사안으로 추후 결정합니다
+- **어닝콜 일정의 소유자** — 지금은 백엔드 `earnings_calendar`(FMP)와 data_pipeline `calls`(자체 수집)에 일정이 이중으로 있습니다
+
+---
+
+## 12. trading-terminal 배포 계획
+
+개발 단계에서는 각자 `npm run dev` 로 실행합니다 ([3장](#3-연결-방법)). **최종 목표는 인스톨러 배포입니다.**
+
+인스톨러가 나오면 GitHub Releases 에서 내려받아 설치하는 방식이 됩니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
+
+빌드 설정(`trading-terminal/electron-builder.config.ts`, `npm run package`)은 이미 있지만 **실행한 적이 없습니다.**
+
+### 남은 작업
+
+인스톨러를 **만들고 검증**하는 데 필요한 것입니다.
+
+| 이슈 | 내용 |
 |---|---|
-| 백엔드 전용 | `users`, `trades`, `positions`, `broker_accounts`, `portfolio_settings`, `watchlist_items`, `signal_history`, `earnings_calendar`, `earnings_result`, `daily_bar`, `stock_meta` |
-| data_pipeline 전용 | `calls`, `prices`, `financial_statement_items`, `transcript_segments`, `webcast_recipes`, `webcast_replay_targets`, `webcast_learning_targets`, `webcast_replay_discovery` |
-| 공유 | `stocks` |
+| #118 | 패키징 빌드에 `BACKEND_URL` 등 환경변수 주입. 현재 상태로 패키징하면 기본값 `localhost:8082` 로 굳어 서버에 붙지 못합니다 |
+| #119 | 앱 아이콘 리소스(`resources/icon.png`) 추가. 현재 디렉터리가 없어 dev 트레이 아이콘도 비어 있습니다 |
+| #115 | 빌드 검증 — `keytar`(KIS 자격증명 저장), 시연 화면 표시, 무서명 경고 처리 |
 
-data_pipeline 코드에서 백엔드 테이블 11개를 찾으면 참조가 0건이고, 백엔드 Java 에서 data_pipeline 테이블 8개도 0건입니다. DB 를 한 대로 유지하면 오히려 MySQL 을 VPC 사설 IP 로 열고 보안 그룹에 3306 규칙을 추가해야 합니다.
+인스톨러를 **배포**하는 데 필요한 것입니다.
 
-**비용도 분리가 낮습니다.** t3 는 유형이 한 단계 오를 때마다 시간당 단가가 2배라서, 작은 인스턴스 두 대가 큰 것 한 대보다 쌉니다.
+| 이슈 | 내용 |
+|---|---|
+| #120 | 도메인 등록과 HTTPS 도입. 주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 하고, 팀 밖으로 배포하면 JWT 가 평문으로 오갑니다 |
 
-| 방안 | 구성 | 월 비용 (근사) |
-|---|---|---|
-| 통합 | t3.large 8GB 1대 | 약 $83 |
-| **분리 (상시)** | t3.small + t3.medium | **약 $69** |
-| 분리 + 어닝콜 시간만 기동 | t3.small 상시 + t3.medium 온디맨드 | 약 $29 |
-
-*ap-northeast-2 온디맨드 Linux 기준입니다. t3.small $0.026/h, t3.medium $0.052/h, t3.large $0.104/h. 실제 청구는 AWS 계산기로 확인하는 편이 정확합니다.*
-
-**격리**도 얻습니다. STT 는 처리 중 CPU 와 메모리를 크게 쓰는 작업이라, 같은 인스턴스에 두면 OOM 이 났을 때 커널이 가장 큰 프로세스(JVM 378MB)를 종료할 수 있습니다. 분리하면 STT 실패가 백엔드로 번지지 않습니다.
-
-### `stocks` 중복
-
-DB 가 나뉘면 각자 자기 `stocks` 를 갖게 되어 쓰기 충돌은 사라집니다. 다만 **같은 S&P 500 목록을 서로 다른 출처에서 각자 긁는 중복**은 남습니다.
-
-| | 출처 | 채우는 컬럼 |
-|---|---|---|
-| 백엔드 `Sp500SyncScheduler` | `raw.githubusercontent.com/datasets/s-and-p-500-companies` CSV | ticker, company_name, sector, active |
-| data_pipeline `sync_stock_master` | 위키백과 `List_of_S&P_500_companies` | ticker, company_name, sector, **ir_url**, active |
-
-`ir_url` 은 data_pipeline 만 쓰는 컬럼이고 웹캐스트 수집의 출발점입니다. 백엔드 `Stock` 엔티티에는 이 필드가 없어서, **같은 DB 를 쓰는 현재 상태에서는 백엔드의 `save()` 가 이 값에 영향을 주는지 확인이 필요합니다.** DB 를 분리하면 이 위험은 사라집니다.
-
-### 확정 전에 필요한 것
-
-인스턴스 유형은 **#116 측정 결과로 결정합니다.** 측정 없이 정하면 두 가지를 놓칩니다.
-
-- **실시간 처리 가능 여부** — RTF(처리시간 ÷ 오디오 길이)가 1.0 미만이어야 합니다. 넘으면 인스턴스 크기 문제가 아니라 외부 STT API 로 갈지 결정해야 합니다
-- **t3 버스트 크레딧** — t3 는 크레딧이 소진되면 기준 성능(t3.medium 은 2 vCPU 의 40% 수준)으로 제한됩니다. STT 처럼 CPU 를 계속 쓰는 작업에는 불리해서, 소진 이후에도 RTF 가 유지되는지 확인해야 합니다. 안 되면 t3 unlimited 모드나 비버스트 계열(c6i · c6g)로 가야 합니다
-
-### 어닝콜 시간에만 기동하는 구조
-
-비용이 가장 낮은 방안이지만 **별개 사안으로 추후 결정합니다.** 인스턴스가 분리되어 있으면 나중에 전환하기 쉽습니다.
-
-전환한다면 **백엔드가 깨우는 구조**가 되어야 합니다. 현재 일정을 감시하는 주체는 data_pipeline 의 `monitor_and_trigger_stt`(1분 주기, `ENABLE_STT_MONITOR=true` 일 때만 활성)인데, 그 코드가 꺼진 인스턴스 안에 있어서 자기를 깨울 수 없습니다.
-
-그 변경에는 부수 효과가 하나 있습니다 — 어닝콜 일정의 소유자가 정해집니다. 지금은 백엔드 `earnings_calendar`(FMP)와 data_pipeline `calls`(자체 수집)에 일정이 이중으로 있습니다.
+코드 서명은 하지 않을 경우 Windows SmartScreen 경고가 뜹니다. 차단은 아니고 **추가 정보 → 실행** 으로 넘어갈 수 있습니다. macOS 는 Gatekeeper 가 실행을 거부하므로 별도 판단이 필요합니다.
 
 ---
 
