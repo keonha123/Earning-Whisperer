@@ -1,5 +1,11 @@
 import { create } from 'zustand'
 import { useMarketIndicesStore } from './useMarketIndicesStore'
+import { useTradingStore } from './useTradingStore'
+import { usePortfolioStore } from './usePortfolioStore'
+import { useWatchlistStore } from './useWatchlistStore'
+import { usePricesStore } from './usePricesStore'
+import { useTranscriptStore } from './useTranscriptStore'
+import { useDrawerStore } from './useDrawerStore'
 
 export type UserPlan = 'FREE' | 'PRO'
 export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
@@ -69,8 +75,16 @@ export const useUserStore = create<UserState>((set) => ({
       settings: defaultSettings,
       accountType: null,
     })
-    // 로그아웃 시 cross-store reset — 시장 지수는 stale 상태가 남으면 안 됨.
-    // (다른 store 도 향후 동일 패턴으로 합류 가능.)
+    // 로그아웃 시 cross-store reset — 이전 계정의 잔여 상태(보유종목/신호/시세/
+    // 트랜스크립트 등)가 재로그인 화면에 노출되면 안 된다.
+    // useTradingStore 는 useUserStore 를 import 하므로 순환 import 가 되지만,
+    // 참조가 런타임(clear 호출 시점)에만 일어나므로 안전하다.
     useMarketIndicesStore.getState().reset()
+    useTradingStore.getState().reset()
+    usePortfolioStore.getState().reset()
+    useWatchlistStore.getState().reset()
+    usePricesStore.getState().reset()
+    useTranscriptStore.getState().reset()
+    useDrawerStore.getState().reset()
   },
 }))

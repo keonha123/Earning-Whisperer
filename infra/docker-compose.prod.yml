@@ -1,0 +1,84 @@
+# =============================================================================
+# 웹 데모 시연 배포용 compose (단일 VM)
+#
+# docker-compose.yml 의 override 가 아니라 독립 파일이다.
+# compose 의 override 병합은 ports 를 "합집합"으로 처리해 개발용 포트 매핑을
+# 제거할 수 없기 때문이다. 여기서는 처음부터 포트를 열지 않는다.
+#
+# 사용:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# 개발용 docker-compose.yml 과의 차이:
+#   - 호스트 포트 매핑 없음. 컨테이너 간 통신은 ew-network 내부 DNS 로만.
+#   - postgres / qdrant / browser-webcast / pipeline-scheduler 제외
+#     (ai-engine·data_pipeline 은 웹 데모 시연 경로에 포함되지 않는다)
+#   - mysql-init 볼륨 미마운트. 001-data-pipeline-schema.sql 이 stocks 를
+#     ticker VARCHAR(20) 으로 만드는데 backend JPA(Stock)는 VARCHAR(10) 으로
+#     ddl-auto: update 하므로 충돌한다. 웹 데모는 파이프라인 테이블을 쓰지
+#     않으므로 JPA 가 필요한 테이블만 생성하게 둔다.
+#
+# 백엔드(Spring Boot)는 컨테이너가 아니라 VM 에서 jar 로 직접 실행한다.
+# 이미지 빌드 시간을 아끼기 위한 선택이며, 호스트에서 붙으므로 아래 서비스는
+# 127.0.0.1 로만 노출하면 충분하다 — 그조차 열지 않기 위해 network_mode 대신
+# 컨테이너 IP 를 쓰려면 DB_URL/REDIS_HOST 를 컨테이너명으로 지정할 것.
+# =============================================================================
+
+services:
+  redis:
+    image: redis:latest
+    container_name: ew-redis
+    restart: unless-stopped
+    # 호스트 노출 없음. 백엔드를 jar 로 host 에서 돌린다면 아래 주석을 해제하되
+    # 반드시 127.0.0.1 바인딩으로 제한할 것 (0.0.0.0 금지).
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    networks:
+      - ew-network
+
+  db:
+    image: mysql:8.0
+    container_name: ew-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD 필요}
+      MYSQL_DATABASE: earning_whisperer
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD 필요}
+    # 개발용과 달리 mysql-init 을 마운트하지 않는다 (상단 주석 참조).
+    volumes:
+      - mysql-data:/var/lib/mysql
+    # ports:
+    #   - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ew-network
+
+  # Cloudflare Tunnel — VM 에서 아웃바운드 연결만 맺어 백엔드를 공개한다.
+  # 인바운드 포트를 열지 않으므로 방화벽 설정이 1차 방어선으로 남는다.
+  #
+  # TUNNEL_TOKEN 은 Cloudflare Zero Trust 대시보드에서 터널 생성 시 발급된다.
+  # 터널의 public hostname 을 backend(호스트) :8082 로 연결하도록 대시보드에서
+  # 설정한다. 백엔드가 컨테이너가 아니라 호스트에서 돌기 때문에 아래
+  # extra_hosts 로 host.docker.internal 을 확보한다.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ew-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN 필요}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ew-network
+
+networks:
+  ew-network:
+    driver: bridge
+
+volumes:
+  mysql-data:

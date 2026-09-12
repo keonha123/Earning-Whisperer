@@ -4,6 +4,14 @@ import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { kisLimiter } from './KisRateLimiter'
+import { resolveExchange, type KisExchange } from './KisWebSocketService'
+
+// REST 파라미터용 거래소 코드 쌍. resolveExchange() 결과(NAS/NYS/AMS)를 KIS REST 코드로 변환.
+const REST_EXCHANGE_CODES: Record<KisExchange, { ovrsExcgCd: string; excd: string }> = {
+  NAS: { ovrsExcgCd: 'NASD', excd: 'NAS' },
+  NYS: { ovrsExcgCd: 'NYSE', excd: 'NYS' },
+  AMS: { ovrsExcgCd: 'AMEX', excd: 'AMS' },
+}
 
 const KIS_BASE_URL_PAPER = 'https://openapivts.koreainvestment.com:29443'
 const KIS_BASE_URL_REAL = 'https://openapi.koreainvestment.com:9443'
@@ -41,6 +49,14 @@ function accountNoSlot(isPaperTrading: boolean): string {
 }
 
 /**
+ * HTS ID slot. 실시간 체결통보(H0GSCNI0/9) 의 tr_key 가 종목이 아니라 HTS ID 라서
+ * 별도로 보관해야 한다. 앱키/시크릿과 달리 비밀은 아니지만 같은 저장소에 둔다.
+ */
+function htsIdSlot(isPaperTrading: boolean): string {
+  return isPaperTrading ? 'kis-htsId-paper' : 'kis-htsId-real'
+}
+
+/**
  * KIS TR_ID 모드별 매핑.
  * 모의(paper)는 V로 시작 / 실전(real)은 T로 시작 — 첫 글자만 다르다.
  * baseURL/keytar는 분기되어 있어도 TR_ID가 모의용이면 실전 호출이 거부되므로 필수.
@@ -59,6 +75,14 @@ const TR_IDS = {
  */
 const ORDER_FILL_INQUIRE_WAIT_MS = process.env.NODE_ENV === 'test' ? 0 : 500
 
+/**
+ * KIS 는 주문일자를 한국시간 기준으로 기록한다. 체결조회의 주문일자 범위를 로컬 타임존이나
+ * UTC 로 계산하면 KST 00:00~09:00 구간에서 하루가 어긋나 조회 범위에 주문이 빠지고,
+ * 체결된 주문이 미체결(0)로 오판된다. 미국 정규장은 KST 22:30~05:00 이므로 그 중
+ * 00:00~05:00 — 장의 대부분 — 이 이 구간에 걸린다.
+ */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000
+
 function trId(key: keyof typeof TR_IDS): string {
   return mainState.isPaperTrading ? TR_IDS[key].paper : TR_IDS[key].real
 }
@@ -67,6 +91,23 @@ const kisHttp = axios.create({
   baseURL: getKisBaseUrl(mainState.isPaperTrading),
   timeout: 10_000,
 })
+
+/**
+ * 응답 에러에서 요청 config / request 제거.
+ * AxiosError 를 그대로 console 에 찍으면 config.headers 의 appkey/appsecret/authorization 이
+ * 평문으로 로그에 남는다. request(Node ClientRequest) 의 `_header` 에도 같은 헤더 원문이
+ * 직렬화돼 있으므로 함께 제거한다. 진단에 필요한 response.data/message 는 보존된다.
+ */
+kisHttp.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err && typeof err === 'object') {
+      delete (err as { config?: unknown }).config
+      delete (err as { request?: unknown }).request
+    }
+    return Promise.reject(err)
+  },
+)
 
 function pushToRenderer(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
@@ -89,6 +130,26 @@ let lastKnownOrderableCash = 0
  * issueToken은 abort 미적용 (cancel되면 후속 호출이 줄줄이 실패).
  */
 let activeAbortController: AbortController = new AbortController()
+
+/**
+ * 모드 전환으로 흐름이 중단됐음을 호출자에게 알리는 에러.
+ * 조용히 return 하면 ensureToken 이 정상 종료해 호출자가 `Bearer null` 로 요청하게 된다.
+ */
+const MODE_SWITCH_ERROR_MESSAGE = 'KIS 모드가 전환되어 요청을 취소했습니다'
+
+function modeSwitchError(): Error {
+  return new Error(MODE_SWITCH_ERROR_MESSAGE)
+}
+
+/**
+ * 계좌번호 → CANO(앞 8자리) / ACNT_PRDT_CD(뒤 2자리, 없으면 '01') 분해.
+ * vault 저장 시 정규화되지만, 하이픈/공백이 섞인 legacy 값이 남아 있어도
+ * ACNT_PRDT_CD='-01' 같은 잘못된 값이 나가지 않도록 숫자만 추출한다.
+ */
+function parseAccountNo(accountNo: string): { cano: string; acntPrdtCd: string } {
+  const digits = accountNo.replace(/\D/g, '')
+  return { cano: digits.slice(0, 8), acntPrdtCd: digits.slice(8) || '01' }
+}
 
 function isAbortError(e: unknown): boolean {
   const code = (e as { code?: string })?.code
@@ -193,10 +254,18 @@ export const KisService = {
     appSecret: string,
     accountNo: string,
     isPaperTrading: boolean,
+    htsId?: string | null,
   ): Promise<void> {
     await keytar.setPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading), appKey)
     await keytar.setPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading), appSecret)
     await keytar.setPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading), accountNo)
+    // htsId 는 선택 입력이다. 없으면 체결통보 구독만 못 하고 나머지는 정상 동작하므로
+    // 빈 값이면 기존 값을 지운다 (사용자가 지우려 한 것으로 본다).
+    if (htsId && htsId.trim()) {
+      await keytar.setPassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading), htsId.trim())
+    } else if (htsId !== undefined) {
+      await keytar.deletePassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading))
+    }
 
     // 옛 키 기준의 access token 은 새 키와 결합 시 정합성이 깨지므로 항상 해당 모드 slot 정리.
     // 비활성 모드여도 다음 활성화 시 재발급되도록 (옛 토큰 부활 차단).
@@ -222,6 +291,8 @@ export const KisService = {
    *
    * 보안:
    *   - **appSecret 은 절대 응답에 포함하지 않는다.** 사용자가 다시 보고 싶다면 재등록(수정) 흐름으로만.
+   *   - htsId 는 원문 그대로 반환한다 — 비밀값이 아니라 사용자의 로그인 아이디이고,
+   *     수정 폼에 채워 넣어야 이것만 바꾸려고 나머지를 다시 입력하는 일이 없다.
    *   - appKey/accountNo 도 평문이 아니라 마스킹 형식으로 노출 (prefix + 마스크 + suffix).
    *
    * 마스킹 규칙:
@@ -232,23 +303,25 @@ export const KisService = {
    * (appSecret 등록 여부는 반환에 영향 없음 — 표시 페이로드에 포함되지 않으므로.)
    */
   async getMaskedCredentials(): Promise<{
-    paper: { appKeyMasked: string; accountNoMasked: string } | null
-    real: { appKeyMasked: string; accountNoMasked: string } | null
+    paper: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
+    real: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   }> {
-    const [pk, pa, rk, ra] = await Promise.all([
+    const [pk, pa, ph, rk, ra, rh] = await Promise.all([
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(false)),
     ])
     return {
       paper:
         pk && pa
-          ? { appKeyMasked: maskAppKey(pk), accountNoMasked: maskAccountNo(pa) }
+          ? { appKeyMasked: maskAppKey(pk), accountNoMasked: maskAccountNo(pa), htsId: ph }
           : null,
       real:
         rk && ra
-          ? { appKeyMasked: maskAppKey(rk), accountNoMasked: maskAccountNo(ra) }
+          ? { appKeyMasked: maskAppKey(rk), accountNoMasked: maskAccountNo(ra), htsId: rh }
           : null,
     }
   },
@@ -258,18 +331,29 @@ export const KisService = {
    * UI 가 paper/real 카드를 분리해 표시하려면 boolean 단일 값으로는 부족하므로
    * 객체 응답으로 전환 — A3 의 카드 분리 UI 에 필요.
    */
-  async hasCredentials(): Promise<{ paper: boolean; real: boolean }> {
-    const [pk, ps, pa, rk, rs, ra] = await Promise.all([
+  async hasCredentials(): Promise<{
+    paper: boolean
+    real: boolean
+    paperHtsId: boolean
+    realHtsId: boolean
+  }> {
+    const [pk, ps, pa, ph, rk, rs, ra, rh] = await Promise.all([
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(true)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(true)),
       keytar.getPassword(KEYTAR_SERVICE, appKeySlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(false)),
       keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(false)),
+      keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(false)),
     ])
     return {
       paper: !!(pk && ps && pa),
       real: !!(rk && rs && ra),
+      // HTS ID 는 자격증명 필수 요건이 아니라 별도로 알린다. UI 가 이걸 모르면
+      // "이미 등록됨" 표시도, 유실 인지도 불가능하다.
+      paperHtsId: !!ph,
+      realHtsId: !!rh,
     }
   },
 
@@ -289,6 +373,7 @@ export const KisService = {
       keytar.deletePassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading)),
+      keytar.deletePassword(KEYTAR_SERVICE, htsIdSlot(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, tokenKey(isPaperTrading)),
       keytar.deletePassword(KEYTAR_SERVICE, expiryKey(isPaperTrading)),
     ])
@@ -318,13 +403,15 @@ export const KisService = {
     // IIFE 진입 시 모드 캡처. axios resolve 까지 이어지는 모든 await 사이에 invalidateRuntime 으로
      // 모드가 바뀌면 결과 mainState/vault 반영을 차단해 옛 모드 토큰이 새 모드에 박히는 사고 방지.
     const issuedFor = mainState.isPaperTrading
-    issueTokenInFlight = (async () => {
+    // in-flight 소유권: 자기 Promise 일 때만 정리한다. invalidateRuntime 등으로 in-flight 가
+    // 교체된 뒤 옛 흐름의 finally 가 새 in-flight 를 지우면 중복 발급(EGW00133)이 발생한다.
+    const inFlight = (async () => {
       const appKey = await keytar.getPassword(KEYTAR_SERVICE, appKeySlot(issuedFor))
       const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(issuedFor))
       if (!appKey || !appSecret) throw new Error('KIS API 키가 등록되지 않았습니다.')
       if (modeChangedSince(issuedFor)) {
         console.info('[KisService] issueToken 중단 — 모드 전환 감지')
-        return
+        throw modeSwitchError()
       }
 
       try {
@@ -336,7 +423,7 @@ export const KisService = {
 
         if (modeChangedSince(issuedFor)) {
           console.info('[KisService] 토큰 발급 결과 폐기 — resolve 사이 모드 전환')
-          return
+          throw modeSwitchError()
         }
 
         console.info(`[KisService] 토큰 발급 성공 — expires_in: ${data.expires_in}초`)
@@ -356,11 +443,12 @@ export const KisService = {
         throw e
       }
     })()
+    issueTokenInFlight = inFlight
 
     try {
-      await issueTokenInFlight
+      await inFlight
     } finally {
-      issueTokenInFlight = null
+      if (issueTokenInFlight === inFlight) issueTokenInFlight = null
     }
   },
 
@@ -384,14 +472,16 @@ export const KisService = {
     // 동시 호출 방지 — KIS API 초당 거래건수 초과 (EGW00201) 회피
     if (getBalanceInFlight) return getBalanceInFlight
 
-    getBalanceInFlight = (async () => {
+    // issueToken 과 동일한 in-flight 소유권 규칙 — 옛 흐름이 새 in-flight 를 지우지 않도록.
+    const inFlight = (async () => {
       return KisService._getBalanceImpl()
     })()
+    getBalanceInFlight = inFlight
 
     try {
-      return await getBalanceInFlight
+      return await inFlight
     } finally {
-      getBalanceInFlight = null
+      if (getBalanceInFlight === inFlight) getBalanceInFlight = null
     }
   },
 
@@ -403,8 +493,7 @@ export const KisService = {
     const appSecret = await keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper))
     const accountNo = await keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper))
     if (!appKey || !appSecret || !accountNo) throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
-    const cano = accountNo.slice(0, 8)
-    const acntPrdtCd = accountNo.slice(8) || '01'
+    const { cano, acntPrdtCd } = parseAccountNo(accountNo)
 
     // 1. 해외주식 잔고 (보유종목)
     await kisLimiter.acquire('MEDIUM')
@@ -492,7 +581,7 @@ export const KisService = {
         signal: activeAbortController.signal,
         params: {
           AUTH: '',
-          EXCD: 'NAS',
+          EXCD: REST_EXCHANGE_CODES[resolveExchange(ticker)].excd,
           SYMB: ticker,
         },
       })
@@ -505,6 +594,13 @@ export const KisService = {
       const base = Number(data.output?.base ?? 0)
       const currentPrice = Number.isFinite(last) && last > 0 ? last : 0
       const previousClose = Number.isFinite(base) && base > 0 ? base : 0
+      // rt_cd 는 성공인데 시세가 비어 오는 경우가 있다 (모의투자 계좌의 해외 시세 제약,
+      // 장 시간 외 등). 조용히 0 을 반환하면 호출자가 원인을 알 수 없으므로 남긴다.
+      if (currentPrice === 0) {
+        console.warn(
+          `[KisService] HHDFS00000300 시세 없음 — ticker=${ticker} last=${data.output?.last ?? 'undefined'} base=${data.output?.base ?? 'undefined'}`,
+        )
+      }
       return { currentPrice, previousClose }
     } catch (e: any) {
       // 모드 전환 abort는 0 반환 (PricePoller 0 가드와 일관)
@@ -540,9 +636,9 @@ export const KisService = {
     const { data } = await kisHttp.post(
       '/uapi/overseas-stock/v1/trading/order',
       {
-        CANO: accountNo.slice(0, 8),
-        ACNT_PRDT_CD: accountNo.slice(8) || '01',
-        OVRS_EXCG_CD: 'NASD',
+        CANO: parseAccountNo(accountNo).cano,
+        ACNT_PRDT_CD: parseAccountNo(accountNo).acntPrdtCd,
+        OVRS_EXCG_CD: REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
         PDNO: ticker,
         ORD_DVSN: '00',
         ORD_QTY: String(qty),
@@ -584,6 +680,59 @@ export const KisService = {
       executedPrice: fill.executedQty > 0 ? fill.avgPrice : null,
       executedQty: fill.executedQty,
     }
+  },
+
+  /**
+   * 수정 흐름에서 빈 칸을 "기존 값 유지" 로 해석하기 위한 내부 조회.
+   *
+   * **main 프로세스 전용이다.** 반환값에 appSecret 평문이 들어 있으므로 IPC 로 렌더러에
+   * 내보내면 안 된다 — 화면에 되돌려주지 않는다는 기존 원칙을 깨뜨린다.
+   */
+  async getCredentialsForEdit(isPaperTrading: boolean): Promise<{
+    appKey: string | null
+    appSecret: string | null
+    accountNo: string | null
+  }> {
+    const [appKey, appSecret, accountNo] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(isPaperTrading)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(isPaperTrading)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(isPaperTrading)),
+    ])
+    return { appKey, appSecret, accountNo }
+  },
+
+  /** 현재 활성 모드의 HTS ID. 미등록이면 null. */
+  async getHtsId(isPaperTrading?: boolean): Promise<string | null> {
+    const paper = isPaperTrading ?? mainState.isPaperTrading
+    return keytar.getPassword(KEYTAR_SERVICE, htsIdSlot(paper))
+  },
+
+  /**
+   * 이미 접수된 주문의 체결 상태를 다시 조회한다.
+   *
+   * <p>주문 직후 1회 조회로 확정하는 경로(placeOrder) 와 달리, 나중에 다시 확인하기 위한
+   * 진입점이다. 즉시 체결 지정가라도 0.5초 안에 체결이 반영되지 않으면 PENDING 으로
+   * 기록되는데, 그 뒤로 아무도 확인하지 않으면 체결된 주문이 영구히 미체결로 남는다.
+   *
+   * @returns 조회 실패 시 null (호출자가 "모른다" 로 처리해야 한다 — 체결/미체결로 단정하면 안 된다)
+   */
+  async inquireFill(
+    ticker: string,
+    orderId: string,
+  ): Promise<{ executedQty: number; avgPrice: number | null } | null> {
+    if (!ticker || !orderId) return null
+    await KisService.ensureToken()
+
+    const paper = mainState.isPaperTrading
+    const [appKey, appSecret, accountNo] = await Promise.all([
+      keytar.getPassword(KEYTAR_SERVICE, appKeySlot(paper)),
+      keytar.getPassword(KEYTAR_SERVICE, appSecretSlot(paper)),
+      keytar.getPassword(KEYTAR_SERVICE, accountNoSlot(paper)),
+    ])
+    if (!appKey || !appSecret || !accountNo) {
+      throw new Error('KIS API 자격 증명이 등록되지 않았습니다.')
+    }
+    return inquireOrderFill(appKey, appSecret, accountNo, ticker, orderId)
   },
 
   /**
@@ -733,6 +882,31 @@ export function maskAccountNo(accountNo: string): string {
  * 응답 필드명은 KIS 명세에 따라 다를 수 있으며 (실제 운영 시 검증 필요),
  * 일반적인 KIS 컨벤션 (`output1` 배열 + `odno`/`tot_ccld_qty`/`avg_prvs`) 을 가정한다.
  */
+/** KST(UTC+9) 기준 yyyyMMdd. offsetDays 로 며칠 전을 구할 수 있다. */
+function kstDateString(offsetDays = 0): string {
+  const kst = new Date(Date.now() + KST_OFFSET_MS - offsetDays * 86_400_000)
+  const yyyy = kst.getUTCFullYear()
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(kst.getUTCDate()).padStart(2, '0')
+  return `${yyyy}${mm}${dd}`
+}
+
+/**
+ * KIS 주문번호 비교용 정규화.
+ *
+ * 주문 API(`output.ODNO`) 는 0 을 채워 `0000044600` 으로 주는데 체결조회
+ * 응답(`odno`) 은 `44600` 으로 온다. 같은 주문인데 표기가 달라서 문자열 정확 비교로는
+ * 영원히 매칭되지 않는다 — 실제로 체결된 주문이 계속 미체결로 보고됐다.
+ */
+function normalizeOdno(value: string): string {
+  return value.trim().replace(/^0+/, '')
+}
+
+function sameOdno(a: string | undefined, b: string): boolean {
+  if (!a) return false
+  return a.trim() === b.trim() || normalizeOdno(a) === normalizeOdno(b)
+}
+
 async function inquireOrderFill(
   appKey: string,
   appSecret: string,
@@ -741,11 +915,13 @@ async function inquireOrderFill(
   orderId: string,
 ): Promise<{ executedQty: number; avgPrice: number | null } | null> {
   try {
-    const today = new Date()
-    const yyyy = today.getUTCFullYear()
-    const mm = String(today.getUTCMonth() + 1).padStart(2, '0')
-    const dd = String(today.getUTCDate()).padStart(2, '0')
-    const yyyymmdd = `${yyyy}${mm}${dd}`
+    // 어제~오늘(KST) 을 조회한다. 미국 정규장은 KST 22:30~05:00 이라 한 세션이 항상
+    // 한국 날짜 두 개에 걸친다 — 하루만 조회하면 세션의 절반을 놓친다. 실제로 KST
+    // 02:22 에 낸 주문(현지 09-11 13:22)이 한국일자 09-12 로 조회했을 때 0건이었다.
+    // ODNO 로 걸러내므로 범위를 넓혀도 다른 주문이 섞이지 않는다.
+    const startDate = kstDateString(1)
+    const endDate = kstDateString(0)
+    const paper = mainState.isPaperTrading
 
     await kisLimiter.acquire('HIGH')
     const { data } = await kisHttp.get(
@@ -754,18 +930,24 @@ async function inquireOrderFill(
         headers: buildKisHeaders(appKey, appSecret, trId('inquireCcnl')),
         signal: activeAbortController.signal,
         params: {
-          CANO: accountNo.slice(0, 8),
-          ACNT_PRDT_CD: accountNo.slice(8) || '01',
-          PDNO: ticker,
-          ORD_STRT_DT: yyyymmdd,
-          ORD_END_DT: yyyymmdd,
-          SLL_BUY_DVSN: '00',     // 전체
-          CCLD_NCCS_DVSN: '00',   // 전체
-          OVRS_EXCG_CD: 'NASD',
-          SORT_SQN: 'DS',
+          CANO: parseAccountNo(accountNo).cano,
+          ACNT_PRDT_CD: parseAccountNo(accountNo).acntPrdtCd,
+          // 모의투자는 종목코드/거래소코드/정렬순서를 지원하지 않는다 — 값을 채워 보내면
+          // 조건에 맞는 주문이 있어도 0건이 돌아온다. 공식 샘플
+          // examples_llm/overseas_stock/inquire_ccnl 의 제약 설명 기준.
+          // 실전은 그대로 좁혀 조회한다.
+          PDNO: paper ? '' : ticker,
+          OVRS_EXCG_CD: paper ? '' : REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd,
+          SORT_SQN: paper ? '' : 'DS',
+          ORD_STRT_DT: startDate,
+          ORD_END_DT: endDate,
+          SLL_BUY_DVSN: '00',     // 전체 (모의는 00 만 허용)
+          CCLD_NCCS_DVSN: '00',   // 전체 (모의는 00 만 허용)
           ORD_DT: '',
           ORD_GNO_BRNO: '',
-          ODNO: orderId,
+          // ODNO 는 빈 값으로 둔다(문서 규격). 주문번호 매칭은 응답에서 직접 필터한다 —
+          // 모의에서는 종목으로도 좁힐 수 없으므로 어차피 클라이언트 필터가 필요하다.
+          ODNO: '',
           CTX_AREA_NK200: '',
           CTX_AREA_FK200: '',
         },
@@ -780,9 +962,17 @@ async function inquireOrderFill(
     const rows: Array<Record<string, string>> = Array.isArray(data.output) ? data.output
       : Array.isArray(data.output1) ? data.output1
       : []
-    const row = rows.find((r) => r.odno === orderId || r.ODNO === orderId)
+    const row = rows.find((r) => sameOdno(r.odno, orderId) || sameOdno(r.ODNO, orderId))
     if (!row) {
-      console.warn(`[KisService] inquireCcnl 응답에 ODNO=${orderId} 매칭 row 없음 — 미체결(0) 반환`)
+      // row 0건과 "row 는 왔는데 ODNO 만 안 맞음" 은 원인이 전혀 다르다. 전자는 조회
+      // 조건(주문일자 범위, 거래소, 모의투자 미지원) 문제이고 후자는 ODNO 불일치다.
+      // 구분 없이 같은 로그를 남기면 원인을 좁힐 수 없다. 주문번호는 민감정보가 아니다.
+      const seen = rows.map((r) => r.odno ?? r.ODNO ?? '?').join(',')
+      console.warn(
+        `[KisService] inquireCcnl ODNO=${orderId} 매칭 실패 — 응답 row ${rows.length}건` +
+          (rows.length > 0 ? ` (응답 ODNO: ${seen})` : ` (조회일자 ${startDate}~${endDate}, EXCD ${REST_EXCHANGE_CODES[resolveExchange(ticker)].ovrsExcgCd})`) +
+          ' — 미체결(0) 반환',
+      )
       return { executedQty: 0, avgPrice: null }
     }
 
@@ -853,4 +1043,18 @@ function scheduleTokenRefresh(expiresIn: number) {
   // 만료 1시간 전 갱신, 최소 60s
   const delay = Math.max((expiresIn - 3600) * 1000, 60_000)
   refreshTimer = setTimeout(() => { void runRefreshOnce() }, delay)
+}
+
+/** 테스트 전용 — 모듈 전역 상태 초기화 (테스트 간 누수 방지). */
+export function __resetForTest(): void {
+  lastKnownOrderableCash = 0
+  issueTokenInFlight = null
+  getBalanceInFlight = null
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  tokenRefreshAttempts = 0
+  activeAbortController.abort()
+  activeAbortController = new AbortController()
 }

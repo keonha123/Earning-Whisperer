@@ -23,7 +23,7 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
 
   it('빈 batch + isLoaded=true → state 자체 reference 동일 (no-op)', () => {
     usePricesStore.setState({
-      prices: { AAPL: { currentPrice: 100, lastUpdated: 1 } },
+      prices: { AAPL: { currentPrice: 100, previousClose: 99, lastUpdated: 1 } },
       isLoaded: true,
     })
     const before = usePricesStore.getState()
@@ -39,16 +39,16 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
   it('동일 값 batch → prices reference 동일 (re-render 스킵 보장)', () => {
     usePricesStore.setState({
       prices: {
-        AAPL: { currentPrice: 100, lastUpdated: 1000 },
-        TSLA: { currentPrice: 250, lastUpdated: 1000 },
+        AAPL: { currentPrice: 100, previousClose: 99, lastUpdated: 1000 },
+        TSLA: { currentPrice: 250, previousClose: 249, lastUpdated: 1000 },
       },
       isLoaded: true,
     })
     const beforePrices = usePricesStore.getState().prices
 
     const batch: PriceUpdate[] = [
-      { ticker: 'AAPL', currentPrice: 100, lastUpdated: 1000 },
-      { ticker: 'TSLA', currentPrice: 250, lastUpdated: 1000 },
+      { ticker: 'AAPL', currentPrice: 100, previousClose: 99, lastUpdated: 1000 },
+      { ticker: 'TSLA', currentPrice: 250, previousClose: 249, lastUpdated: 1000 },
     ]
     usePricesStore.getState().upsertBatch(batch)
 
@@ -63,18 +63,18 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
     const beforePrices = before.prices
 
     usePricesStore.getState().upsertBatch([
-      { ticker: 'AAPL', currentPrice: 100, lastUpdated: 1000 },
+      { ticker: 'AAPL', currentPrice: 100, previousClose: 99, lastUpdated: 1000 },
     ])
 
     const after = usePricesStore.getState()
     expect(after.isLoaded).toBe(true)
     expect(after.prices).not.toBe(beforePrices)
-    expect(after.prices.AAPL).toEqual({ currentPrice: 100, lastUpdated: 1000 })
+    expect(after.prices.AAPL).toEqual({ currentPrice: 100, previousClose: 99, lastUpdated: 1000 })
   })
 
   it('일부만 변경된 batch → 변경된 ticker 만 새 entry, 나머지 entry reference 동일', () => {
-    const aaplEntry = { currentPrice: 100, lastUpdated: 1000 }
-    const tslaEntry = { currentPrice: 250, lastUpdated: 1000 }
+    const aaplEntry = { currentPrice: 100, previousClose: 99, lastUpdated: 1000 }
+    const tslaEntry = { currentPrice: 250, previousClose: 249, lastUpdated: 1000 }
     usePricesStore.setState({
       prices: { AAPL: aaplEntry, TSLA: tslaEntry },
       isLoaded: true,
@@ -82,15 +82,15 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
 
     const batch: PriceUpdate[] = [
       // AAPL 은 동일 값 — 변경 없음
-      { ticker: 'AAPL', currentPrice: 100, lastUpdated: 1000 },
+      { ticker: 'AAPL', currentPrice: 100, previousClose: 99, lastUpdated: 1000 },
       // TSLA 는 가격 변경
-      { ticker: 'TSLA', currentPrice: 260, lastUpdated: 2000 },
+      { ticker: 'TSLA', currentPrice: 260, previousClose: 259, lastUpdated: 2000 },
     ]
     usePricesStore.getState().upsertBatch(batch)
 
     const after = usePricesStore.getState()
     // prices 객체 자체는 변경됨 (TSLA 갱신 때문).
-    expect(after.prices.TSLA).toEqual({ currentPrice: 260, lastUpdated: 2000 })
+    expect(after.prices.TSLA).toEqual({ currentPrice: 260, previousClose: 259, lastUpdated: 2000 })
     expect(after.prices.TSLA).not.toBe(tslaEntry)
     // AAPL entry 는 변경되지 않았으므로 기존 reference 유지.
     expect(after.prices.AAPL).toBe(aaplEntry)
@@ -98,13 +98,13 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
 
   it('currentPrice 만 변경되어도 reference 갱신', () => {
     usePricesStore.setState({
-      prices: { AAPL: { currentPrice: 100, lastUpdated: 1000 } },
+      prices: { AAPL: { currentPrice: 100, previousClose: 99, lastUpdated: 1000 } },
       isLoaded: true,
     })
     const beforePrices = usePricesStore.getState().prices
 
     usePricesStore.getState().upsertBatch([
-      { ticker: 'AAPL', currentPrice: 101, lastUpdated: 1000 },
+      { ticker: 'AAPL', currentPrice: 101, previousClose: 100, lastUpdated: 1000 },
     ])
 
     const afterPrices = usePricesStore.getState().prices
@@ -114,13 +114,13 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
 
   it('lastUpdated 만 변경되어도 reference 갱신', () => {
     usePricesStore.setState({
-      prices: { AAPL: { currentPrice: 100, lastUpdated: 1000 } },
+      prices: { AAPL: { currentPrice: 100, previousClose: 99, lastUpdated: 1000 } },
       isLoaded: true,
     })
     const beforePrices = usePricesStore.getState().prices
 
     usePricesStore.getState().upsertBatch([
-      { ticker: 'AAPL', currentPrice: 100, lastUpdated: 2000 },
+      { ticker: 'AAPL', currentPrice: 100, previousClose: 99, lastUpdated: 2000 },
     ])
 
     const afterPrices = usePricesStore.getState().prices
@@ -132,11 +132,11 @@ describe('usePricesStore.upsertBatch — reference equality 보존', () => {
 describe('usePricesStore.setSnapshot', () => {
   it('snapshot 통째 교체 + isLoaded=true', () => {
     usePricesStore.getState().setSnapshot({
-      AAPL: { currentPrice: 100, lastUpdated: 1000 },
+      AAPL: { currentPrice: 100, previousClose: 99, lastUpdated: 1000 },
     })
     const s = usePricesStore.getState()
     expect(s.isLoaded).toBe(true)
-    expect(s.prices.AAPL).toEqual({ currentPrice: 100, lastUpdated: 1000 })
+    expect(s.prices.AAPL).toEqual({ currentPrice: 100, previousClose: 99, lastUpdated: 1000 })
   })
 
   it('빈 snapshot 도 isLoaded=true 로 마크', () => {

@@ -16,6 +16,10 @@ type WsStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
 let client: Client | null = null
 let retryCount = 0
 let hasConnectedOnce = false
+/** 예약된 재연결 타이머 핸들 — 동시 장애 콜백이 타이머를 중첩 예약하는 것을 막는다. */
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+/** disconnect() 로 의도적으로 끊은 상태 — 이때 오는 소켓 종료 콜백은 재연결 대상이 아니다. */
+let intentionalDisconnect = false
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
 
 /**
@@ -25,6 +29,10 @@ const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000]
  *  - 값: STOMP subscription handle (활성), 또는 undefined (미연결 상태에서 sub 요청만 기록)
  */
 const transcriptSubscriptions = new Map<string, StompSubscription | undefined>()
+const factCheckSubscriptions = new Map<string, StompSubscription | undefined>()
+
+/** 종합 판단 구독 핸들 (Contract 4.7). 위 두 Map 과 동일한 규약. */
+const evaluationSubscriptions = new Map<string, StompSubscription | undefined>()
 
 function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
@@ -97,9 +105,35 @@ export const StompService = {
     console.log('[StompService] connect() called — WS_URL:', WS_URL, '| token:', token ? '있음' : '없음(null)')
     if (!token) return
 
+    intentionalDisconnect = false
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+
+    /*
+     * CONNECTING 상태로 남아있는 옛 client 를 정리한 뒤 교체한다.
+     * 정리하지 않으면 뒤늦게 연결된 옛 client 가 동일 토픽을 이중 구독해
+     * 같은 신호가 2회 dispatch 된다.
+     */
+    if (client) {
+      const stale = client
+      client = null
+      try {
+        stale.deactivate()
+      } catch (e) {
+        console.error('[StompService] 이전 client deactivate 실패:', e)
+      }
+    }
+
     onStatusChange('CONNECTING')
 
-    client = new Client({
+    /*
+     * 생성한 인스턴스를 로컬로 잡아둔다. 교체된 옛 client 의 소켓이 뒤늦게 닫히면
+     * 라이브러리가 그 client 의 콜백을 그대로 호출하므로, 모든 콜백 첫 줄에서
+     * "내가 현재 client 인가" 를 확인해 유령 이벤트를 무시한다.
+     */
+    const created: Client = new Client({
       webSocketFactory: () => new WebSocket(WS_URL) as unknown as globalThis.WebSocket,
       connectHeaders: { Authorization: `Bearer ${token}` },
       heartbeatIncoming: 10000,
@@ -107,6 +141,7 @@ export const StompService = {
       reconnectDelay: 0, // 직접 관리
 
       onConnect: () => {
+        if (client !== created) return
         retryCount = 0
         onStatusChange('CONNECTED')
 
@@ -202,37 +237,75 @@ export const StompService = {
           )
           transcriptSubscriptions.set(ticker, sub)
         }
+        for (const ticker of factCheckSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/factcheck/${ticker}`,
+            factCheckMessageHandler,
+          )
+          factCheckSubscriptions.set(ticker, sub)
+        }
+        for (const ticker of evaluationSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/evaluation/${ticker}`,
+            evaluationMessageHandler,
+          )
+          evaluationSubscriptions.set(ticker, sub)
+        }
       },
 
       onDisconnect: () => {
+        if (client !== created) return
         clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()
       },
 
       onStompError: (frame) => {
-        console.error('[StompService] STOMP 에러:', frame)
+        if (client !== created) return
+        // frame 전체를 찍으면 헤더의 인증 토큰이 로그에 남는다 — 메시지만 남긴다
+        console.error('[StompService] STOMP 에러:', frame.headers?.message)
         clearStompCovered()
         onStatusChange('DISCONNECTED')
         scheduleReconnect()
       },
 
       onWebSocketError: (event) => {
+        if (client !== created) return
         console.error('[StompService] WebSocket 연결 오류:', event)
         onStatusChange('RECONNECTING')
         scheduleReconnect()
       },
+
+      /*
+       * 서버가 소켓을 닫은 경우(백엔드 재배포, heartbeat timeout 등)는 onDisconnect 가
+       * 아니라 onWebSocketClose 로만 통보된다. 이를 처리하지 않으면 UI 가 CONNECTED 로
+       * 남고 AUTO_PILOT 이 유지된 채 재연결도 되지 않는다.
+       */
+      onWebSocketClose: (event) => {
+        if (client !== created) return
+        console.warn('[StompService] WebSocket 종료:', event?.code, event?.reason)
+        clearStompCovered()
+        onStatusChange('DISCONNECTED')
+        scheduleReconnect()
+      },
     })
 
-    client.activate()
+    client = created
+    created.activate()
   },
 
   disconnect() {
+    intentionalDisconnect = true
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     client?.deactivate()
     client = null
     retryCount = 0
     // 트랜스크립트 핸들도 함께 정리 — disconnect 후 dangling sub 방지.
     transcriptSubscriptions.clear()
+    factCheckSubscriptions.clear()
     onStatusChange('DISCONNECTED')
   },
 
@@ -280,6 +353,69 @@ export const StompService = {
     }
     transcriptSubscriptions.delete(ticker)
   },
+
+  /**
+   * 동적 팩트체크 토픽 구독 (Contract 4.6).
+   * subscribeTranscript 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
+   * 다음 onConnect 에서 자동 재구독한다.
+   */
+  subscribeFactCheck(ticker: string) {
+    if (!ticker) return
+    if (factCheckSubscriptions.get(ticker)) return
+
+    if (client?.connected) {
+      const sub = client.subscribe(`/topic/factcheck/${ticker}`, factCheckMessageHandler)
+      factCheckSubscriptions.set(ticker, sub)
+    } else {
+      factCheckSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  unsubscribeFactCheck(ticker: string) {
+    if (!ticker) return
+    const sub = factCheckSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 팩트체크 unsubscribe 실패:', e)
+      }
+    }
+    factCheckSubscriptions.delete(ticker)
+  },
+
+  /**
+   * 동적 종합 판단 토픽 구독 (Contract 4.7).
+   * subscribeFactCheck 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
+   * 다음 onConnect 에서 자동 재구독한다.
+   *
+   * 이 토픽은 어닝콜 회차당 1건만 흐른다. 그래서 구독이 늦으면 그 1건을 통째로
+   * 놓친다 — 재생 시작 버튼을 누르기 전에 이미 구독되어 있어야 한다.
+   */
+  subscribeEvaluation(ticker: string) {
+    if (!ticker) return
+    if (evaluationSubscriptions.get(ticker)) return
+
+    if (client?.connected) {
+      const sub = client.subscribe(`/topic/evaluation/${ticker}`, evaluationMessageHandler)
+      evaluationSubscriptions.set(ticker, sub)
+    } else {
+      evaluationSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  unsubscribeEvaluation(ticker: string) {
+    if (!ticker) return
+    const sub = evaluationSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 종합 판단 unsubscribe 실패:', e)
+      }
+    }
+    evaluationSubscriptions.delete(ticker)
+  },
 }
 
 /**
@@ -295,12 +431,44 @@ function transcriptMessageHandler(message: IMessage) {
   }
 }
 
+/**
+ * 팩트체크 STOMP 메시지 핸들러 — 모든 ticker 가 공유.
+ * transcriptMessageHandler 와 동일한 이유로 module-level 에 둔다(재구독 시 동일 reference).
+ */
+function factCheckMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.FACTCHECK_BATCH_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 팩트체크 파싱 실패:', e)
+  }
+}
+
+/** 종합 판단 STOMP 메시지 핸들러 — 위 둘과 동일한 이유로 module-level 에 둔다. */
+function evaluationMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.EVALUATION_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 종합 판단 파싱 실패:', e)
+  }
+}
+
+/**
+ * 재연결 예약 — 타이머 핸들 1개만 유지한다.
+ * 같은 장애로 onStompError / onWebSocketError / onWebSocketClose 가 연달아 호출돼도
+ * 타이머가 중첩되지 않아 client 가 2개 생성되는 이중 구독을 막는다.
+ */
 function scheduleReconnect() {
+  if (intentionalDisconnect) return
+  if (reconnectTimer) return
+
   const delay = getRetryDelay()
   retryCount++
   onStatusChange('RECONNECTING')
 
-  setTimeout(() => {
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
     if (mainState.backendToken) {
       StompService.connect()
     }

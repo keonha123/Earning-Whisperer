@@ -46,6 +46,7 @@ class DailyBarSyncSchedulerTest {
     @Mock private WatchlistRepository watchlistRepository;
     @Mock private PositionRepository positionRepository;
     @Mock private StockRepository stockRepository;
+    @Mock private com.earningwhisperer.infrastructure.websocket.StockPriceCache stockPriceCache;
 
     @InjectMocks
     private DailyBarSyncScheduler scheduler;
@@ -141,6 +142,32 @@ class DailyBarSyncSchedulerTest {
         scheduler.syncDailyBars();
 
         assertThat(latestEvent().getLevel()).isEqualTo(Level.INFO);
+    }
+
+    @Test
+    @DisplayName("일봉이 적재되면 전일종가 캐시를 갱신한다")
+    void 적재_후_전일종가_갱신() {
+        // 전일종가는 기동 시 한 번만 채워진다. 여기서 갱신하지 않으면 일봉을 새로 넣어도
+        // 재시작 전까지 옛 종가로 변동률이 계산되어 화면에 없던 폭락이 뜬다.
+        Stock wmt = stockOf(1L, "WMT");
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of(wmt));
+        given(dailyBarSyncService.syncTicker(1L, "WMT", 30, SyncPriority.LOW)).willReturn(30);
+
+        scheduler.syncDailyBars();
+
+        verify(stockPriceCache).refreshPreviousCloses();
+    }
+
+    @Test
+    @DisplayName("적재된 일봉이 0건이면 캐시를 건드리지 않는다")
+    void 적재_0건이면_갱신_안함() {
+        Stock wmt = stockOf(1L, "WMT");
+        given(watchlistRepository.findDistinctStocks()).willReturn(List.of(wmt));
+        given(dailyBarSyncService.syncTicker(1L, "WMT", 30, SyncPriority.LOW)).willReturn(0);
+
+        scheduler.syncDailyBars();
+
+        verify(stockPriceCache, never()).refreshPreviousCloses();
     }
 
     @Test

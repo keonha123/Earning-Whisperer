@@ -48,8 +48,18 @@ public class ManualTradeRequest {
     @JsonProperty("broker_order_id")
     private String brokerOrderId;
 
+    /**
+     * 주문 결과 상태.
+     *
+     * <p>{@code PENDING} 은 증권사가 주문을 접수했지만 아직 체결되지 않은 상태다. 예전에는
+     * {@code EXECUTED|FAILED} 만 허용해서, 지정가 주문처럼 즉시 체결되지 않는 주문을
+     * 터미널이 기록할 방법이 없었다. 검증에서 거부되어 <b>실제로 낸 주문이 체결 내역에
+     * 아무것도 남지 않았다.</b> 미체결을 FAILED 로 적는 것도 사실이 아니다 — 주문은
+     * 살아 있고 체결될 수 있다.
+     */
     @NotBlank
-    @Pattern(regexp = "EXECUTED|FAILED", message = "status 는 EXECUTED 또는 FAILED 여야 합니다.")
+    @Pattern(regexp = "EXECUTED|PENDING|FAILED",
+            message = "status 는 EXECUTED, PENDING 또는 FAILED 여야 합니다.")
     private String status;
 
     @Size(max = 500)

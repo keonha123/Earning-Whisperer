@@ -70,8 +70,8 @@ def _check_models() -> None:
     sys.path.insert(0, str(ROOT))
     from ai_engine import config as cfg_module
     settings = cfg_module.Settings(gemini_api_key="test-key", _env_file=None)
-    assert settings.gemini_primary_model == "gemini-3.1-flash-preview"
-    assert settings.gemini_review_model == "gemini-3.1-pro-preview"
+    assert settings.gemini_primary_model == "gemini-3.1-flash-lite"
+    assert settings.gemini_review_model == "gemini-3.6-flash"
 
 
 @check("config defaults: base formula weights are positive")

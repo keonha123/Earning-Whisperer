@@ -261,6 +261,32 @@ class TradeTest {
         assertThat(trade.getAiScore()).isEqualTo(0.85);
     }
 
+    @Test
+    @DisplayName("Builder 로 넘긴 brokerOrderId 는 PENDING 상태에서도 보존된다")
+    void builder_brokerOrderId_보존() {
+        // 미체결 주문의 증권사 주문번호를 버리면 체결 확인/취소를 위해 주문을 다시
+        // 찾을 수단이 없다. 과거에는 executed() 에서만 채워져 PENDING 이면 유실됐다.
+        Trade trade = Trade.builder()
+                .user(user)
+                .brokerAccountId(100L)
+                .ticker("WMT")
+                .side(TradeAction.BUY)
+                .orderType(OrderType.LIMIT)
+                .orderQty(1)
+                .price(107.47)
+                .brokerOrderId("0000044600")
+                .build();
+
+        assertThat(trade.getStatus()).isEqualTo(TradeStatus.PENDING);
+        assertThat(trade.getBrokerOrderId()).isEqualTo("0000044600");
+    }
+
+    @Test
+    @DisplayName("brokerOrderId 를 넘기지 않으면 null 이다")
+    void builder_brokerOrderId_미지정() {
+        assertThat(pendingTrade().getBrokerOrderId()).isNull();
+    }
+
     private Trade pendingTrade() {
         return Trade.builder()
                 .user(user)

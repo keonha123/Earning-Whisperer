@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
+import { useTradingStore } from '../store/useTradingStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
 import { showIpcErrorToast } from '../components/common/Toast'
+import { isIpcError } from '../../lib/types/ipcError'
 
 type Step = 'login' | 'vault'
 
@@ -31,12 +33,25 @@ export default function AuthPage() {
         maxHoldingRatio: settings.maxPositionRatio,
         cooldownMinutes: settings.cooldownMinutes,
       })
+      // 승인 판정은 useUserStore.settings.tradingMode 가 하지만 셀렉터/헤더는
+      // useTradingStore.mode 를 그린다. 여기서 동기화하지 않으면 SEMI_AUTO 사용자가
+      // 로그인 직후 셀렉터는 MANUAL 인데 승인 팝업이 뜬다.
+      useTradingStore.getState().setMode(settings.tradingMode)
     }
     if (accountType) setAccountType(accountType as any)
-    setAuthenticated(true)
-    const hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
+
+    // VAULT_HAS 를 먼저 조회한다. 인증 상태를 먼저 켜면 조회가 실패했을 때
+    // 자격증명 등록 여부를 모른 채 대시보드/vault 중 어디로도 못 가고 멈춘다.
+    let hasCredentials: VaultHasResponse = { paper: false, real: false }
+    try {
+      hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
+    } catch (err: unknown) {
+      // 조회 실패 시 미등록으로 간주해 vault 단계로 유도한다.
+      showIpcErrorToast(err)
+    }
     const anyRegistered = hasCredentials.paper || hasCredentials.real
     setHasCredentials(hasCredentials)
+    setAuthenticated(true)
     if (anyRegistered) {
       navigate('/dashboard')
     } else {
@@ -122,7 +137,7 @@ export default function AuthPage() {
 /* -------------------------------------------------------------------------- */
 /* LoginForm — 디자인 캔버스 기준 마크업 + 기존 IPC 호출 보존                 */
 /* -------------------------------------------------------------------------- */
-function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accountType?: string) => void }) {
+function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accountType?: string) => Promise<void> }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
@@ -139,7 +154,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accoun
         IPC_CHANNELS.AUTH_LOGIN,
         { email, password },
       )
-      onSuccess(result.user, result.settings, result.accountType)
+      await onSuccess(result.user, result.settings, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드의 "이메일 없음"/"비밀번호 틀림" 구분
       // 메시지를 그대로 노출하지 않고 generic 메시지로 통일.
@@ -156,8 +171,11 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accoun
       }
       // 원본 에러는 devtools 한정으로만 보존
       console.debug('[auth] login failed:', err)
-      // form 위 인라인 에러 + toast 동시 노출 — 사용자가 두 위치 모두에서 인지 가능.
-      showIpcErrorToast(err)
+      // 인증 실패(잘못된 비밀번호 등)는 인라인 메시지로 충분하다.
+      // 서버·네트워크 장애일 때만 toast 를 추가로 띄운다.
+      if (isIpcError(err) && (err.code === 'NETWORK' || err.code === 'BACKEND_5XX')) {
+        showIpcErrorToast(err)
+      }
     } finally {
       setLoading(false)
     }
@@ -173,12 +191,14 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accoun
         IPC_CHANNELS.AUTH_OAUTH_START,
         { provider },
       )
-      onSuccess(result.user, result.settings, result.accountType)
+      await onSuccess(result.user, result.settings, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드 메시지를 그대로 노출하지 않고 generic 메시지로 통일
       setError('소셜 로그인에 실패했습니다. 다시 시도해 주세요.')
       console.debug('[auth] oauth failed:', err)
-      showIpcErrorToast(err)
+      if (isIpcError(err) && (err.code === 'NETWORK' || err.code === 'BACKEND_5XX')) {
+        showIpcErrorToast(err)
+      }
     } finally {
       setOauthLoading(null)
     }

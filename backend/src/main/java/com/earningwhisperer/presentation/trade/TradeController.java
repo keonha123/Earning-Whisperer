@@ -71,15 +71,15 @@ public class TradeController {
      * 활성 BrokerAccount 가 없으면 422 반환.
      */
     @PostMapping("/manual")
-    public ResponseEntity<Void> recordManualTrade(
+    public ResponseEntity<ManualTradeResponse> recordManualTrade(
             Authentication auth,
             @Valid @RequestBody ManualTradeRequest request) {
         Long userId = (Long) auth.getPrincipal();
         BrokerAccount account = brokerAccountService.getActive(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNPROCESSABLE_ENTITY, "활성 BrokerAccount 가 없습니다."));
-        tradeService.createManualTrade(userId, account.getId(), request);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
+        Long tradeId = tradeService.createManualTrade(userId, account.getId(), request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ManualTradeResponse(tradeId));
     }
 
     @PostMapping("/{tradeId}/callback")

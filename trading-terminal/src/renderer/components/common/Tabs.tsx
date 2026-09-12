@@ -35,7 +35,7 @@ export default function Tabs({
   className = '',
   variant = 'underline',
 }: TabsProps) {
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, idx: number) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>, idx: number) => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault()
       const next = items[(idx + 1) % items.length]

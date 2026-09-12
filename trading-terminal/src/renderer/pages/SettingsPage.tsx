@@ -4,18 +4,17 @@ import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { type MaskedCredentialsResponse } from '../../lib/ipcChannels'
 import AuthInputField from '../components/auth/AuthInputField'
 import { useUserStore } from '../store/useUserStore'
+import { useTradingStore } from '../store/useTradingStore'
 import { useConnectionStore } from '../store/useConnectionStore'
 import Slider from '../components/common/Slider'
 import Stepper from '../components/common/Stepper'
 import KisStatusTimeline, {
   type KisTimelineStep,
 } from '../components/settings/KisStatusTimeline'
-import { kisStatusDevMock } from '../fixtures/kisStatus.dev-mock'
 import { showIpcErrorToast } from '../components/common/Toast'
 
 // fixture 메타데이터(AppKey, 핑 지연 등)는 dev 빌드에서만 노출.
 // prod 에서는 generic 메시지만 표시 — 사용자가 더미 값을 진짜로 오인하지 않도록.
-const SHOW_DEV_KIS_META = import.meta.env.DEV
 
 /**
  * 카드 삭제 시 분기 결정 helper (테스트 친화적 순수 함수).
@@ -166,6 +165,9 @@ export default function SettingsPage() {
         aiScoreThreshold: form.aiScoreThreshold,
       })
       setSettings(form)
+      // 셀렉터/헤더가 읽는 useTradingStore.mode 도 함께 갱신 — 설정 저장 후
+      // 승인 판정(useUserStore.settings.tradingMode)과 표시가 어긋나지 않도록.
+      useTradingStore.getState().setMode(form.tradingMode)
       setAiScoreThreshold(form.aiScoreThreshold)
       setSaved(true)
       if (savedTimerRef.current !== null) {
@@ -292,14 +294,7 @@ export default function SettingsPage() {
       id: 'apikey',
       title: activeModeRegistered ? 'API 키 등록됨' : 'API 키 미등록',
       sub: activeModeRegistered
-        ? SHOW_DEV_KIS_META
-          ? (
-              <>
-                AppKey: <b className="text-text-secondary font-medium">{kisStatusDevMock.appKey}</b> · 등록일{' '}
-                {kisStatusDevMock.registeredAt}
-              </>
-            )
-          : otherModeRegistered
+        ? otherModeRegistered
             ? `API 키가 안전하게 저장되어 있습니다 (${isPaperTrading ? '실전' : '모의'} 키도 등록됨)`
             : 'API 키가 안전하게 저장되어 있습니다'
         : otherModeRegistered
@@ -317,14 +312,7 @@ export default function SettingsPage() {
             : '액세스 토큰 미발급',
       sub:
         kisTokenStatus === 'VALID'
-          ? SHOW_DEV_KIS_META
-            ? (
-                <>
-                  만료까지 <b className="text-text-secondary font-medium">{kisStatusDevMock.tokenExpiresIn}</b> 남음 · 자동 갱신{' '}
-                  {kisStatusDevMock.autoRefresh ? 'ON' : 'OFF'}
-                </>
-              )
-            : '토큰이 정상 발급되어 있습니다'
+          ? '토큰이 정상 발급되어 있습니다'
           : '토큰 재발급이 필요합니다',
       status: kisTokenStatus === 'VALID' ? 'done' : kisTokenStatus === 'EXPIRED' ? 'error' : 'pending',
     },
@@ -336,14 +324,7 @@ export default function SettingsPage() {
           : '서버 연결 대기',
       sub:
         activeModeRegistered && kisTokenStatus === 'VALID'
-          ? SHOW_DEV_KIS_META
-            ? (
-                <>
-                  마지막 핑 <b className="text-text-secondary font-medium">{kisStatusDevMock.lastPingAgo}</b> · 지연{' '}
-                  <b className="text-text-secondary font-medium">{kisStatusDevMock.pingMs}ms</b>
-                </>
-              )
-            : '정상 연결됨'
+          ? '정상 연결됨'
           : 'API 키와 토큰 등록 후 연결됩니다',
       status:
         activeModeRegistered && kisTokenStatus === 'VALID' ? 'done' : 'pending',
@@ -769,7 +750,7 @@ function KisCredentialCard({
   mode: 'paper' | 'real'
   isActive: boolean
   registered: boolean
-  masked: { appKeyMasked: string; accountNoMasked: string } | null
+  masked: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   onSaved: () => Promise<void> | void
   onDelete: () => void | Promise<void>
 }) {
@@ -846,6 +827,7 @@ function KisCredentialCard({
       {editing && (
         <KisCredentialEditor
           mode={mode}
+          existing={registered ? masked : null}
           onCancel={() => setEditing(false)}
           onSaved={async () => {
             setEditing(false)
@@ -895,22 +877,33 @@ function KisCredentialCard({
 /* -------------------------------------------------------------------------- */
 /* KisCredentialEditor — 카드 내 인라인 등록/수정 폼.                            */
 /*                                                                              */
-/* AppKey/AppSecret/계좌번호 세 필드 입력 후 VAULT_SAVE(mode) 호출.              */
+/* AppKey/AppSecret/계좌번호 + HTS ID(선택) 입력 후 VAULT_SAVE(mode) 호출.       */
 /* 비활성 모드 수정도 안전 — KisService.saveCredentials 가 활성 모드 일치 시에만 */
 /* 토큰 발급 시도 (vaultHandlers 가 활성 모드 가드).                             */
 /* -------------------------------------------------------------------------- */
 function KisCredentialEditor({
   mode,
+  existing,
   onCancel,
   onSaved,
 }: {
   mode: 'paper' | 'real'
+  /**
+   * 이미 등록된 자격증명. 있으면 수정 흐름이다 — 빈 칸은 "기존 유지" 로 저장되므로
+   * 바꾸려는 항목만 입력하면 된다. appSecret 은 화면에 되돌려주지 않으므로(보안)
+   * 프리필 대신 안내 문구만 띄운다.
+   */
+  existing: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
   onCancel: () => void
   onSaved: () => Promise<void> | void
 }) {
   const [appKey, setAppKey] = useState('')
   const [appSecret, setAppSecret] = useState('')
   const [accountNo, setAccountNo] = useState('')
+  // 선택 입력. 실시간 체결통보(H0GSCNI0/9) 의 tr_key 가 HTS ID 라서 이것만 별도로 필요하다.
+  // 없으면 체결통보를 못 받고 나머지 기능은 그대로 동작한다.
+  // HTS ID 는 비밀값이 아니라 로그인 아이디라 기존 값을 그대로 채운다.
+  const [htsId, setHtsId] = useState(existing?.htsId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -921,6 +914,7 @@ function KisCredentialEditor({
       setAppKey('')
       setAppSecret('')
       setAccountNo('')
+      setHtsId('')
     },
     [],
   )
@@ -931,14 +925,16 @@ function KisCredentialEditor({
     setAppKey('')
     setAppSecret('')
     setAccountNo('')
+    setHtsId('')
     onCancel()
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (appKey.trim() === '' || appSecret.trim() === '' || accountNo.trim() === '') {
-      setError('모든 필드를 입력해주세요.')
+    const isNew = existing === null
+    if (isNew && (appKey.trim() === '' || appSecret.trim() === '' || accountNo.trim() === '')) {
+      setError('App Key, App Secret, 계좌번호를 모두 입력해주세요.')
       return
     }
     setSaving(true)
@@ -948,11 +944,15 @@ function KisCredentialEditor({
         appSecret: appSecret.trim(),
         accountNo: accountNo.trim(),
         isPaperTrading: mode === 'paper',
+        // 이 필드는 기존 값이 프리필되므로 빈 칸은 사용자가 의도적으로 지운 것이다.
+        // 그대로 보내야 "삭제" 가 반영된다.
+        htsId: htsId.trim(),
       })
       // 폼 메모리에서 입력값 폐기 — secret 잔류 회피.
       setAppKey('')
       setAppSecret('')
       setAccountNo('')
+      setHtsId('')
       await onSaved()
     } catch (err: unknown) {
       const fallback = err instanceof Error ? err.message : '저장에 실패했습니다.'
@@ -965,22 +965,40 @@ function KisCredentialEditor({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 mt-1">
+      {existing && (
+        <p className="text-[11px] text-text-tertiary leading-snug">
+          바꿀 항목만 입력하세요. 비워두면 기존 값이 그대로 유지됩니다.
+        </p>
+      )}
       <AuthInputField
         label="App Key"
         value={appKey}
+        placeholder={existing?.appKeyMasked}
         onChange={(e) => setAppKey(e.target.value)}
       />
       <AuthInputField
         label="App Secret"
         isPassword
         value={appSecret}
+        placeholder={existing ? '변경할 때만 입력' : undefined}
         onChange={(e) => setAppSecret(e.target.value)}
       />
       <AuthInputField
         label="계좌번호"
         value={accountNo}
+        placeholder={existing?.accountNoMasked}
         onChange={(e) => setAccountNo(e.target.value)}
       />
+      <AuthInputField
+        label="HTS ID (선택)"
+        value={htsId}
+        placeholder="한국투자증권 로그인 아이디"
+        onChange={(e) => setHtsId(e.target.value)}
+      />
+      <p className="text-[11px] text-text-tertiary leading-snug">
+        HTS ID 를 입력하면 주문 체결을 실시간으로 통보받습니다. 비워두면 체결 내역 화면에
+        들어올 때와 새로고침 시에만 확인합니다.
+      </p>
       {error && <p className="text-sell text-xs">{error}</p>}
       <div className="flex items-center gap-2 pt-0.5">
         <button

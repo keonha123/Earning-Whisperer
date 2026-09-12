@@ -19,10 +19,11 @@ import type { MarketIndexItem } from '../store/useMarketIndicesStore'
 export type MarketTrend = 'up' | 'down' | 'neutral'
 export type { MarketIndexItem }
 
+// Oracle 어닝콜 당일(KST 2026-06-11, 장마감 후 시간외) 기준 데이터
 export const marketIndexDevMock: readonly MarketIndexItem[] = [
-  { symbol: 'SPX', price: 5432.1, changePercent: 0.42, trend: 'up', format: 'index', timestamp: 0 },
-  { symbol: 'NDX', price: 18211.5, changePercent: 0.81, trend: 'up', format: 'index', timestamp: 0 },
-  { symbol: 'VIX', price: 14.2, changePercent: -2.1, trend: 'down', format: 'index', timestamp: 0 },
-  { symbol: 'DXY', price: 104.5, changePercent: 0.1, trend: 'neutral', format: 'index', timestamp: 0 },
-  { symbol: '10Y', price: 4.32, changePercent: 0.02, trend: 'up', format: 'percent', timestamp: 0 },
+  { symbol: 'SPX', price: 5873.2, changePercent: 1.13, trend: 'up', format: 'index', timestamp: 0 },
+  { symbol: 'NDX', price: 21204.8, changePercent: 1.52, trend: 'up', format: 'index', timestamp: 0 },
+  { symbol: 'VIX', price: 13.1, changePercent: -3.4, trend: 'down', format: 'index', timestamp: 0 },
+  { symbol: 'DXY', price: 100.3, changePercent: -0.2, trend: 'down', format: 'index', timestamp: 0 },
+  { symbol: '10Y', price: 4.41, changePercent: 0.03, trend: 'up', format: 'percent', timestamp: 0 },
 ] as const

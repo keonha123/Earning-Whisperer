@@ -57,13 +57,15 @@ function validateSignal(signal: TradeSignal): string | null {
 
 export const TradeExecutor = {
   async execute(signal: TradeSignal): Promise<TradeResult> {
-    if (mainState.isOrderInProgress) {
-      return failResult(signal.trade_id, '이미 주문이 진행 중입니다.')
-    }
-
+    // 검증이 먼저 — signal 이 undefined 여도 signal.trade_id 접근으로 TypeError 가 나지 않도록.
     const validationError = validateSignal(signal)
     if (validationError) {
       return await sendFailCallback(signal?.trade_id || 'invalid', validationError)
+    }
+
+    // 진행 중 신호도 콜백·IPC 로 통보한다 — 통보가 없으면 UI 는 영원히 대기중, 백엔드는 TTL 까지 PENDING.
+    if (mainState.isOrderInProgress) {
+      return await sendFailCallback(signal.trade_id, '이미 주문이 진행 중입니다.')
     }
 
     mainState.setOrderInProgress(true)
@@ -88,7 +90,6 @@ export const TradeExecutor = {
       // Step 2: KIS 주문
       const orderResult = await KisService.placeOrder(signal.action, signal.ticker, finalQty)
 
-      // Step 3: 백엔드 콜백
       const result: TradeResult = {
         tradeId: signal.trade_id,
         status: 'EXECUTED',
@@ -98,7 +99,10 @@ export const TradeExecutor = {
         errorMessage: null,
       }
 
-      await BackendClient.sendCallback(signal.trade_id, {
+      // Step 3: 백엔드 콜백 — 체결은 이미 성사됐으므로 실패해도 FAILED 로 뒤집지 않는다.
+      // 첫 시도는 락 안에서 await 한다 (콜백이 뜨기 전 두 번째 주문이 통과하지 않도록).
+      // 실패 시 1s·2s·4s 재시도만 백그라운드로 넘어가고 락은 즉시 풀린다.
+      await deliverExecutedCallback(signal.trade_id, result, {
         status: 'EXECUTED',
         broker_order_id: orderResult.orderId,
         executed_price: orderResult.executedPrice,
@@ -192,26 +196,76 @@ function syncPortfolioAsync() {
   KisService.getBalance()
     .then((balance) =>
       BackendClient.syncPortfolio({
-        total_cash: balance.totalCash,
-        holdings: balance.holdings.map((h) => ({
+        cash_balance: balance.totalCash,
+        positions: balance.holdings.map((h) => ({
           ticker: h.ticker,
-          qty: h.qty,
+          quantity: h.qty,
           avg_price: h.avgPrice,
         })),
       }),
     )
-    .catch((e) => console.error('[TradeExecutor] 포트폴리오 동기화 실패:', e))
+    .catch((e: any) =>
+      // raw AxiosError 를 그대로 찍으면 config.headers 의 appkey/appsecret 이 로그에 남는다
+      console.error('[TradeExecutor] 포트폴리오 동기화 실패:', e?.response?.data ?? e?.message),
+    )
 }
 
-function failResult(tradeId: string, reason: string): TradeResult {
-  return {
-    tradeId,
-    status: 'FAILED',
-    orderId: null,
-    executedPrice: null,
-    executedQty: 0,
-    errorMessage: reason,
+/** EXECUTED 콜백 재시도 백오프 (ms). 최초 1회 + 아래 3회 = 최대 4회 전송 시도. */
+const EXECUTED_CALLBACK_RETRY_DELAYS_MS = [1000, 2000, 4000]
+
+type ExecutedCallbackPayload = {
+  status: 'EXECUTED'
+  broker_order_id: string | null
+  executed_price: number | null
+  executed_qty: number
+  error_message: null
+}
+
+/**
+ * 체결 성공 이후의 EXECUTED 콜백 전송.
+ * 이미 실제 체결이 난 주문이므로 콜백 실패를 FAILED 로 뒤집지 않는다 —
+ * 짧게 재시도하고, 끝내 실패하면 로그 + 렌더러 통보만 한다 (백엔드는 PENDING 유지).
+ */
+async function deliverExecutedCallback(
+  tradeId: string,
+  result: TradeResult,
+  payload: ExecutedCallbackPayload,
+): Promise<void> {
+  try {
+    await BackendClient.sendCallback(tradeId, payload)
+  } catch (e) {
+    // 첫 시도 실패 — 재시도만 백그라운드로 넘기고 즉시 resolve 한다.
+    // 예외는 호출자로 전파되지 않는다 (FAILED 로 뒤집지 않기 위해).
+    void retryExecutedCallback(tradeId, result, payload, e)
   }
+}
+
+/** 첫 시도 실패 후의 백오프 재시도. 끝내 실패하면 로그 + 렌더러 통보만 한다. */
+async function retryExecutedCallback(
+  tradeId: string,
+  result: TradeResult,
+  payload: ExecutedCallbackPayload,
+  firstError: unknown,
+): Promise<void> {
+  let lastError: unknown = firstError
+
+  for (const delay of EXECUTED_CALLBACK_RETRY_DELAYS_MS) {
+    await new Promise((resolve) => setTimeout(resolve, delay))
+    try {
+      await BackendClient.sendCallback(tradeId, payload)
+      return
+    } catch (e) {
+      lastError = e
+    }
+  }
+
+  console.error('[TradeExecutor] 체결 콜백 전송 실패 (체결은 완료됨):', tradeId, lastError)
+  const reason = lastError instanceof Error ? lastError.message : '알 수 없는 오류'
+  pushToRenderer(IPC_CHANNELS.TRADE_FAILED, {
+    ...result,
+    reason: 'CALLBACK_FAILED',
+    errorMessage: `체결은 완료됐으나 백엔드 콜백 전송에 실패했습니다: ${reason}`,
+  })
 }
 
 /**
@@ -248,7 +302,8 @@ async function executeSelfPaper(signal: TradeSignal): Promise<TradeResult> {
     errorMessage: null,
   }
 
-  await BackendClient.sendCallback(signal.trade_id, {
+  // KIS 경로와 동일 정책 — 가상 체결은 이미 확정이므로 콜백 실패를 FAILED 로 뒤집지 않는다.
+  await deliverExecutedCallback(signal.trade_id, result, {
     status: 'EXECUTED',
     broker_order_id: null,
     executed_price: currentPrice,

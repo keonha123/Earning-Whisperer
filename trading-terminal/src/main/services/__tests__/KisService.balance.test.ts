@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // 공유 axios mock — setup.ts에서 vi.mock('axios') 등록.
-import { kisHttpMock } from '../../../test/setup'
+import { kisHttpMock, flushMicrotasks } from '../../../test/setup'
 
 import keytar from 'keytar'
-import { KisService } from '../KisService'
+import { KisService, __resetForTest } from '../KisService'
 import { kisLimiter } from '../KisRateLimiter'
 import { mainState } from '../../store/mainState'
 import {
@@ -25,6 +25,7 @@ async function seedCredentials(): Promise<void> {
 }
 
 beforeEach(() => {
+  __resetForTest()
   mainState.clear()
   // mainState.clear() 는 isPaperTrading 을 유지하므로 leak 방지로 명시 reset
   mainState.setPaperTrading(true)
@@ -206,5 +207,43 @@ describe('KisService.getBalance — TR_ID 모드별 분기 (C1)', () => {
     expect(balanceConfig.headers.tr_id).toBe('VTTS3012R')
     const [, psConfig] = kisHttpMock.get.mock.calls[1]
     expect(psConfig.headers.tr_id).toBe('VTTS3007R')
+  })
+})
+
+describe('KisService.getBalance — in-flight Promise 소유권', () => {
+  it('invalidateRuntime 후 시작된 새 in-flight 를 옛 흐름의 finally 가 지우지 않는다', async () => {
+    // invalidateRuntime 이 kisHttp.defaults.baseURL 을 set 하므로 mock 에 defaults 보강
+    ;(kisHttpMock as any).defaults = { baseURL: '' }
+    const emptyResult = { orderableCash: 0, totalCash: 0, holdings: [] }
+
+    let resolveFirst!: (v: typeof emptyResult) => void
+    let resolveSecond!: (v: typeof emptyResult) => void
+    const spy = vi
+      .spyOn(KisService, '_getBalanceImpl')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+
+    const first = KisService.getBalance().catch((e) => e)
+    await flushMicrotasks()
+
+    // 옛 흐름을 버리고(in-flight null) 새 조회 시작
+    KisService.invalidateRuntime()
+    const second = KisService.getBalance().catch((e) => e)
+    await flushMicrotasks()
+    expect(spy).toHaveBeenCalledTimes(2)
+
+    // 옛(첫 번째) 흐름이 뒤늦게 끝나며 finally 실행 → 새 in-flight 를 지우면 안 된다
+    resolveFirst(emptyResult)
+    await first
+    await flushMicrotasks()
+
+    // 세 번째 호출은 두 번째 in-flight 를 재사용해야 한다 (중복 조회 = EGW00201 유발)
+    const third = KisService.getBalance().catch((e) => e)
+    await flushMicrotasks()
+    expect(spy).toHaveBeenCalledTimes(2)
+
+    resolveSecond(emptyResult)
+    await Promise.all([second, third])
+    spy.mockRestore()
   })
 })

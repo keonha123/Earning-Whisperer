@@ -1,4 +1,4 @@
-import type { EarningsHistoryRow } from '../../fixtures/companyDetail.dev-mock'
+import type { EarningsHistoryRow } from '../../types/companyDetail'
 
 interface EarningsHistoryTableProps {
   rows: EarningsHistoryRow[]

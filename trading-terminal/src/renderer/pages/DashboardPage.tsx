@@ -11,13 +11,10 @@ import EarningsTimeline from '../components/dashboard/EarningsTimeline'
 import HoldingsTable, { type HoldingsTableRow } from '../components/dashboard/HoldingsTable'
 import MiniLineChart from '../components/dashboard/MiniLineChart'
 
-import { marketIndexDevMock } from '../fixtures/marketIndex.dev-mock'
 import { useMarketIndices } from '../hooks/useMarketIndices'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { usePrices } from '../hooks/usePrices'
-import { earningsTimelineDevMock } from '../fixtures/earningsTimeline.dev-mock'
-// watchlistDevMock 은 이번 PR 에서 제거 (실 IPC 사용). holdings.dev-mock 파일 자체는 보존.
-import { holdingsDevMock } from '../fixtures/holdings.dev-mock'
+import { COMPANY_META } from '../constants/companyMeta'
 import { useNavigate } from 'react-router-dom'
 import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 // chartUtils 통합 (PR #4) — 동일 시그니처 함수가 CompanyDrawer 와 중복이었다.
@@ -25,6 +22,7 @@ import type { EarningsTimelineData } from '../../lib/types/earningsTimeline'
 import { pickYTicks as pickYTicksUtil, pickXLabels as pickXLabelsUtil } from '../lib/chartUtils'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { useConnectionStore } from '../store/useConnectionStore'
+import { useStockMarketStore } from '../store/useStockMarketStore'
 import { isIpcError } from '../../lib/types/ipcError'
 
 /**
@@ -121,9 +119,9 @@ export default function DashboardPage() {
   const { prices } = usePrices()
 
   // 어닝콜 타임라인 — holdingRows/watchRows useMemo 보다 먼저 선언해야 TDZ 오류 없음.
-  const [earningsData, setEarningsData] = useState<EarningsTimelineData>(
-    import.meta.env.DEV ? earningsTimelineDevMock : { live: null, groups: [] },
-  )
+  // 초기값은 빈 상태다. DEV 에서 목업을 넣어 두면 백엔드가 죽어 있어도 화면이
+  // 정상으로 보여서, 연동이 끊긴 것을 알아차릴 수 없다.
+  const [earningsData, setEarningsData] = useState<EarningsTimelineData>({ live: null, groups: [] })
 
   // Holdings 평가금액 계산: poller 가 받은 가격이 있으면 우선, 없으면 store fallback.
   const totalAsset =
@@ -134,10 +132,25 @@ export default function DashboardPage() {
       return sum + h.qty * px
     }, 0)
 
+  // 보유종목 회사명 출처. 마켓 화면과 같은 목록을 쓰고, 이미 로드돼 있으면 재요청하지 않는다.
+  const stockList = useStockMarketStore((st) => st.list)
+  const loadStockList = useStockMarketStore((st) => st.loadList)
+  useEffect(() => {
+    void loadStockList()
+  }, [loadStockList])
+  const nameByTicker = useMemo(
+    () => new Map(stockList.map((st) => [st.ticker, st.companyName])),
+    [stockList],
+  )
+
   // Holdings/Watchlist 표시 행:
-  //  - 실제 store 의 holdings 우선 사용. fixture 의 메타데이터 (회사명/로고색) 와 매핑.
-  //  - store 가 비어있는 DEV 환경에서는 fixture rows 자체를 표시.
-  //  - prod 에서 fixture 미존재 ticker 는 logoBg/fg 미설정 → CompanyLogo fallback.
+  //  - 백엔드가 준 보유 종목만 표시한다. 비어 있으면 비어 있는 대로 둔다.
+  //    예전에는 DEV 에서 가짜 보유 내역을 대신 띄웠는데, 그러면 연동이 끊긴 것과
+  //    실제로 보유가 없는 것을 화면에서 구별할 수 없다.
+  //  - 회사명은 백엔드의 S&P 500 목록에서 찾는다. COMPANY_META 는 7종목만 담은
+  //    표시 상수라 그것만 쓰면 목록에 없는 종목이 티커로만 나온다(WMT 가 그랬다).
+  //    관심종목 행은 이미 백엔드 companyName 을 쓰고 있어서 둘이 어긋나 있었다.
+  //  - 로고 색은 COMPANY_META 에만 있다(디자인 토큰). 없으면 기본 색으로 떨어진다.
   //  - currentPrice/평가% 는 PricePoller 가 push 한 가격을 우선 사용.
   const holdingRows: HoldingsTableRow[] = useMemo(() => {
     const getEarningsBadge = (ticker: string): HoldingsTableRow['earningsBadge'] => {
@@ -149,21 +162,9 @@ export default function DashboardPage() {
       return null
     }
 
-    if (storeHoldings.length === 0 && import.meta.env.DEV) {
-      return holdingsDevMock.map((h) => ({
-        ticker: h.ticker,
-        name: h.name,
-        currentPrice: h.currentPrice,
-        dailyChangePercent: h.dailyChangePercent,
-        pnlPercent: h.pnlPercent,
-        earningsBadge: getEarningsBadge(h.ticker),
-        logoBg: h.logoBg,
-        logoFg: h.logoFg,
-        logoLabel: h.logoLabel,
-      }))
-    }
     return storeHoldings.map((h) => {
-      const meta = holdingsDevMock.find((m) => m.ticker === h.ticker)
+      const meta = COMPANY_META[h.ticker]
+      const companyName = nameByTicker.get(h.ticker) ?? meta?.name ?? h.ticker
       // 폴러 가격 우선, 없으면 KIS_GET_BALANCE 응답에 포함된 currentPrice fallback.
       const livePrice = prices[h.ticker]?.currentPrice ?? h.currentPrice
       const prevClose = prices[h.ticker]?.previousClose ?? 0
@@ -172,7 +173,7 @@ export default function DashboardPage() {
         h.avgPrice > 0 ? ((livePrice - h.avgPrice) / h.avgPrice) * 100 : 0
       return {
         ticker: h.ticker,
-        name: meta?.name ?? h.ticker,
+        name: companyName,
         currentPrice: livePrice,
         dailyChangePercent: dailyChangePct,
         pnlPercent: pnlPct,
@@ -182,7 +183,7 @@ export default function DashboardPage() {
         logoLabel: meta?.logoLabel,
       }
     })
-  }, [storeHoldings, prices, earningsData])
+  }, [storeHoldings, prices, earningsData, nameByTicker])
 
   // 관심종목 — 백엔드 GET /api/v1/watchlist 캐시 (main 5분 폴링).
   // currentPrice / dailyChangePercent 는 PricePoller 가 push 한 가격 사용.
@@ -214,11 +215,10 @@ export default function DashboardPage() {
   // MarketStrip 데이터:
   //  - useMarketIndices: 마운트 시 REST 1회 + STOMP 구독으로 store 채우고
   //    indices/isLoaded/lastUpdatedAt 을 함께 반환 (store selector 중복 호출 회피).
-  //  - prod: backend 미연동 시 빈 배열 → MarketStrip placeholder.
-  //  - DEV: backend 미연동 (isLoaded === false) 시에만 mock fallback,
-  //         실제 데이터 수신 시 자동 전환.
-  const { indices, isLoaded } = useMarketIndices()
-  const marketItems = !isLoaded && import.meta.env.DEV ? marketIndexDevMock : indices
+  //  - 백엔드가 준 값만 쓴다. 비면 MarketStrip 이 placeholder 를 보여준다.
+  //    DEV 목업 fallback 이 있었는데, 그것 때문에 실제 API 가 빈 값을 주는데도
+  //    화면에는 고정된 가짜 지수(SPX 5873.2)가 몇 달째 떠 있었다.
+  const { indices } = useMarketIndices()
   // 어닝콜 타임라인 — 실 IPC 연동. DEV에서 백엔드 미실행 시 fixture fallback.
   useEffect(() => {
     let cancelled = false
@@ -227,8 +227,8 @@ export default function DashboardPage() {
       .then((data) => { if (!cancelled) setEarningsData(data) })
       .catch(() => { /* DEV: fixture 유지, prod: 빈 상태 유지 */ })
 
-    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data: EarningsTimelineData) => {
-      setEarningsData(data)
+    const unsub = ipc.on(IPC_CHANNELS.EARNINGS_TIMELINE_UPDATE, (data) => {
+      setEarningsData(data as EarningsTimelineData)
     })
 
     return () => {
@@ -239,14 +239,31 @@ export default function DashboardPage() {
 
   const [assetRange, setAssetRange] = useState<7 | 30 | 90>(30)
   const [assetChartPoints, setAssetChartPoints] = useState<{ date: string; price: number }[]>([])
+  // 빈 배열은 "아직 안 왔다" 와 "스냅샷이 하나도 없다" 두 가지를 모두 뜻해서,
+  // 상태를 따로 들지 않으면 화면이 영원히 "동기화 중…" 에 머문다.
+  const [assetChartStatus, setAssetChartStatus] =
+    useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
+    let cancelled = false
+    setAssetChartStatus('loading')
     ipc
-      .invoke(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, { days: assetRange })
-      .then((points: { date: string; totalAssetUsd: number }[]) =>
-        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd }))),
-      )
-      .catch(() => setAssetChartPoints([]))
+      .invoke<{ date: string; totalAssetUsd: number }[]>(IPC_CHANNELS.KIS_GET_ASSET_TIMESERIES, {
+        days: assetRange,
+      })
+      .then((points) => {
+        if (cancelled) return
+        setAssetChartPoints(points.map((p) => ({ date: p.date.slice(5), price: p.totalAssetUsd })))
+        setAssetChartStatus('ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAssetChartPoints([])
+        setAssetChartStatus('error')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [assetRange])
 
   return (
@@ -297,7 +314,7 @@ export default function DashboardPage() {
       )}
 
       {/* Row 1: Market strip */}
-      <MarketStrip items={marketItems} />
+      <MarketStrip items={indices} />
 
       {/* Row 2: Portfolio + Asset chart */}
       <div className="grid grid-cols-[40fr_60fr] gap-2.5 shrink-0 h-[180px]">
@@ -324,7 +341,12 @@ export default function DashboardPage() {
           />
         </section>
 
-        <AssetChartCard points={assetChartPoints} range={assetRange} onRangeChange={setAssetRange} />
+        <AssetChartCard
+          points={assetChartPoints}
+          status={assetChartStatus}
+          range={assetRange}
+          onRangeChange={setAssetRange}
+        />
       </div>
 
       {/* Row 3: Holdings + Earnings timeline */}
@@ -370,17 +392,26 @@ const ASSET_RANGES = [
 
 function AssetChartCard({
   points,
+  status,
   range,
   onRangeChange,
 }: {
   points: { date: string; price: number }[]
+  status: 'loading' | 'ready' | 'error'
   range: 7 | 30 | 90
   onRangeChange: (r: 7 | 30 | 90) => void
 }) {
   if (points.length === 0) {
+    // 스냅샷은 계좌 동기화 때마다 하루 한 건씩 쌓인다. 신규 계좌는 당분간 비어 있는 게 정상.
+    const message =
+      status === 'loading'
+        ? '자산 추이 동기화 중…'
+        : status === 'error'
+          ? '자산 추이를 불러오지 못했습니다.'
+          : `최근 ${range}일간 기록된 자산 스냅샷이 없습니다.`
     return (
       <section className="rounded-lg bg-surface-1 border border-border-subtle flex items-center justify-center text-[11px] text-text-disabled">
-        자산 추이 동기화 중…
+        {message}
       </section>
     )
   }
@@ -456,8 +487,10 @@ function AssetChartCard({
       <div className="relative flex-1 px-2.5 pb-2 min-h-0">
         <div className="absolute left-0.5 top-1 bottom-4 w-11 flex flex-col justify-between
                         num text-[9px] text-text-tertiary text-right pr-1">
-          {pickYTicks(prices).map((y) => (
-            <span key={y}>${y.toLocaleString()}</span>
+          {/* 자산 추이가 평탄하면 4개 tick 이 같은 값으로 반올림돼 key 가 충돌한다.
+              값이 아니라 위치(index)가 이 라벨들의 정체성이므로 index 를 key 에 섞는다. */}
+          {pickYTicks(prices).map((y, i) => (
+            <span key={`${y}-${i}`}>${y.toLocaleString()}</span>
           ))}
         </div>
         {/* Y축 라벨 영역(w-11=44px) + 8px 갭 = 52px. tailwind 기본 spacing 에 13(52px) 이
@@ -473,8 +506,8 @@ function AssetChartCard({
         </div>
         <div className="absolute left-[52px] right-2.5 bottom-1 flex justify-between
                         num text-[9px] text-text-tertiary">
-          {pickXLabels(points).map((d) => (
-            <span key={d}>{d}</span>
+          {pickXLabels(points).map((d, i) => (
+            <span key={`${d}-${i}`}>{d}</span>
           ))}
         </div>
       </div>

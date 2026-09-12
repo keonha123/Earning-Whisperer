@@ -67,11 +67,30 @@ public interface TradeRepository extends JpaRepository<Trade, Long> {
      * 이 UPDATE 는 0 row 영향. 멀티 인스턴스 scheduler 동시 실행 시에도
      * lost update / EXECUTED 덮어쓰기를 차단한다.
      *
+     * <p><b>자동 명령과 수동 주문에 서로 다른 TTL 을 적용한다.</b> 두 PENDING 은 성격이
+     * 다르다. 자동 명령의 TTL 목적은 STOMP 로 내려보낸 명령이 미접속 사용자에게 silent
+     * drop 되어 영원히 PENDING 으로 남는 것을 막는 것이므로 초 단위로 짧다. 수동 주문은
+     * 터미널이 이미 증권사에 주문을 넣고 결과를 기록한 것이라 체결을 기다리는 중일 뿐이며,
+     * 자동 TTL(30초) 로 만료시키면 살아 있는 지정가 주문이 화면에 "실패" 로 뜬다.
+     *
+     * <p>그래도 수동 주문을 만료 대상에서 <b>제외</b>하지는 않는다. 제외하면 영구 PENDING
+     * 고아 row 가 된다 — {@code POST /trades/manual} 은 tradeId 를 돌려주지 않았고 수동
+     * 주문에는 콜백 경로가 없어서, 한 번 PENDING 으로 기록되면 아무도 종결시킬 수 없었다.
+     * 대신 긴 TTL(기본 24시간) 을 준다. KIS 당일 지정가 주문은 장 마감 시 자동 취소되므로
+     * 하루가 지난 PENDING 은 실제로 죽은 주문이다. 사후에 KIS 체결이 확인되면
+     * {@code Trade.executed} 의 EXPIRED → EXECUTED 정정 전이로 장부를 회복할 수 있다.
+     *
+     * <p>orderRatio 로 자동/수동을 구분한다 — {@code createPendingTrade} 는 항상 채우고
+     * {@code createManualTrade} 는 null 로 둔다. orderRatio 가 null 인 레거시 자동 row 도
+     * 수동 TTL 로 결국 정리된다.
+     *
      * @return 만료 처리된 row 개수
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Trade t SET t.status = com.earningwhisperer.domain.trade.TradeStatus.EXPIRED " +
             "WHERE t.status = com.earningwhisperer.domain.trade.TradeStatus.PENDING " +
-            "  AND t.createdAt <= :threshold")
-    int expirePendingBefore(@Param("threshold") LocalDateTime threshold);
+            "  AND ((t.orderRatio IS NOT NULL AND t.createdAt <= :autoThreshold) " +
+            "    OR (t.orderRatio IS NULL AND t.createdAt <= :manualThreshold))")
+    int expirePendingBefore(@Param("autoThreshold") LocalDateTime autoThreshold,
+                            @Param("manualThreshold") LocalDateTime manualThreshold);
 }

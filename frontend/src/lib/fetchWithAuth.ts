@@ -20,7 +20,11 @@ export async function fetchWithAuth(
 
   let res = await fetch(input, { ...init, headers });
 
-  if (res.status === 401) {
+  // 애초에 액세스 토큰이 없었다면 갱신할 것도 없다 — 비로그인 상태의 요청이다.
+  // 백엔드가 인증 실패를 403 으로 돌려주던 동안에는 이 분기가 아예 안 돌아서 드러나지
+  // 않았지만, 401 로 바로잡은 뒤로는 비로그인 요청마다 갱신 시도 → 실패 → 로그아웃이
+  // 일어난다.
+  if (res.status === 401 && at) {
     const newAt = await store.refresh();
     if (newAt) {
       headers.set("Authorization", `Bearer ${newAt}`);

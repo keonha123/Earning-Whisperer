@@ -122,6 +122,7 @@ export function groupEarnings(items: EarningsTimelineItem[]): EarningsTimelineDa
       live = {
         ticker: item.ticker,
         name: item.companyName,
+        scheduledAt: item.scheduledAt,
         timeLabel: '진행중',
         elapsed: formatElapsed(elapsedSec),
         callLabel: 'Earnings Call',

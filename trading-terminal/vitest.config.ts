@@ -17,23 +17,7 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    include: [
-      'src/main/**/__tests__/**/*.test.ts',
-      // PR-B: 순수 zustand store 단위 테스트는 node 환경으로 충분.
-      'src/renderer/store/__tests__/**/*.test.ts',
-      // PR-B: hook 의 순수 helper(toCamel/isValidPayload) 도 node 환경에서 실행 가능.
-      'src/renderer/hooks/__tests__/**/*.test.ts',
-      // Phase 5: CompanyDrawer 표시용 포맷팅 helper 단위 테스트
-      // (컴포넌트 렌더는 jsdom 미설정으로 skip, 순수 함수만 검증).
-      'src/renderer/lib/__tests__/**/*.test.ts',
-      // PR-2b: Toast helper (showIpcErrorToast / makeToastId / CODE_CONFIG) 단위 테스트.
-      // react-hot-toast 를 mock 해서 jsdom 없이도 호출 분기를 검증한다.
-      'src/renderer/components/**/__tests__/**/*.test.ts',
-      // A3 hotfix: pages 의 순수 helper 단위 테스트 (resolveSaveOrder /
-      // composePartialFailureMessage / decideCardDelete 등). React 렌더는 검증하지 않고
-      // 순수 함수 분기만 본다 — 컴포넌트 import 시 react/IPC 의존성 회피 위해 별도 helper 모듈 권장.
-      'src/renderer/pages/**/__tests__/**/*.test.ts',
-    ],
+    include: ['src/**/__tests__/**/*.test.ts'],
     clearMocks: true,
     restoreMocks: true,
   },

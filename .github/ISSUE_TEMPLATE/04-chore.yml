@@ -1,0 +1,66 @@
+name: 정리 · 인프라 · 문서
+description: 동작을 바꾸지 않는 작업 (리팩토링 · 배포 · 문서 · 의존성)
+title: "[chore] "
+labels: ["chore"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 종류
+      options:
+        - 문서
+        - 배포 · 인프라
+        - 리팩토링 · 죽은 코드 제거
+        - 의존성 · 설정
+        - 테스트 보강
+    validations:
+      required: true
+
+  - type: dropdown
+    id: modules
+    attributes:
+      label: 대상 모듈
+      multiple: true
+      options:
+        - ai-engine
+        - backend
+        - trading-terminal
+        - frontend
+        - data_pipeline
+        - infra (AWS · docker · CI)
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 무엇을
+      description: 대상 파일 · 경로를 함께 적어 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 왜
+      description: |
+        지금 무엇이 불편한지 적어 주세요. 문서라면 어떤 문장이 사실과 다른지, 죽은 코드라면
+        그것 때문에 무엇을 오해할 수 있는지가 함께 있으면 우선순위를 정하기 좋습니다.
+      placeholder: |
+        예) ai-engine `.env` 의 PHASE1_PROVIDER=finbert 를 어디서도 읽지 않습니다
+        (`core/phase1_scorer.py:71` 이 항상 provider="heuristic" 을 반환합니다).
+        설정만 보면 FinBERT 를 쓰는 것처럼 보여서, 발표 자료에 잘못 들어갈 수 있습니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 동작 변화 여부
+      description: |
+        동작이 바뀐다면 이 양식보다 기능 이슈가 맞습니다. 확인 후 체크해 주세요.
+      value: |
+        - [ ] 동작 변화가 없음을 확인했다 (테스트 통과 · 수동 확인)
+    validations:
+      required: true

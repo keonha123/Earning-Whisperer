@@ -12,8 +12,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.time.LocalDate;
+import com.earningwhisperer.infrastructure.finnhub.dto.FinnhubQuote;
+
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Finnhub 외부 API 호출 클라이언트.
@@ -89,6 +92,45 @@ public class FinnhubClient {
             log.warn("[FinnhubClient] calendar 호출 실패 from={} to={} reason={}",
                     from, to, e.getMessage());
             return Collections.emptyList();
+        }
+    }
+
+    /**
+     * `/quote?symbol={symbol}` 호출. 단일 종목의 현재가/등락률.
+     *
+     * <p>지수 스트립용이다. 원지수(SPX 등)는 유료라 무료 등급에서는 ETF 로만 받을 수 있다.
+     *
+     * @return 호출 실패나 가격 없음이면 empty
+     */
+    public Optional<FinnhubQuote> fetchQuote(String symbol, FinnhubRateLimiter.Priority priority) {
+        try {
+            rateLimiter.acquire(priority);
+        } catch (FinnhubRateLimitExceededException e) {
+            log.warn("[FinnhubClient] quote rate limited symbol={} reason={}", symbol, e.getMessage());
+            return Optional.empty();
+        }
+
+        try {
+            FinnhubQuote body = restClient.get()
+                    .uri(b -> b.path("/quote").queryParam("symbol", symbol).build())
+                    .header(AUTH_HEADER, properties.apiKey())
+                    .retrieve()
+                    .body(FinnhubQuote.class);
+            if (body == null || !body.hasPrice()) {
+                // 잘못된 심볼도 200 에 0 으로 온다. 조용히 0 원을 화면에 띄우지 않는다.
+                log.warn("[FinnhubClient] quote 빈 응답 symbol={}", symbol);
+                return Optional.empty();
+            }
+            return Optional.of(body);
+        } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden e) {
+            log.error("[FinnhubClient] quote 인증 실패 — API 키 확인 필요 symbol={} status={}", symbol, e.getStatusCode());
+            return Optional.empty();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.warn("[FinnhubClient] quote rate limit (429) symbol={}", symbol);
+            return Optional.empty();
+        } catch (RestClientException e) {
+            log.warn("[FinnhubClient] quote 호출 실패 symbol={} reason={}", symbol, e.getMessage());
+            return Optional.empty();
         }
     }
 

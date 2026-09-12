@@ -164,6 +164,63 @@
 
 ---
 
+### 4.6. Live Fact-Check Broadcast (실시간 어닝콜 팩트체크 표시용)
+
+- **Topic:** `/topic/factcheck/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5와 동일 정책.
+- **설명:** 어닝콜 발언 중 검증 가능한 주장을 AI Engine이 뉴스 근거와 대조한 결과를 브로드캐스트합니다. Trading Terminal의 팩트체크 패널이 구독합니다.
+- **발행 시점:** AI Engine이 3문장 배치 검증을 마치고 `status=COMPLETED` 이며 `claims[]`가 비어 있지 않을 때만 발행합니다. `BUFFERING`/`REJECTED`/`DISCARDED`와 주장이 0건인 배치는 화면에 표시할 것이 없으므로 발행하지 않습니다.
+- **트랜스크립트 채널과의 관계:** 4.5는 발언 원문, 본 채널은 그 발언에 대한 검증 결과입니다. 검증에 LLM 2패스(실측 5~15초)가 걸리므로 **팩트체크는 해당 발언보다 늦게 도착합니다.** 클라이언트는 `batch_start_sequence`~`batch_end_sequence` 범위로 어느 발언에 대한 판정인지 매칭합니다.
+
+| 필드명                 | 타입    | 필수 | 설명                                                    |
+| :--------------------- | :------ | :--: | :------------------------------------------------------ |
+| `ticker`               | String  |  Y   | 종목 심볼                                               |
+| `call_id`              | String  |  Y   | 어닝콜 세션 식별자 (4.5와 동일 값)                      |
+| `batch_start_sequence` | Integer |  Y   | 검증 대상 문장 범위의 시작 `sequence`                   |
+| `batch_end_sequence`   | Integer |  Y   | 검증 대상 문장 범위의 끝 `sequence`                     |
+| `claims`               | Array   |  Y   | 판정 목록. 항목 스키마는 Contract 9.3과 동일 (1건 이상) |
+
+> **표기 규칙:** `verdict`의 화면 표기는 Contract 9.5 참조 (`SUPPORTED`=사실 확인, `CONTRADICTED`=사실과 다름, `INSUFFICIENT_EVIDENCE`=근거 부족).
+>
+> **구독 예시:** `stompClient.subscribe('/topic/factcheck/ORCL', handler)`
+
+---
+
+### 4.7. Earnings Call Summary Broadcast (어닝콜 종료 후 종합 판단)
+
+- **Topic:** `/topic/evaluation/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5/4.6과 동일 정책.
+- **설명:** 어닝콜 재생이 끝난 뒤 **회차당 한 번** 발행되는 종합 판단입니다. 4.6이 문장 단위 사실 검증이라면, 본 채널은 콜 전체를 놓고 낸 방향·강도·신뢰도와 그에 딸린 회피 지표·파급효과·손절 계획입니다.
+- **발행 시점:** 재생이 정상 완료되고(중지된 회차 제외) 세그먼트가 1건 이상 발행되었으며, AI Engine이 판단 본문(`judgment`)을 돌려준 경우에만 발행합니다. 판단이 없으면 발행하지 않습니다 — 빈 화면보다 "종합 판단 없음"이 정확합니다.
+- **소요 시간:** 즉시 오지 않습니다. 마지막 세그먼트 직후 제출되지만, LLM 리뷰 패스(`analyze`)와 부가 정보 조회(`earnings/intelligence`)를 순서대로 타므로 정상적으로도 수 초에서 십수 초가 걸리고, AI Engine 이 응답하지 않으면 읽기 타임아웃(`ai-engine.timeout-ms`, 기본 50초) 두 번을 소진한 뒤 발행 없이 끝납니다.
+- **발행되지 않는 경우:** 중지된 회차, 세그먼트 0건인 회차, `ai-engine.summary-enabled=false`, 어닝콜 전문이 비어 있는 경우, `analyze` 가 판단 본문을 돌려주지 않은 경우. 모두 로그에 사유가 남습니다.
+- **회차 대조:** 같은 종목을 연달아 재생하면 클라이언트가 이전 회차의 판단을 받을 수 있습니다. **반드시 `call_id` 를 현재 회차(4.5의 `call_id`)와 대조하고 다르면 무시하세요.** 백엔드도 발행 직전에 같은 검사를 하지만, 두 곳에서 막는 편이 안전합니다.
+
+| 필드명         | 타입    | 필수 | 설명                                                          |
+| :------------- | :------ | :--: | :------------------------------------------------------------ |
+| `ticker`                 | String  |  Y   | 종목 심볼                                                     |
+| `call_id`                | String  |  Y   | 어닝콜 세션 식별자 (4.5/4.6과 동일 값)                        |
+| `generated_at`           | String  |  Y   | 생성 시각 (ISO-8601)                                          |
+| `judgment`               | Object  |  Y   | LLM 판단 본문. 스키마는 Contract 9.6 응답의 `analysis`와 동일 |
+| `gate`                   | Object  |  N   | 실행 가능성 게이트. Contract 9.6 응답의 `signal_brief`와 동일 |
+| `intelligence_available` | Boolean |  N   | 부가 정보 조회 성공 여부. 아래 설명 참조                      |
+| `evasion`                | Object  |  N   | 질문 회피 지표. Contract 9.7 응답의 `omission_evasion`         |
+| `impact_chain`           | Array   |  N   | 연쇄 영향 후보. Contract 9.7 응답과 동일                       |
+| `risk_plan`              | Object  |  N   | 손절/익절 계획. Contract 9.7 응답과 동일                       |
+| `warnings`               | Array   |  N   | 엔진이 붙인 주의사항 문자열                                   |
+
+> **`N` 의 인코딩이 두 가지입니다.** 위 표의 최상위 필드는 값이 없으면 **키 자체가 없습니다**(`NON_NULL` 직렬화). 반면 중첩 객체(`judgment` / `gate` / `risk_plan` 등) 내부의 없는 값은 **명시적 `null`** 로 옵니다. 클라이언트는 `'key' in payload` 가 아니라 옵셔널 접근으로 다루세요.
+>
+> **`evasion` / `impact_chain` / `risk_plan` / `warnings` 는 하나의 원자 그룹입니다.** 같이 오거나 같이 없습니다(모두 Contract 9.7 한 번의 호출에서 나오기 때문). `intelligence_available=false` 면 **조회 자체가 실패**한 것이고, `true` 인데 `risk_plan.available=false` 면 **엔진이 "계획을 낼 수 없다"고 답한** 것입니다. 화면에서 이 둘을 다르게 말해야 합니다 — 전자는 "부가 정보를 가져오지 못했습니다", 후자는 `risk_plan.invalidation_text` 의 사유.
+
+> **`judgment`와 `gate`를 한 줄에 그리지 마세요.** `gate.action`은 판단 방향이 아니라 "이 판단대로 움직여도 되는가"의 답입니다. 뉴스 근거가 적재되지 않은 상태에서는 `missing_rag_evidence` 때문에 **`judgment.direction=BULLISH`인데 `gate.action=AVOID`** 가 정상적으로 나옵니다. 두 값을 나란히 놓으면 모순으로 읽히므로, 화면에서는 "판단"과 "실행 보류 사유"를 분리해 표시합니다.
+>
+> **`warnings`를 숨기지 마세요.** "RAG evidence is empty" 같은 항목이 여기 옵니다. 감추면 검증되지 않은 판단이 검증된 것처럼 보입니다.
+>
+> **구독 예시:** `stompClient.subscribe('/topic/evaluation/ORCL', handler)`
+
+---
+
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
 로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
@@ -377,7 +434,47 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | Method | Endpoint                            |        인증         | 설명                                      |
 | :----- | :---------------------------------- | :-----------------: | :---------------------------------------- |
 | GET    | `/api/v1/trades?page=0&size=20`     |        필요         | 내 거래 내역 페이징 조회. 응답: Page 형태 |
+| POST   | `/api/v1/trades/manual`             |        필요         | 수동 주문 기록 (아래 참조). 201 `{tradeId}` |
 | POST   | `/api/v1/trades/{tradeId}/callback` | 필요 (Terminal JWT) | 체결 결과 콜백 (Contract 4.1 참조)        |
+
+**`GET /api/v1/trades` 응답 항목** (`TradeResponse`)
+
+| 필드 | 타입 | 설명 |
+| :--- | :--- | :--- |
+| `id` | Long | 거래 ID |
+| `ticker` | String | 종목 |
+| `side` | Enum | `BUY` \| `SELL` |
+| `orderType` | Enum | `MARKET` \| `LIMIT` |
+| `orderQty` | Integer | 주문 수량 |
+| `price` | Double | 주문 지정가. 미체결 주문에도 존재 |
+| `executedQty` | Integer | 체결 수량. 미체결이면 0 |
+| `executedPrice` | Double | 체결 평균가. 미체결이면 `null` |
+| `status` | Enum | `PENDING` \| `EXECUTED` \| `FAILED` \| `EXPIRED` |
+| `brokerOrderId` | String | 증권사 주문번호 (KIS ODNO). 미체결 주문도 보존 |
+| `createdAt` | DateTime | 주문 생성 시각 |
+
+#### `POST /api/v1/trades/manual`
+
+- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록한다. 자동/반자동 경로(Contract 4.1)와 달리 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고한다. 활성 `BrokerAccount` 가 없으면 **422**.
+- **응답 201 `{"tradeId": 123}`** — `status: PENDING` 으로 기록된 미체결 주문을 나중에 `POST /api/v1/trades/{tradeId}/callback` 으로 종결시키기 위해 필요하다. 터미널에 아직 체결 폴링이 없어 현재는 이 경로를 쓰지 않지만, id 를 돌려주지 않으면 종결 자체가 구조적으로 불가능하다.
+- **PENDING 수동 주문의 TTL 은 자동 명령과 다르다.** 자동 명령은 `app.trade.pending-ttl-seconds`(기본 30초), 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간). 수동 주문은 증권사에 실제로 접수돼 체결을 기다리는 주문이라 30초로 만료시키면 살아 있는 주문이 "실패" 로 뜬다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 긴 TTL 을 준다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복한다.
+- **`status` 는 `EXECUTED` / `PENDING` / `FAILED` 세 값을 받는다.** `PENDING` 은 KIS 가 주문을 접수했으나(ODNO 반환) 아직 체결되지 않은 상태다 — 살아 있는 주문을 `FAILED` 로 적으면 안 된다.
+- **`order_type` 은 항상 `LIMIT` 이다.** KIS 해외주식 매수에는 시장가 코드가 없어(`ORD_DVSN` 매수는 `00` 지정가 / `32` LOO / `34` LOC, 모의투자는 `00` 만) UI 의 "즉시 체결" 도 현재가 ±1% 지정가로 환산해 나간다. `price` 는 브로커에 실제로 보낸 지정가다. 단, 가격 확정 전에 실패한 경우(현재가 조회 불가)는 주문이 나가지 않았으므로 `MARKET` / `price: 0` 으로 기록된다.
+
+```json
+{
+  "ticker": "WMT",
+  "side": "BUY",
+  "order_type": "LIMIT",
+  "order_qty": 1,
+  "price": 107.47,
+  "executed_qty": 0,
+  "executed_price": null,
+  "broker_order_id": "0000044600",
+  "status": "PENDING",
+  "error_message": null
+}
+```
 
 ### 7.4. 포트폴리오 (Portfolio)
 
@@ -419,6 +516,54 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 
 > **초기 로드 전략:** Trading Terminal/Frontend Web 마운트 시 본 엔드포인트로 1회 GET 후 `/topic/market/indices` STOMP 구독. REST 응답이 빈 배열이면 placeholder 유지하고 STOMP 수신 시 즉시 렌더로 전환.
 
+### 7.8. 어닝콜 시연 재생 제어 (Demo Earnings Call)
+
+| Method | Endpoint                            | 인증 | 설명                             |
+| :----- | :---------------------------------- | :--: | :------------------------------- |
+| POST   | `/api/v1/demo/earnings-call/start`  | 필요 | 준비된 어닝콜 스크립트 재생 시작 |
+| POST   | `/api/v1/demo/earnings-call/stop`   | 필요 | 재생 중지                        |
+| GET    | `/api/v1/demo/earnings-call/status` | 필요 | 진행 상황 조회 (`?ticker=ORCL`)  |
+| GET    | `/api/v1/demo/earnings-call/speakers` | 필요 | 콜 참가자 명부 조회              |
+
+- **설명:** 시연에서 Data Pipeline의 STT 단계를 사전 준비된 스크립트가 대신합니다. 재생된 세그먼트는 **실제 인입 경로**(`TranscriptService` 검증 → Contract 4.5 fan-out)를 그대로 통과하며, 동시에 Contract 9로 AI Engine 팩트체크를 거쳐 Contract 4.6으로 발행됩니다. 클라이언트가 가짜 데이터를 그리는 구조가 아닙니다.
+- **요청 본문(start/stop):** `{"ticker": "ORCL"}`. start에서 생략하면 스크립트에 지정된 기본 종목을 사용합니다.
+
+| 상태 코드 | 의미                                        |
+| :-------- | :------------------------------------------ |
+| 202       | 재생 시작 (비동기 진행). `call_id` 반환     |
+| 409       | 해당 종목이 이미 재생 중 — 먼저 중지해야 함 |
+| 500       | 스크립트 파일을 읽을 수 없음                |
+| 404       | (stop) 진행 중인 재생이 없음                |
+
+start 응답 예시:
+
+    { "ticker": "ORCL", "call_id": "demo-orcl-q4fy26-1788886133461-1", "segment_count": 6, "interval_ms": 6000 }
+
+- **`evidence_warning`이 실려 오면 근거가 없다는 뜻입니다.** 근거 뉴스가 최소 기준(20건) 미만이면 start 응답에 이 필드가 붙습니다. 재생은 그대로 진행되지만 팩트체크는 대부분 `INSUFFICIENT_EVIDENCE`로 나옵니다. **클라이언트는 이 값을 반드시 사용자에게 보여줘야 합니다** — 없으면 시연 중에 "근거 없는 주장"과 "근거를 안 넣은 것"이 화면에서 구별되지 않습니다.
+
+      { "ticker": "WMT", "call_id": "...", "segment_count": 24, "interval_ms": 6000,
+        "evidence_warning": "근거 뉴스가 0건뿐입니다. 팩트체크가 대부분 '근거 부족'으로 나옵니다. 시연 전 뉴스를 적재하세요." }
+
+- **`call_id`는 재생 회차마다 새로 생성됩니다.** 같은 값을 재사용하면 `TranscriptSessionRegistry`가 종료된 세션으로 판단해 모든 세그먼트를 거부합니다(조용한 실패).
+- **status는 끝난 재생의 결과도 알려줍니다.** 재생 중이 아니면 `running:false`와 함께 `last_run`을 반환합니다. `outcome`은 `COMPLETED` / `STOPPED` / `NO_SEGMENT_PUBLISHED` 중 하나입니다. 세 번째는 스크립트 결함 등으로 세그먼트를 하나도 내보내지 못하고 끝난 경우로, 이것이 없으면 "정상 완료"·"시작한 적 없음"과 구별되지 않습니다.
+
+      { "running": false, "ticker": "ORCL",
+        "last_run": { "call_id": "...", "outcome": "COMPLETED", "published_count": 6, "total_segments": 6 } }
+
+- **스크립트 교체 시 규칙.** 시작 시점에 검증하며, 위반하면 500(`SCRIPT_UNAVAILABLE`)으로 거부합니다.
+  1. `sequence`는 **0부터 1씩 증가**해야 합니다. 0에서 시작하지 않으면 AI Engine의 ticker 버퍼가 초기화되지 않습니다 — AI Engine은 `call_id`가 아니라 `ticker`로 버퍼를 잡고 `sentence_sequence=0`에서만 리셋하므로, 중지 후 재시작 시 트랜스크립트는 정상인데 팩트체크만 전부 조용히 사라집니다.
+  2. `text`는 비어 있을 수 없습니다.
+  3. 세그먼트 수는 **3의 배수**를 권장합니다. AI Engine이 3문장 단위로 검증하므로 나머지 1~2문장은 `DISCARDED`되어 마지막 발언들의 팩트체크가 나오지 않습니다. 위반해도 시작은 되지만 기동 로그에 경고가 남습니다.
+  4. **과거 어닝콜을 재생한다면 `call_started_at`(ISO-8601)을 반드시 채우세요.** 비워 두면 세그먼트 타임스탬프를 재생 시점의 현재 시각으로 찍는데, AI Engine은 그 값을 기준으로 "과거 30일"을 근거 검색 창으로 잡습니다. 작년 콜에 작년 뉴스를 넣어 두면 창 밖으로 밀려 **전부 근거 부족**이 됩니다. 값을 채우면 타임스탬프가 `call_started_at + start_ms`로 계산되어 검색 창이 그 콜 시점에 맞춰집니다. 형식이 틀리면 재생은 되지만 현재 시각으로 되돌아가며 경고 로그가 남습니다.
+  5. `related_tickers`와 `analyst_qa`는 종합 판단(§4.7)에 쓰입니다. 전자가 없으면 파급효과가 비고, 후자가 없으면 회피 지표가 생략됩니다. `analyst_qa`는 Q&A 세션에서 실제로 오간 질문·답변 한 쌍이어야 합니다 — `PLACEHOLDER`로 시작하는 문자열은 백엔드가 걸러 냅니다.
+  6. `speakers`에는 **트랜스크립트에서 확인되는 사실만** 적습니다 — 이름·직책·소속·애널리스트 여부. 화법 성향이나 과거 가이던스 달성률처럼 원문에서 확인할 수 없는 값은 넣지 않습니다. 터미널은 이 명부에 이번 회차에 실제로 수신한 발언량과 팩트체크 판정을 붙여 보여줍니다. 비어 있으면 터미널의 발화자 프로필 진입점이 나타나지 않습니다. `speakers[].match_key`는 세그먼트의 `speaker` 문자열과 **정확히 같아야** 합니다 — 세그먼트 라벨은 표시용이라 "CEO · John Furner"처럼 직책이 붙는 반면 이름은 "John Furner"라서, 이 키가 없으면 클라이언트가 부분 문자열 매칭을 추측하게 되고 그 추측은 동명이인·중간 이니셜에서 조용히 틀립니다. 비워 두면 `name`을 키로 씁니다. 세그먼트에 발언이 없는 참가자(발췌에 안 들어간 애널리스트 등)는 발언 0건으로 표시됩니다.
+- **`speakers` 응답.** 재생 중이 아니어도 조회됩니다. 명부가 없으면 빈 배열이고, **스크립트 파일을 읽지 못하면 500**입니다 — 둘을 같은 응답으로 내려보내면 "명부를 안 넣었다"와 "파일이 깨졌다"가 구별되지 않습니다.
+
+      [ { "name": "John Furner", "match_key": "CEO · John Furner", "title": "CEO", "affiliation": "Walmart Inc.", "analyst": false },
+        { "name": "Kate McShane", "match_key": "Kate McShane", "title": "Analyst", "affiliation": "Goldman Sachs", "analyst": true } ]
+
+- **관련 설정:** `demo.earnings-call.script-path`, `demo.earnings-call.interval-ms`, `ai-engine.base-url`, `ai-engine.fact-check-enabled`, `ai-engine.timeout-ms`. `fact-check-enabled=false`로 두면 AI Engine 없이 트랜스크립트 재생만 수행합니다.
+
 ---
 
 ## 8. 공통 개발 가이드라인 (Common Rules)
@@ -427,6 +572,9 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 2. **플랜 접근 제어:** 유저 role은 `FREE` / `PRO` 두 가지. `action` (BUY/SELL 신호) 및 Trading Terminal 사용은 PRO 전용. FREE 유저는 `raw_score` 시각화까지만 접근 가능.
 3. **내부 API 인증:** Data Pipeline → 백엔드 내부 전용 엔드포인트(`/api/v1/internal/*`)는 `X-Internal-Secret` 헤더로 공유 시크릿 검증.
 4. **에러 처리:** REST API 통신 시 에러가 발생하면 무조건 HTTP Status `4xx` 또는 `500`과 함께 `{"error": "에러 상세 원인"}` 형태의 JSON을 반환해야 합니다.
+
+   - **401 과 403 을 구분합니다.** 인증이 없거나 토큰이 만료·위조된 경우는 **401** 입니다. 권한 부족(**403**)은 핸들러만 마련해 둔 상태입니다 — 현재 모든 엔드포인트 규칙이 `permitAll` 아니면 `authenticated()` 라서 실제로 403 이 나가는 경로는 없습니다. §8.2 의 FREE/PRO 접근 제어를 구현하면 그때 쓰입니다. 클라이언트(터미널·웹 프론트)는 **401 에서만** refresh 토큰으로 갱신하고 원 요청을 재시도합니다. 전에는 Spring Security 기본값(`Http403ForbiddenEntryPoint`) 때문에 만료된 토큰에도 403 이 나갔고, 그래서 양쪽 클라이언트의 갱신 로직이 한 번도 실행되지 않았습니다 — 액세스 토큰 수명(15분)마다 로그인 화면으로 튕겼습니다. `SecurityConfig.exceptionHandling` 이 이 규약을 지킵니다.
+   - 만료와 위조를 응답에서 구분해 알려주지 않습니다. 둘 다 `{"error": "인증이 필요합니다."}` 입니다.
 5. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.
 6. **무상태성 및 단일 진실 공급원:** 백엔드는 KIS API 키를 가지지 않으며, 모든 '최종' 자산 상태는 Trading Terminal이 쏘아주는 Sync 데이터를 '단일 진실 공급원(Single Source of Truth)'으로 취급하여 덮어씁니다.
 7. **Fallback (안전망):** Trading Terminal은 백엔드 웹소켓 연결이 끊기거나 비정상적인 데이터가 수신될 경우, 즉시 매매 모드를 `MANUAL(수동)`로 강제 전환하고 유저에게 OS 네이티브 알림을 띄워야 합니다.
@@ -438,3 +586,160 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
    | **2차 (클라이언트)** | Trading Terminal 트레이딩 모드 | 사용자 승인 방식 (Manual / 1-Click / Auto-Pilot) | 신호를 수신하더라도 모드에 따라 즉시 실행하거나 사용자 승인을 대기 |
 
    즉, 백엔드가 신호를 보냈다고 해서 반드시 주문이 실행되는 것은 아닙니다. Terminal의 트레이딩 모드가 최종 실행 여부를 결정합니다.
+
+---
+
+## 9. [Contract 9] Backend ➔ AI Engine (실시간 팩트체크 · 종합 판단)
+
+- **통신 방식:** HTTP POST (동기)
+- **엔드포인트:** `http://ai-engine:8000/v1/engine/live-fact-check/sentence`
+- **설명:** 어닝콜이 진행되는 동안 확정된 문장을 **1개씩** AI Engine에 제출합니다. AI Engine은 ticker별로 **3문장 버퍼**를 유지하다가 3문장이 모이면 Gemini 2패스(검증 가능한 주장 추출 → 뉴스 근거 대조)를 실행하고 판정을 반환합니다. 백엔드는 결과를 STOMP `/topic/factcheck/{ticker}`로 fan-out합니다.
+- **기존 `/v1/engine/fact-check`와 다른 엔드포인트입니다.** 그쪽은 LLM을 쓰지 않는 단발 유사도 검증이라 숫자 모순을 잡지 못합니다. 상세 비교는 `ai-engine/docs/LIVE_FACT_CHECK_API.md` 참조.
+
+### 9.1. 요청
+
+| 필드명               | 타입    | 필수 | 설명                                                            |
+| :------------------- | :------ | :--: | :-------------------------------------------------------------- |
+| `ticker`             | String  |  Y   | 분석 대상 종목 심볼 (예: "ORCL")                                |
+| `sentence`           | String  |  Y   | 확정된 어닝콜 문장 1개                                          |
+| `sentence_sequence`  | Integer |  Y   | 세션 내 문장 순번 (0부터 단조 증가). `0` 재전송 시 버퍼 초기화  |
+| `sentence_timestamp` | Long    |  Y   | Unix Epoch Second. **근거 검색 기준 시점** (9.4 주의사항 참조)  |
+| `is_session_end`     | Boolean |  N   | 어닝콜 세션 종료 여부 (기본값 `false`)                          |
+
+### 9.2. 응답
+
+**HTTP 상태는 정상 흐름 전체가 200입니다.** 요청 스키마 위반만 422입니다. 호출자는 반드시 본문 `status`를 분기해야 합니다.
+
+| `status`    | 발생 조건                    | 백엔드 처리                             |
+| :---------- | :--------------------------- | :-------------------------------------- |
+| `BUFFERING` | 3문장 미충족 (1~2번째 문장)  | fan-out 없음. 정상                      |
+| `COMPLETED` | 3문장 충족, 검증 완료        | `claims[]`를 `/topic/factcheck/{ticker}`로 발행 |
+| `REJECTED`  | 중복/역행 시퀀스             | 로그만. 재전송 금지                     |
+| `DISCARDED` | 3문장 미만인 채 세션 종료    | 자투리 문장 폐기. 정상                  |
+
+| 필드명                  | 타입    | 설명                                                    |
+| :---------------------- | :------ | :------------------------------------------------------ |
+| `ticker`                | String  | 정규화된(대문자) 종목 심볼                              |
+| `status`                | String  | 위 4종                                                  |
+| `buffered_count`        | Integer | 현재 버퍼에 쌓인 문장 수 (0~2)                          |
+| `batch_start_sequence`  | Integer | 이번 배치의 시작 문장 순번 (`BUFFERING`이면 `null`)     |
+| `batch_end_sequence`    | Integer | 이번 배치의 끝 문장 순번                                |
+| `claims`                | Array   | 검증된 주장 목록 (9.3 참조)                             |
+| `excluded_count`        | Integer | 검증 불가로 걸러진 주장 수 (수사적 표현 등)             |
+| `extraction_llm_used`   | Boolean | 주장 추출 LLM 실행 여부                                 |
+| `verification_llm_used` | Boolean | 근거 검증 LLM 실행 여부. `false`면 근거 부족으로 생략됨 |
+| `warnings`              | Array   | `sequence_gap`, `claim_retrieval_failed` 등 진단 코드   |
+| `generated_at`          | String  | 응답 생성 시각 (ISO-8601 UTC)                           |
+
+### 9.3. `claims[]` 항목
+
+| 필드명           | 타입    | 설명                                                                    |
+| :--------------- | :------ | :---------------------------------------------------------------------- |
+| `claim_id`       | String  | `{TICKER}:{시작seq}-{끝seq}:c{n}` 형식                                  |
+| `sentence_index` | Integer | 배치 내 문장 위치 (0~2)                                                 |
+| `source_text`    | String  | 원문에서 잘라낸 구간                                                    |
+| `claim`          | String  | 정규화된 주장                                                           |
+| `claim_type`     | String  | `numeric_fact` / `current_fact` / `historical_fact` / `event_fact`      |
+| `verdict`        | String  | `SUPPORTED` / `CONTRADICTED` / `INSUFFICIENT_EVIDENCE`                  |
+| `confidence`     | Double  | 0.0 ~ 1.0                                                               |
+| `explanation_ko` | String  | 한국어 판정 설명. **클라이언트에 그대로 노출**                          |
+| `reason_code`    | String  | `supported_by_news` / `contradicted_by_news` / `insufficient_relevance` / `evidence_not_specific` / `retrieval_failed` / `llm_failed` / `invalid_llm_response` |
+| `evidence`       | Array   | `doc_id`, `title`, `snippet`, `url`, `source`, `published_at`, `relevance_score` |
+| `retrieved_count` | Integer | 검색된 근거 수                                                         |
+| `accepted_count` | Integer | 관련성 게이트를 통과한 근거 수                                          |
+
+### 9.4. 통합 시 주의사항
+
+1. **`sentence_timestamp`는 실제 현재 시각을 넣어야 합니다.** 근거 검색이 이 값을 기준으로 과거 N일을 조회하므로, 임의값을 넣으면 적재된 근거가 있어도 검색 결과가 0건이 되어 전부 `INSUFFICIENT_EVIDENCE`로 떨어집니다.
+2. **근거는 사전 적재가 필요합니다.** 검증 대상 종목의 뉴스·보도자료를 `POST /api/v1/integration/collector/news`로 미리 넣어야 합니다. 관련성 게이트가 **서로 다른 매체 2곳 이상**을 요구하므로 단일 출처만 넣으면 통과하지 못합니다. 저장소가 인메모리라 AI Engine 재기동 시 초기화됩니다.
+3. **재생 루프를 블로킹하지 마세요.** 3문장 배치 처리에 Gemini 호출 2회로 수 초가 걸립니다. 백엔드는 비동기로 던지고 결과가 오는 대로 발행해야 트랜스크립트 표시가 지연되지 않습니다.
+4. **타임아웃과 폴백을 두세요.** 시연 중 LLM 지연·실패에 대비해 사전 캐시 응답으로 폴백합니다.
+
+### 9.5. 클라이언트 표기 규칙
+
+판정값은 AI Engine의 3종을 단일 진실 공급원으로 삼고, 화면 표기는 아래로 통일합니다.
+
+| `verdict`               | UI 표기       |
+| :---------------------- | :------------ |
+| `SUPPORTED`             | 사실 확인     |
+| `CONTRADICTED`          | 사실과 다름   |
+| `INSUFFICIENT_EVIDENCE` | 근거 부족     |
+
+### 9.6. 종합 판단 (`POST /v1/engine/analyze`)
+
+어닝콜 전문을 통째로 넘겨 LLM 판단을 받습니다. **판단이 실제로 만들어지는 유일한 엔드포인트입니다.**
+
+**요청**
+
+| 필드명        | 타입    | 필수 | 설명                                                              |
+| :------------ | :------ | :--: | :---------------------------------------------------------------- |
+| `ticker`      | String  |  N   | 종목 심볼                                                         |
+| `prompt`      | String  |  Y   | 어닝콜 전문 (모든 세그먼트를 이어붙인 것)                         |
+| `needs_review`| Boolean |  N   | 리뷰 모델까지 태울지. 회차당 1회뿐이므로 백엔드는 항상 `true`     |
+| `market_data` | Object  |  N   | `symbol`, `current_price`, `prev_close`. 없으면 손절 계획이 생략됨 |
+
+**응답 (화면이 쓰는 필드만)**
+
+- `analysis`: `direction`(BULLISH/BEARISH/NEUTRAL), `magnitude`(0~1), `confidence`(0~1), `catalyst_type`, `rationale`(영문), `risk_flags[]`, `hold_days`, `model_version`, `review_triggered`
+- `signal_brief`: `action`, `gate_result`, `decision_state`, `institutional_grade`(A~E), `institutional_grade_score`, `institutional_approval_state`, `position_intent_ko`, `no_trade_summary_ko`, `risk_flags_ko[]`, `counter_thesis_ko`, `recommended_hold_days`
+
+응답에는 이 밖에도 필드가 많습니다. 백엔드 모델은 `@JsonIgnoreProperties(ignoreUnknown = true)`로 선언해 두었으니 엔진이 필드를 늘려도 역직렬화가 깨지지 않습니다.
+
+### 9.7. 회피·파급·손절 (`POST /v1/engine/earnings/intelligence`)
+
+**이 엔드포인트는 LLM을 쓰지 않습니다.** 규칙 기반이라 응답이 즉시 옵니다. 여기서 나오는 `fact_checks`는 9.1의 LLM 검증이 아니라 구형 휴리스틱이므로 **화면에 쓰지 마세요.**
+
+**요청**
+
+| 필드명            | 타입   | 필수 | 설명                                                                    |
+| :---------------- | :----- | :--: | :---------------------------------------------------------------------- |
+| `ticker`          | String |  Y   | 종목 심볼                                                               |
+| `event_text`      | String |  Y   | 어닝콜 전문                                                             |
+| `question`        | String |  N   | 애널리스트 질문. 없으면 회피 지표가 의미를 잃습니다                     |
+| `answer`          | String |  N   | 그 질문에 대한 경영진 답변                                              |
+| `related_tickers` | Array  |  N   | 연쇄 영향을 볼 종목                                                     |
+| `market_data`     | Object |  N   | `current_price`만 있어도 손절 계획이 계산됩니다                         |
+| `direction_hint`  | String |  N   | 9.6의 `direction`. 손절 계획의 LONG/SHORT를 가릅니다                    |
+| `confidence_hint` | Number |  N   | 9.6의 `confidence`                                                      |
+
+**응답 (화면이 쓰는 필드만)**
+
+- `omission_evasion`: `evasion_score`(0~1, 높을수록 회피), `directness`, `omission_score`, `pivot_detected`, `missing_topics[]`, `rationale_ko`
+- `impact_chain[]`: `ticker`, `relationship`, `direction`, `impact_score`, `confidence`, `rationale_ko`
+- `risk_plan`: `available`, `direction`, `reference_price`, `stop_loss`, `take_profit_1/2`, `stop_pct`, `take_profit_1/2_pct`, `risk_reward_1`, `time_stop_days`, `invalidation_text`, `sizing_note_ko`
+- `warnings[]`
+
+> **`related_tickers`를 반드시 실어 보내세요.** AI Engine의 정적 관계 그래프에는 일부 종목(NVDA/AMD/TSMC/MSFT/META/TSLA/AAPL)만 들어 있습니다. 시연 종목이 거기 없으면 `impact_chain`이 빈 배열로 나옵니다. 요청에 실어 보내면 그래프를 고치지 않고도 잡힙니다.
+
+> **`impact_score` 는 null 일 수 있습니다.** 이 값은 그 종목이 이번 콜의 근거 문서에 함께 등장하는 비율입니다 (같이 언급된 문서 수 ÷ 전체 근거 문서 수). 근거 문서가 하나도 없으면 셀 것이 없으므로 `0.0` 이 아니라 `null` 로 내려갑니다 — `0.0`("영향 없음")과 "측정 못 함"을 같은 값으로 내려보내면 근거 적재를 빠뜨린 것을 화면에서 알아챌 수 없기 때문입니다. `confidence` 는 근거 문서 수를 20건 기준으로 환산한 값입니다.
+>
+> **`risk_plan.available=false`면 나머지 필드는 전부 `null`입니다.** 가격 정보가 없거나 방향성이 서지 않았다는 뜻이므로, 화면에서 0으로 채우지 말고 `invalidation_text`의 사유를 보여줍니다.
+>
+> **무료 등급 Gemini 키 주의.** 9.6은 리뷰 모델을 태웁니다. 무료 키는 pro 계열 할당량이 0이라 pro를 지정하면 매 호출이 429로 실패하고, 엔진은 `confidence: 0.0`의 폴백 응답을 돌려줍니다. 화면에는 늘 NEUTRAL만 뜹니다. 사용 가능 모델은 `gemini-3.6-flash`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`입니다.
+
+### 9.8. 근거 준비 확인 (`GET /v1/engine/evidence/readiness`)
+
+근거 저장소에 해당 종목 문서가 몇 건 있는지 센다. **임베딩 호출 없이 개수만 세므로 빠르고**, 재생 시작 버튼 경로에서 동기로 불러도 된다.
+
+| 쿼리 파라미터   | 필수 | 설명                                                                     |
+| :-------------- | :--: | :----------------------------------------------------------------------- |
+| `ticker`        |  Y   | 종목 심볼                                                                |
+| `as_of`         |  N   | 기준 시각(epoch seconds). **과거 콜 재생 시 그 콜의 시각.** 없으면 현재  |
+| `lookback_days` |  N   | 검색 창 길이. 없으면 `FACT_CHECK_NEWS_LOOKBACK_DAYS`                     |
+
+응답: `ticker`, `document_count`, `lookback_days`, `as_of_epoch`, `ready`, `minimum_expected`
+
+    { "ticker": "WMT", "document_count": 391, "lookback_days": 30,
+      "as_of_epoch": 1787230800, "ready": true, "minimum_expected": 20 }
+
+> **왜 필요한가.** 근거를 하나도 넣지 않은 채로 어닝콜을 재생하면 화면에는 "근거 부족" 판정만 줄줄이 뜬다. 그 화면은 **정말 근거 없는 주장을 검증한 결과**와 **근거 적재를 잊은 것**이 완전히 똑같이 보인다. 시연 도중에는 알아차릴 방법이 없다. 백엔드는 재생 시작 전에 이 값을 확인해 §7.8의 `evidence_warning`으로 내려보낸다.
+>
+> **`as_of`를 빠뜨리지 마세요.** 과거 콜을 재생하면서 기준 시각을 현재로 두면, 그 콜 시점의 뉴스가 검색 창 밖이라 `document_count`가 0으로 나온다. 실제로는 적재돼 있는데도 그렇다.
+
+### 9.9. 임베딩 설정 주의
+
+근거 검색 품질은 `EMBEDDING_PROVIDER`에 달려 있다. **기본값 `hash`는 SHA256 단어 겹침이라 의미 검색이 아니다.** 이 상태로는 뉴스를 아무리 넣어도 관련도가 임계값을 넘지 못해 대부분 `INSUFFICIENT_EVIDENCE`가 된다.
+
+OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-embedding-001`이 동작하는 것을 실측했다(3072차원, `outputDimensionality`로 768 축소, 배치 상한 20건 — 100건은 429).
+
+**관련도 임계값은 임베딩 모델에 종속된다.** Gemini 임베딩은 기준선 유사도가 높아서 무관한 문서도 0.48 수준이 나온다. 해시 임베딩 기준으로 잡힌 0.42/0.34를 그대로 쓰면 아무 기사나 근거로 통과한다. 모델을 바꾸면 `FACT_CHECK_STRONG_RELEVANCE_SCORE` / `FACT_CHECK_MODERATE_RELEVANCE_SCORE`를 실제 코퍼스로 재보정해야 한다.

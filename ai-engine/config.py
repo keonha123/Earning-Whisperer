@@ -33,9 +33,12 @@ class Settings(BaseSettings):
     gemini_model_fast: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL_FAST")
 
     gemini_primary_model: str | None = Field(default="gemini-3.1-flash-lite", alias="GEMINI_PRIMARY_MODEL")
-    gemini_review_model: str | None = Field(default="gemini-3.1-pro-preview", alias="GEMINI_REVIEW_MODEL")
+    # 무료 등급 키는 pro 계열 할당량이 0 이라 매 호출이 429 로 떨어지고,
+    # 엔진은 예외를 삼킨 뒤 confidence 0.0 의 fallback 응답을 조용히 반환한다.
+    # 기본값을 flash 계열로 두어 키를 새로 발급한 사람도 바로 실제 신호를 받는다.
+    gemini_review_model: str | None = Field(default="gemini-3.6-flash", alias="GEMINI_REVIEW_MODEL")
     gemini_review_model_candidates: str = Field(
-        default="gemini-3.1-pro-preview,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-2.5-pro",
+        default="gemini-3.6-flash,gemini-3-flash-preview,gemini-3.1-flash-lite",
         alias="GEMINI_REVIEW_MODEL_CANDIDATES",
     )
     enable_review_pass: bool = Field(default=True, alias="ENABLE_REVIEW_PASS")
@@ -58,6 +61,9 @@ class Settings(BaseSettings):
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
     gemini_max_retries: int = Field(default=3, alias="GEMINI_MAX_RETRIES")
     gemini_base_retry_delay: float = Field(default=1.5, alias="GEMINI_BASE_RETRY_DELAY")
+    # 임베딩 배치의 각 항목이 요청 1건으로 계산된다. 무료 등급 분당 한도를 넘지 않도록
+    # 이 값에서 배치 간격을 역산한다. 유료 키로 올리면 대량 인입이 그만큼 빨라진다.
+    gemini_embed_requests_per_minute: int = Field(default=90, alias="GEMINI_EMBED_REQUESTS_PER_MINUTE")
     gemini_consensus_samples: int = Field(default=3, alias="GEMINI_CONSENSUS_SAMPLES")
     gemini_consensus_min_confidence: float = Field(default=0.78, alias="GEMINI_CONSENSUS_MIN_CONFIDENCE")
     gemini_consensus_disagreement_threshold: float = Field(default=0.35, alias="GEMINI_CONSENSUS_DISAGREEMENT_THRESHOLD")

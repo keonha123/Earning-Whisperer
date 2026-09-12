@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { TranscriptLine } from '../../fixtures/sttTranscript.dev-mock'
+import type { TranscriptLine } from '../../types/transcript'
 
 interface STTScriptPanelProps {
   /** STT 라인 목록 (오래된 → 최신 순). 컨테이너가 자동으로 가장 마지막 라인을 강조한다. */
@@ -11,6 +11,11 @@ interface STTScriptPanelProps {
   wpm?: number
   /** "최신 라인으로 점프" 콜백 (선택). 미제공 시 내부에서만 처리. */
   onJumpLatest?: () => void
+  /**
+   * 화자 라벨 클릭 콜백 (선택). 주면 라벨이 버튼이 되어 발화자 프로필을 연다.
+   * 명부를 못 가져왔을 때는 호출 측이 넘기지 않아서 라벨이 그냥 텍스트로 남는다.
+   */
+  onSpeakerClick?: (speaker: string) => void
 }
 
 /**
@@ -37,6 +42,7 @@ export default function STTScriptPanel({
   isLive,
   wpm,
   onJumpLatest,
+  onSpeakerClick,
 }: STTScriptPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isStickyBottom, setIsStickyBottom] = useState(true)
@@ -65,7 +71,10 @@ export default function STTScriptPanel({
     onJumpLatest?.()
   }
 
-  if (!isLive) {
+  // 빈 상태는 "표시할 라인이 없을 때" 이지 "LIVE 가 아닐 때" 가 아니다.
+  // isLive 로 갈랐더니 어닝콜이 끝나는 순간(is_session_end) 스크립트 전체가 화면에서
+  // 사라졌다 — 발표에서 결과를 짚어야 할 시점에 원문이 없어지는 셈이다.
+  if (transcript.length === 0) {
     return (
       <section className="card p-0 flex flex-col overflow-hidden h-full">
         <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
@@ -99,12 +108,26 @@ export default function STTScriptPanel({
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
           실시간 스크립트
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
-                         bg-surface-2 num text-[11px] text-text-secondary">
-          WPM <b className="text-accent-400 font-semibold">{wpm ?? '--'}</b>
-          <span className="w-1 h-1 rounded-full bg-buy" />
-          자동
-        </span>
+        {isLive ? (
+          <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
+                           bg-surface-2 num text-[11px] text-text-secondary">
+            {/* WPM 은 측정 소스가 있을 때만 — "WPM --" 를 띄우면 고장난 것처럼 보인다. */}
+            {wpm != null && (
+              <>
+                WPM <b className="text-accent-400 font-semibold">{wpm}</b>
+              </>
+            )}
+            <span className="w-1 h-1 rounded-full bg-buy" />
+            LIVE
+          </span>
+        ) : (
+          /* 콜이 끝나도 원문은 남긴다 — 상태만 바꿔 표시한다. */
+          <span className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
+                           bg-surface-2 text-[11px] text-text-tertiary">
+            <span className="w-1 h-1 rounded-full bg-text-disabled" />
+            어닝콜 종료
+          </span>
+        )}
       </div>
 
       <div className="relative flex-1 min-h-0">
@@ -131,7 +154,25 @@ export default function STTScriptPanel({
                   />
                 )}
                 <div className="num text-[10px] text-text-tertiary">
-                  [{line.timestamp}] · {line.speaker}
+                  [{line.timestamp}] ·{' '}
+                  {onSpeakerClick && line.speaker ? (
+                    <button
+                      type="button"
+                      onClick={() => onSpeakerClick(line.speaker)}
+                      className="underline decoration-dotted underline-offset-2
+                                 hover:text-text-primary transition-colors duration-100
+                                 focus-visible:outline focus-visible:outline-1
+                                 focus-visible:outline-accent-500"
+                      // title 은 보조기기에서 신뢰할 수 없다. 이름만 읽히면 무슨 동작인지
+                      // 알 수 없으므로 접근 이름에 동작을 붙인다.
+                      aria-label={`${line.speaker} 발화자 프로필 열기`}
+                      title="발화자 프로필 열기"
+                    >
+                      {line.speaker}
+                    </button>
+                  ) : (
+                    line.speaker
+                  )}
                   {line.ai_score != null && (
                     <span
                       className={

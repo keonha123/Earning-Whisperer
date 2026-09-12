@@ -16,6 +16,7 @@ try:
     from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService, TranscriptDiffService
     from services.equity_report_service import EquityResearchReportService
     from services.evidence_retrieval_service import EvidenceRetrievalService
+    from services.live_news_fact_check_service import LiveNewsFactCheckService
     from services.redis_signal_publisher import RedisSignalPublisher
 except ImportError:  # pragma: no cover
     from ..config import Settings
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover
     from ..services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, RegressionService, TranscriptDiffService
     from ..services.equity_report_service import EquityResearchReportService
     from ..services.evidence_retrieval_service import EvidenceRetrievalService
+    from ..services.live_news_fact_check_service import LiveNewsFactCheckService
     from ..services.redis_signal_publisher import RedisSignalPublisher
 
 
@@ -65,6 +67,10 @@ def get_evidence_service(app: FastAPI) -> EvidenceRetrievalService:
     return app.state.evidence_service
 
 
+def get_live_news_fact_check_service(app: FastAPI) -> LiveNewsFactCheckService:
+    return app.state.live_news_fact_check_service
+
+
 def get_earnings_intelligence_service(app: FastAPI) -> EarningsIntelligenceService:
     return app.state.earnings_intelligence_service
 
@@ -95,6 +101,7 @@ __all__ = [
     "get_earnings_intelligence_service",
     "get_equity_report_service",
     "get_evidence_service",
+    "get_live_news_fact_check_service",
     "get_persist_envelope",
     "get_redis_signal_publisher",
     "get_regression_service",
