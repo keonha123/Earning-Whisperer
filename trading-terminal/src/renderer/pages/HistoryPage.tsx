@@ -289,7 +289,7 @@ export default function HistoryPage() {
           {lastUpdatedAt && (
             <span>
               마지막 업데이트{' '}
-              <span className="num">{formatAgo(lastUpdatedAt)}</span>
+              <span className="num">{formatDateTime(lastUpdatedAt)}</span>
             </span>
           )}
           <button
@@ -702,9 +702,13 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
 }
 
 /** ISO → "MM-DD HH:mm:ss" (KST 가정 — fixture 의 +09:00 시간대 준수). */
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
+/**
+ * 목록의 일시 컬럼과 헤더의 "마지막 업데이트" 가 같은 형식이어야 하므로 한 함수로 둔다.
+ * ISO 문자열(백엔드 응답)과 timestamp(Date.now()) 를 모두 받는다.
+ */
+function formatDateTime(value: string | number): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   const hh = String(d.getHours()).padStart(2, '0')
@@ -713,9 +717,3 @@ function formatDateTime(iso: string): string {
   return `${mm}-${dd} ${hh}:${mi}:${ss}`
 }
 
-function formatAgo(ts: number): string {
-  const sec = Math.floor((Date.now() - ts) / 1000)
-  if (sec < 60) return `${Math.max(1, sec)}초 전`
-  if (sec < 3600) return `${Math.floor(sec / 60)}분 전`
-  return `${Math.floor(sec / 3600)}시간 전`
-}
