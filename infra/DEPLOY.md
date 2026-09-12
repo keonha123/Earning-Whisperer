@@ -14,7 +14,7 @@
 |---|---|
 | backend (Spring Boot jar, systemd) | data_pipeline (STT · 웹캐스트 수집 — [10장](#10-제약) 참고) |
 | ai-engine (FastAPI/uvicorn, systemd) | frontend (보류 — [부록 B](#부록-b--보류된-웹-배포-경로)) |
-| MySQL 8, Redis 7, PostgreSQL 16, Qdrant 1.19 (Docker) | trading-terminal (각자 노트북에서 실행) |
+| MySQL 8, Redis 7, PostgreSQL 16, Qdrant 1.19 (Docker) | trading-terminal (각자 노트북에서 실행 — [12장](#12-trading-terminal-배포-계획)) |
 
 시연은 백엔드가 월마트 FY2027 Q2 어닝콜(2026-08-20) 트랜스크립트를 재생하는 방식입니다. 스크립트는 `backend/src/main/resources/data/demo-earnings-call.json` 이고 실제 원문 발췌 24세그먼트입니다. STT 는 돌지 않습니다.
 
@@ -520,7 +520,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 운영상 알고 있어야 하는 것들입니다.
 
-- **HTTPS 가 없습니다.** Electron 은 브라우저와 달리 mixed content 제약이 없어 `ws://` 도 동작합니다. JWT 가 평문으로 오가지만 시연과 테스트 계정 범위에서는 감수하기로 했습니다. 웹 프론트를 외부에 공개하려면 TLS 가 필요합니다([부록 B](#부록-b--보류된-웹-배포-경로)).
+- **HTTPS 가 없습니다.** Electron 은 브라우저와 달리 mixed content 제약이 없어 `ws://` 도 동작합니다. JWT 가 평문으로 오가지만 시연과 테스트 계정 범위에서는 감수하기로 했습니다. 웹 프론트를 외부에 공개하거나 터미널 인스톨러를 배포하려면 TLS 가 필요합니다([12장](#12-trading-terminal-배포-계획), [부록 B](#부록-b--보류된-웹-배포-경로)).
 - **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
@@ -599,6 +599,66 @@ DB 가 나뉘면 각자 자기 `stocks` 를 갖게 되어 쓰기 충돌은 사�
 전환한다면 **백엔드가 깨우는 구조**가 되어야 합니다. 현재 일정을 감시하는 주체는 data_pipeline 의 `monitor_and_trigger_stt`(1분 주기, `ENABLE_STT_MONITOR=true` 일 때만 활성)인데, 그 코드가 꺼진 인스턴스 안에 있어서 자기를 깨울 수 없습니다.
 
 그 변경에는 부수 효과가 하나 있습니다 — 어닝콜 일정의 소유자가 정해집니다. 지금은 백엔드 `earnings_calendar`(FMP)와 data_pipeline `calls`(자체 수집)에 일정이 이중으로 있습니다.
+
+---
+
+## 12. trading-terminal 배포 계획
+
+개발 단계에서는 각자 `npm run dev` 로 실행합니다 ([3장](#3-연결-방법)). **최종 목표는 인스톨러 배포입니다.**
+
+### 인스톨러 배포가 어떤 형태인가
+
+빌드 설정은 이미 있습니다 (`trading-terminal/electron-builder.config.ts`, `package.json` 의 `npm run package`). 실행하면 `dist/` 에 Windows NSIS 인스톨러(`.exe`) 하나가 나옵니다. Electron 이 Chromium 과 Node 런타임을 포함하므로 80~120MB 정도입니다.
+
+**저장소에 `.exe` 를 커밋하지 않습니다.** 100MB 바이너리는 git 히스토리를 영구히 무겁게 만듭니다. GitHub Releases 에 첨부파일로 올리면 히스토리와 별개로 저장됩니다.
+
+팀원 · 사용자는 Releases 에서 내려받아 설치합니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴와 바탕화면에 바로가기가 생기고, 설정의 앱 목록에 등록되어 제거할 수 있습니다. 사용자 데이터는 `%APPDATA%\earning-whisperer-terminal\` 에 저장됩니다. Node 나 저장소 클론이 필요하지 않습니다.
+
+현재 설정은 `oneClick: false`, `allowToChangeInstallationDirectory: true` 라 설치 경로를 고를 수 있는 마법사 형태입니다.
+
+### 먼저 해결해야 하는 것 — 패키징 빌드에 BACKEND_URL 이 주입되지 않습니다
+
+`src/main/loadEnv.ts` 는 `app.isPackaged` 가 아닐 때만 `.env.local` 과 `.env` 를 읽습니다. 파일 주석에도 "패키징 빌드는 .env 파일을 읽지 않는다 — 빌드 타임 주입은 별도 과제" 로 남아 있습니다.
+
+`BackendClient.ts:12` 와 `StompService.ts:11` 이 `process.env.BACKEND_URL ?? 'http://localhost:8082'` 를 쓰므로, **패키징된 앱은 값이 비어 `localhost:8082` 로 굳습니다.** 설치본이 서버에 붙지 못합니다. 인스톨러 배포에는 빌드 타임 주입이 선행되어야 합니다.
+
+설치본을 받는 사람이 서버 주소를 바꿀 필요는 없습니다. 빌드 시점에 주소가 확정되는 것이 일반적인 앱의 동작입니다.
+
+### 고려할 지점 — 도메인과 HTTPS
+
+현재 주소는 탄력적 IP `43.200.26.70` 이고 프로토콜은 평문 HTTP 입니다. 인스톨러를 배포하면 이 두 가지가 문제로 바뀝니다.
+
+**주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 합니다.** 시연이 끝나고 인스턴스를 종료하며 탄력적 IP 를 릴리스하면([8장](#8-비용과-메모리)) 설치된 앱 전부가 서버를 찾지 못합니다. 도메인을 두고 그 이름을 빌드에 넣으면, 서버가 바뀌어도 DNS 레코드만 고치면 됩니다.
+
+**평문 HTTP 는 실무 기준으로는 맞지 않습니다.** 이유가 셋입니다.
+
+- **자격증명이 그대로 노출됩니다.** JWT 가 평문으로 오가므로 같은 네트워크(공용 와이파이 등)나 경로상의 누구든 읽어 재사용할 수 있습니다. 이 앱은 실제 증권사 주문을 내는 클라이언트입니다
+- **응답을 위조할 수 있습니다.** TLS 는 기밀성뿐 아니라 무결성을 줍니다. 평문이면 중간에서 시세나 판정을 바꿔 넣을 수 있습니다
+- **브라우저 클라이언트를 추가할 수 없습니다.** HTTPS 페이지에서 `ws://` 는 mixed content 정책으로 차단됩니다. Electron 은 이 제약이 없어 지금 동작하는 것입니다
+
+이미 코드에 영향이 나타나 있습니다. `BackendClient.ts:44` 는 브라우저와 같은 규칙으로 `Secure` 쿠키를 비보안 연결에서 저장하지 않습니다.
+
+```
+[Backend] Secure refresh 쿠키를 비보안 연결에서 받아 보관하지 않는다.
+```
+
+7일짜리 refresh 토큰이 평문으로 반복 전송되는 것을 막는 의도적인 처리인데, 그 결과 **평문 HTTP 에서는 refresh 토큰 보관이 동작하지 않습니다.** TLS 를 도입하면 이 경로가 정상화됩니다.
+
+인증서 비용은 장애물이 아닙니다. Let's Encrypt 가 무료이고, Cloudflare Tunnel 을 쓰면 인증서를 직접 관리하지 않아도 됩니다. 실제 비용은 도메인 등록비(연 $10~15) 수준입니다.
+
+가능한 방법은 이렇습니다.
+
+| 방법 | 필요한 것 | 비용 | 비고 |
+|---|---|---|---|
+| Cloudflare Tunnel | Cloudflare 계정, 도메인 | 도메인 등록비만 | 서버에 포트를 열지 않습니다. 구성이 `infra/docker-compose.prod.yml` 에 이미 있습니다 |
+| 도메인 + Let's Encrypt + 리버스 프록시 | 도메인, nginx 또는 Caddy | 도메인 등록비만 | 인스턴스에서 직접 인증서를 갱신합니다 |
+| ALB + ACM | 도메인 | ALB 월 $16~20 | 인스턴스 비용($24)에 비해 큽니다 |
+
+**결정 필요**: 도메인을 등록할지, 어느 방법으로 TLS 를 붙일지. 현재 시연은 팀 내부에서 터미널로 진행하므로 급하지는 않지만, 인스톨러를 팀 밖으로 배포하는 시점에는 선행되어야 합니다.
+
+### 검증되지 않은 것
+
+`npm run package` 를 실행한 적이 없습니다. 확인이 필요한 항목은 #115 에 정리되어 있습니다 — `resources/` 아이콘 파일 부재, `keytar` 네이티브 모듈의 패키징 후 동작(KIS 자격증명 저장에 쓰입니다), 시연 화면 표시 여부, 무서명 인스톨러의 SmartScreen 경고 처리.
 
 ---
 
