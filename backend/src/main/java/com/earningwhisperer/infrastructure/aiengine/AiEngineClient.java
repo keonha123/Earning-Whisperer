@@ -30,10 +30,12 @@ public class AiEngineClient {
     private static final String ANALYZE_PATH = "/v1/engine/analyze";
     private static final String INTELLIGENCE_PATH = "/v1/engine/earnings/intelligence";
     private static final String READINESS_PATH = "/v1/engine/evidence/readiness";
+    private static final String TRANSCRIPT_DIFF_PATH = "/v1/engine/transcript/diff";
 
     private final RestClient restClient;
     private final boolean factCheckEnabled;
     private final boolean summaryEnabled;
+    private final boolean transcriptDiffEnabled;
 
     /**
      * 생성자가 여럿이므로 Spring 이 쓸 것을 명시한다. 없으면 기본 생성자를 찾다가
@@ -44,10 +46,12 @@ public class AiEngineClient {
             @Value("${ai-engine.base-url:http://localhost:8000}") String baseUrl,
             @Value("${ai-engine.fact-check-enabled:true}") boolean factCheckEnabled,
             @Value("${ai-engine.summary-enabled:true}") boolean summaryEnabled,
+            @Value("${ai-engine.transcript-diff-enabled:true}") boolean transcriptDiffEnabled,
             @Value("${ai-engine.timeout-ms:8000}") long timeoutMs
     ) {
         this.factCheckEnabled = factCheckEnabled;
         this.summaryEnabled = summaryEnabled;
+        this.transcriptDiffEnabled = transcriptDiffEnabled;
         // 연결 타임아웃은 짧게(응답 없는 호스트를 오래 붙들 이유가 없다), 읽기 타임아웃은
         // LLM 2패스 소요시간(실측 약 5초)을 감안해 설정값을 그대로 쓴다.
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -57,8 +61,9 @@ public class AiEngineClient {
                 .baseUrl(baseUrl)
                 .requestFactory(factory)
                 .build();
-        log.info("[AiEngine] 클라이언트 초기화 - baseUrl={} factCheckEnabled={} summaryEnabled={} timeoutMs={}",
-                baseUrl, factCheckEnabled, summaryEnabled, timeoutMs);
+        log.info("[AiEngine] 클라이언트 초기화 - baseUrl={} factCheckEnabled={} summaryEnabled={} "
+                        + "transcriptDiffEnabled={} timeoutMs={}",
+                baseUrl, factCheckEnabled, summaryEnabled, transcriptDiffEnabled, timeoutMs);
     }
 
     /**
@@ -71,9 +76,16 @@ public class AiEngineClient {
 
     /** 테스트용 생성자. 팩트체크와 종합 분석을 따로 켜고 끌 때 쓴다. */
     protected AiEngineClient(RestClient restClient, boolean factCheckEnabled, boolean summaryEnabled) {
+        this(restClient, factCheckEnabled, summaryEnabled, factCheckEnabled);
+    }
+
+    /** 테스트용 생성자. 과거 콜 대조까지 따로 켜고 끌 때 쓴다. */
+    protected AiEngineClient(RestClient restClient, boolean factCheckEnabled, boolean summaryEnabled,
+                             boolean transcriptDiffEnabled) {
         this.restClient = restClient;
         this.factCheckEnabled = factCheckEnabled;
         this.summaryEnabled = summaryEnabled;
+        this.transcriptDiffEnabled = transcriptDiffEnabled;
     }
 
     public boolean isFactCheckEnabled() {
@@ -82,6 +94,10 @@ public class AiEngineClient {
 
     public boolean isSummaryEnabled() {
         return summaryEnabled;
+    }
+
+    public boolean isTranscriptDiffEnabled() {
+        return transcriptDiffEnabled;
     }
 
     /**
@@ -165,6 +181,40 @@ public class AiEngineClient {
             return Optional.of(response);
         } catch (Exception e) {
             log.warn("[AiEngine] {} 호출 실패 - ticker={} error={}", label, ticker, e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 현재 발언 한 토막을 직전 콜의 같은 주제 발언과 대조한다.
+     *
+     * <p>팩트체크가 <b>뉴스</b>를 근거로 삼는 것과 달리 이쪽은 <b>같은 회사의 직전 콜</b>이
+     * 근거다. 확정 숫자가 맞는지가 아니라 지난 분기와 말이 달라졌는지를 본다.
+     *
+     * <p>{@link #submitSentence} 와 달리 문장을 버퍼링하지 않으므로 호출 순서에 제약이 없다.
+     * 다만 LLM 을 타므로 재생 스레드에서 부르지 말 것.
+     *
+     * @return 응답. 비활성화되었거나 호출이 실패하면 empty. 직전 콜을 못 찾은 경우는
+     *         실패가 아니라 {@code available=false} 응답으로 온다.
+     */
+    public Optional<TranscriptDiffModels.DiffResponse> transcriptDiff(TranscriptDiffModels.DiffRequest request) {
+        if (!transcriptDiffEnabled) {
+            return Optional.empty();
+        }
+        try {
+            TranscriptDiffModels.DiffResponse response = restClient.post()
+                    .uri(TRANSCRIPT_DIFF_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TranscriptDiffModels.DiffResponse.class);
+            if (response == null) {
+                log.warn("[AiEngine] 과거 콜 대조 빈 응답 - ticker={}", request.ticker());
+                return Optional.empty();
+            }
+            return Optional.of(response);
+        } catch (Exception e) {
+            log.warn("[AiEngine] 과거 콜 대조 호출 실패 - ticker={} error={}", request.ticker(), e.toString());
             return Optional.empty();
         }
     }
