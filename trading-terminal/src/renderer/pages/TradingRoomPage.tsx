@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
-import { useTradingStore, type SignalFeedItem } from "../store/useTradingStore";
+import { useTradingStore } from "../store/useTradingStore";
 import { useUserStore } from "../store/useUserStore";
 import { usePortfolioStore } from "../store/usePortfolioStore";
 import { ipc, IPC_CHANNELS } from "../lib/ipc";
 import ModeSelector from "../components/common/ModeSelector";
-import SignalFeed from "../components/trading/SignalFeed";
+import PositionOrderPanel, {
+  type SessionOrder,
+} from "../components/trading/PositionOrderPanel";
 import STTScriptPanel from "../components/trading/STTScriptPanel";
 import SpeakerProfileModal from "../components/trading/SpeakerProfileModal";
 import OrderBar, {
   type OrderBarSubmitPayload,
 } from "../components/trading/OrderBar";
 import TradingRoomHeader from "../components/trading/TradingRoomHeader";
-import FactCheckPanel from "../components/trading/FactCheckPanel";
-import TranscriptDiffPanel from "../components/trading/TranscriptDiffPanel";
+import VerificationPanel from "../components/trading/VerificationPanel";
 import EarningsSummaryPanel from "../components/trading/EarningsSummaryPanel";
 import { showIpcErrorToast } from "../components/common/Toast";
 import type { TranscriptLine } from "../types/transcript";
@@ -29,7 +30,6 @@ import { useTranscriptDiff } from "../hooks/useTranscriptDiff";
 import { useEarningsSummary } from "../hooks/useEarningsSummary";
 import type { TranscriptSegment } from "../store/useTranscriptStore";
 
-type SignalFilter = "ALL" | "BUY" | "SELL" | "FAILED";
 
 const TIMEFRAMES = ["1m", "5m", "1H", "1D", "1W", "1M"] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
@@ -37,10 +37,13 @@ type Timeframe = (typeof TIMEFRAMES)[number];
 const EMPTY_PRICES: readonly PricePoint[] = [];
 
 export default function TradingRoomPage() {
-  const { mode, setMode, signalHistory, activeSignal, setSession } =
+  const { mode, setMode, activeSignal, setSession } =
     useTradingStore();
   const { plan, settings, setSettings } = useUserStore();
   const orderableCash = usePortfolioStore((s) => s.orderableCash);
+  const holdings = usePortfolioStore((s) => s.holdings);
+  // 잔고를 한 번이라도 불러왔는지. 0주 보유와 "아직 안 불러왔다" 를 구분해야 한다.
+  const balanceLoaded = usePortfolioStore((s) => s.lastSyncedAt) != null;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -215,15 +218,14 @@ export default function TradingRoomPage() {
   // 종목을 열어만 둔 경우와 구분하기 위해 세그먼트 존재를 함께 본다.
   const awaitingSummary = !isLive && liveSegments.length > 0;
 
-  // ── 신호 필터 (로컬 state) ────────────────────────────────────────────────────
-  const [filter, setFilter] = useState<SignalFilter>("ALL");
+  // ── 이 화면에서 낸 주문 (세션 한정 로컬 state) ───────────────────────────────
+  // 전체 이력은 거래내역 화면이 담당한다. 여기는 "방금 낸 주문이 어떻게 됐는지" 만 본다.
+  // store 에 두지 않는 이유: 화면을 나가면 의미가 없는 값이고, 종목이 바뀌면 초기화한다.
+  const [sessionOrders, setSessionOrders] = useState<readonly SessionOrder[]>([]);
 
-  const filteredSignals = useMemo(
-    () => filterSignals(signalHistory, filter),
-    [signalHistory, filter],
-  );
-
-  const counts = useMemo(() => countByCategory(signalHistory), [signalHistory]);
+  useEffect(() => {
+    setSessionOrders([]);
+  }, [ticker]);
 
   // ── 타임프레임 (UI only — fixture 단일 시계열만 표시) ──────────────────────────
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
@@ -309,18 +311,55 @@ export default function TradingRoomPage() {
   async function handleOrderSubmit(payload: OrderBarSubmitPayload) {
     if (!ticker) return;
     setIsOrderLoading(true);
+    // 주문 종목·수량·지정가는 요청에만 있고 응답에는 없다. 여기서 둘을 합쳐 기록한다.
+    const localId = `${ticker}-${payload.side}-${Date.now()}`;
+    const base = {
+      localId,
+      side: payload.side,
+      qty: payload.qty,
+      requestedPrice: payload.price ?? null,
+      placedAt: Date.now(),
+    };
     try {
-      await ipc.invoke(IPC_CHANNELS.KIS_PLACE_MANUAL_ORDER, {
+      const result = (await ipc.invoke(IPC_CHANNELS.KIS_PLACE_MANUAL_ORDER, {
         side: payload.side,
         ticker,
         qty: payload.qty,
         price: payload.price,
+      })) as {
+        status: "PENDING" | "EXECUTED";
+        orderId: string | null;
+        executedPrice: number | null;
+        executedQty: number;
+        errorMessage: string | null;
+      } | null;
+      addSessionOrder({
+        ...base,
+        status: result?.status ?? "PENDING",
+        executedQty: result?.executedQty ?? 0,
+        executedPrice: result?.executedPrice ?? null,
+        brokerOrderId: result?.orderId ?? null,
+        errorMessage: result?.errorMessage ?? null,
       });
     } catch (e) {
       showIpcErrorToast(e);
+      // 실패도 남긴다. 토스트는 사라지고, 무엇이 왜 안 됐는지 다시 볼 곳이 없어진다.
+      addSessionOrder({
+        ...base,
+        status: "FAILED",
+        executedQty: 0,
+        executedPrice: null,
+        brokerOrderId: null,
+        errorMessage: e instanceof Error ? e.message : "주문에 실패했습니다.",
+      });
     } finally {
       setIsOrderLoading(false);
     }
+  }
+
+  function addSessionOrder(order: SessionOrder) {
+    // 최근 것이 앞에 온다. 세션 한정이라 상한은 넉넉히 둔다.
+    setSessionOrders((prev) => [order, ...prev].slice(0, 30));
   }
 
   return (
@@ -354,9 +393,18 @@ export default function TradingRoomPage() {
       {/* ── 3-column body ───────────────────────────────────────────────────────── */}
       <div
         className="flex-1 grid gap-3 p-3 min-h-0"
-        style={{ gridTemplateColumns: "35fr 40fr 25fr" }}
+        /*
+          정보의 종류로 묶는다 — 왼쪽은 "무엇을 말했나", 가운데는 "내가 어떻게 행동할까",
+          오른쪽은 "기계가 어떻게 판단했나". 이전에는 팩트체크가 가운데, 지난 분기 대비가
+          오른쪽에 있어 성격이 같은 둘이 컬럼을 넘어 갈려 있었다.
+
+          폭은 32 : 38 : 30 이다. 오른쪽이 25 였을 때 판정 카드의 인용 제목이 잘렸고,
+          종합 판단도 좁아서 회피·손절 계획이 스크롤 아래로 내려갔다. 왼쪽을 35 에서 32 로
+          줄인 것은 스크립트가 한 줄 단위로 짧게 들어오기 때문이다.
+        */
+        style={{ gridTemplateColumns: "32fr 38fr 30fr" }}
       >
-        {/* LEFT 35% — STT 스크립트 */}
+        {/* LEFT 32% — STT 스크립트 */}
         <STTScriptPanel
           transcript={transcript}
           isLive={isLive && transcript.length > 0}
@@ -366,7 +414,7 @@ export default function TradingRoomPage() {
           }
         />
 
-        {/* MIDDLE 40% — 가격 차트 (상) + AI 점수 차트 (하) */}
+        {/* MIDDLE 38% — 가격 차트 (상) + 보유 · 주문 (하). 아래의 주문 바까지 동선이 이어진다 */}
         <section className="card p-0 flex flex-col overflow-hidden min-h-0">
           <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
@@ -377,7 +425,7 @@ export default function TradingRoomPage() {
           </div>
 
           <div className="flex-1 flex flex-col min-h-0">
-            {/* 가격 pane — 전체의 45% */}
+            {/* 가격 pane — 전체의 45%. 기존 비율을 유지한다 */}
             <div
               style={{ flex: "45 1 0%" }}
               className="flex flex-col min-h-0 overflow-hidden"
@@ -394,40 +442,52 @@ export default function TradingRoomPage() {
               />
             </div>
 
-            {/* 팩트체크 pane — 전체의 55%. 실시간 판정이 이 화면의 핵심이다. */}
+            {/*
+              보유 · 주문 pane — 전체의 55%. 팩트체크가 있던 자리의 비율을 그대로 쓴다.
+              보유 현황은 높이가 고정이고 아래 주문 목록이 남는 만큼을 받는다.
+            */}
             <div
               style={{ flex: "55 1 0%" }}
-              className="flex flex-col min-h-0 overflow-hidden"
+              className="flex flex-col min-h-0 overflow-hidden border-t border-border-subtle"
             >
-              <FactCheckPanel
-                claims={factCheckClaims}
-                analyzing={factCheckAnalyzing}
+              <PositionOrderPanel
+                ticker={ticker}
+                holding={holdings.find((h) => h.ticker === ticker)}
+                balanceLoaded={balanceLoaded}
+                currentPrice={currentPrice ?? undefined}
+                orders={sessionOrders}
               />
             </div>
           </div>
         </section>
 
-        {/* RIGHT 25% — 지난 분기 대비 + 종합 판단(도착 시) + 신호 피드 */}
+        {/* RIGHT 30% — 발언 검증 + 종합 판단(도착 시) */}
         {/*
-          이 래퍼가 25fr 컬럼의 grid item 이다. min-w-0 / overflow-hidden 이 없으면
+          이 래퍼가 30fr 컬럼의 grid item 이다. min-w-0 / overflow-hidden 이 없으면
           긴 영문 rationale 이나 줄바꿈 불가 토큰이 컬럼을 밀어 차트 컬럼을 잡아먹는다.
           이전에는 이 자리의 section 이 그 역할을 하고 있었다.
         */}
         <div className="flex flex-col gap-3 min-h-0 min-w-0 overflow-hidden">
         {/*
-          지난 분기 대비는 콜이 진행되는 동안 채워진다. 종합 판단(콜 종료 후)보다 먼저
-          내용이 생기므로 위에 둔다. 자리 배치는 #122 에서 네 기능을 함께 정한다.
+          뉴스 대조와 지난 분기 대비를 한 패널에 담는다. 근거는 다르지만 둘 다 특정
+          발언에 붙는 판단이라 성격이 같고, 나누면 도착이 드문 쪽이 빈 상자로 남는다.
+          종합 판단이 들어올 자리를 확보하는 효과도 있다. 배치 논의는 #122 에 있다.
         */}
-        <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "3 1 0%" }}>
-          <TranscriptDiffPanel
-            items={transcriptDiffItems}
+        <section
+          className="card p-0 flex flex-col overflow-hidden min-h-0"
+          style={{ flex: earningsSummary ? "4 1 0%" : "1 1 0%" }}
+        >
+          <VerificationPanel
+            claims={factCheckClaims}
+            diffItems={transcriptDiffItems}
             previousCall={transcriptDiffPreviousCall}
+            analyzing={factCheckAnalyzing}
           />
         </section>
 
         {/*
           종합 판단은 어닝콜이 끝나야 도착한다. 도착 전에는 자리를 비워 두고
-          신호 피드가 열을 다 쓰게 한다 — 빈 카드를 미리 띄워 둘 이유가 없다.
+          발언 검증이 열을 다 쓰게 한다 — 빈 카드를 미리 띄워 둘 이유가 없다.
         */}
         {/*
           종합 판단은 회차당 1건뿐이라 놓치면 다시 받을 방법이 없다(백필 경로 없음).
@@ -448,11 +508,11 @@ export default function TradingRoomPage() {
         )}
 
         {/*
-          종합 판단은 이 시연의 결론이다. 신호 피드보다 훨씬 넓게 준다 —
-          3:2 로 뒀더니 회피·손절 계획·파급효과가 전부 스크롤 아래로 내려갔다.
+          종합 판단은 이 시연의 결론이다. 도착하면 발언 검증보다 넓게 준다 —
+          좁게 뒀더니 회피·손절 계획·파급효과가 전부 스크롤 아래로 내려갔다.
         */}
         {earningsSummary && (
-          <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "5 1 0%" }}>
+          <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "6 1 0%" }}>
             <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
               <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
                 <span className="w-2 h-2 rounded-sm bg-accent-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -463,51 +523,6 @@ export default function TradingRoomPage() {
           </section>
         )}
 
-        <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "2 1 0%" }}>
-          <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em]">
-              신호 피드 ·{" "}
-              <span className="num text-text-primary tracking-normal normal-case">
-                {signalHistory.length}
-              </span>
-            </span>
-            <span className="num text-[11px] text-text-tertiary">auto</span>
-          </div>
-
-          <>
-            {/* 필터 칩 4개 */}
-            <div className="flex gap-1 px-2.5 pt-2 pb-1 shrink-0">
-              <FilterChip
-                label="전체"
-                count={counts.total}
-                active={filter === "ALL"}
-                onClick={() => setFilter("ALL")}
-              />
-              <FilterChip
-                label="BUY"
-                count={counts.buy}
-                active={filter === "BUY"}
-                onClick={() => setFilter("BUY")}
-              />
-              <FilterChip
-                label="SELL"
-                count={counts.sell}
-                active={filter === "SELL"}
-                onClick={() => setFilter("SELL")}
-              />
-              <FilterChip
-                label="FAILED"
-                count={counts.failed}
-                active={filter === "FAILED"}
-                onClick={() => setFilter("FAILED")}
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto min-h-0">
-              <SignalFeed items={filteredSignals} />
-            </div>
-          </>
-        </section>
         </div>
       </div>
 
@@ -538,31 +553,6 @@ export default function TradingRoomPage() {
 /** ─────────────────────────────────────────────────────────────────────────────
  * 내부 헬퍼 컴포넌트 / 함수
  * ──────────────────────────────────────────────────────────────────────────── */
-
-interface FilterChipProps {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}
-
-function FilterChip({ label, count, active, onClick }: FilterChipProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={
-        "text-[10px] px-2 py-[3px] rounded border tracking-[0.06em] transition-colors duration-100 " +
-        (active
-          ? "bg-surface-2 text-text-primary border-border-strong"
-          : "bg-transparent text-text-tertiary border-border-subtle hover:text-text-primary")
-      }
-    >
-      {label} <span className="num text-[10px] ml-0.5">{count}</span>
-    </button>
-  );
-}
 
 interface TimeframeToggleProps {
   value: Timeframe;
@@ -834,34 +824,6 @@ function ChartPane({
 /** ─────────────────────────────────────────────────────────────────────────────
  * 순수 함수
  * ──────────────────────────────────────────────────────────────────────────── */
-
-function filterSignals(
-  items: SignalFeedItem[],
-  filter: SignalFilter,
-): SignalFeedItem[] {
-  if (filter === "ALL") return items;
-  if (filter === "FAILED") return items.filter((s) => s.status === "FAILED");
-  return items.filter((s) => s.action === filter);
-}
-
-interface SignalCounts {
-  total: number;
-  buy: number;
-  sell: number;
-  failed: number;
-}
-
-function countByCategory(items: SignalFeedItem[]): SignalCounts {
-  let buy = 0;
-  let sell = 0;
-  let failed = 0;
-  for (const s of items) {
-    if (s.action === "BUY") buy++;
-    else if (s.action === "SELL") sell++;
-    if (s.status === "FAILED") failed++;
-  }
-  return { total: items.length, buy, sell, failed };
-}
 
 /**
  * TranscriptSegment (실시간 store) → TranscriptLine (STTScriptPanel UI 모델).
