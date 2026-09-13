@@ -13,6 +13,7 @@ import OrderBar, {
 } from "../components/trading/OrderBar";
 import TradingRoomHeader from "../components/trading/TradingRoomHeader";
 import FactCheckPanel from "../components/trading/FactCheckPanel";
+import TranscriptDiffPanel from "../components/trading/TranscriptDiffPanel";
 import EarningsSummaryPanel from "../components/trading/EarningsSummaryPanel";
 import { showIpcErrorToast } from "../components/common/Toast";
 import type { TranscriptLine } from "../types/transcript";
@@ -24,6 +25,7 @@ import type { SpeakerCallStats } from "../types/speakerProfile";
 import { usePrices } from "../hooks/usePrices";
 import { useCompanyDetail } from "../hooks/useCompanyDetail";
 import { useFactCheck } from "../hooks/useFactCheck";
+import { useTranscriptDiff } from "../hooks/useTranscriptDiff";
 import { useEarningsSummary } from "../hooks/useEarningsSummary";
 import type { TranscriptSegment } from "../store/useTranscriptStore";
 
@@ -65,6 +67,14 @@ export default function TradingRoomPage() {
   // 트랜스크립트와 같은 ticker 를 따라간다. 판정은 서버에서 완료되어 도착한다.
   const { claims: factCheckClaims, clear: clearFactCheck } =
     useFactCheck(ticker);
+
+  // ── 직전 콜 발언 대조 (STOMP /topic/transcript-diff/{ticker}) ──────────────
+  // 팩트체크와 같은 ticker 를 따라간다. 주제와 무관한 발언은 도착하지 않는다.
+  const {
+    items: transcriptDiffItems,
+    previousCall: transcriptDiffPreviousCall,
+    clear: clearTranscriptDiff,
+  } = useTranscriptDiff(ticker);
 
   // ── 어닝콜 종료 후 종합 판단 (Contract 4.7 STOMP /topic/evaluation/{ticker}) ──
   // 회차당 1건뿐이라 늦게 구독하면 놓친다. 여기서 ticker 와 함께 구독을 세워 둔다.
@@ -251,6 +261,7 @@ export default function TradingRoomPage() {
           showIpcErrorToast(new Error(result.evidenceWarning))
         }
         clearFactCheck(ticker)
+        clearTranscriptDiff(ticker)
         // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이
         // 계속 떠 있게 된다.
         clearEarningsSummary(ticker)
@@ -396,13 +407,24 @@ export default function TradingRoomPage() {
           </div>
         </section>
 
-        {/* RIGHT 25% — 종합 판단(도착 시) + 신호 피드 */}
+        {/* RIGHT 25% — 지난 분기 대비 + 종합 판단(도착 시) + 신호 피드 */}
         {/*
           이 래퍼가 25fr 컬럼의 grid item 이다. min-w-0 / overflow-hidden 이 없으면
           긴 영문 rationale 이나 줄바꿈 불가 토큰이 컬럼을 밀어 차트 컬럼을 잡아먹는다.
           이전에는 이 자리의 section 이 그 역할을 하고 있었다.
         */}
         <div className="flex flex-col gap-3 min-h-0 min-w-0 overflow-hidden">
+        {/*
+          지난 분기 대비는 콜이 진행되는 동안 채워진다. 종합 판단(콜 종료 후)보다 먼저
+          내용이 생기므로 위에 둔다. 자리 배치는 #122 에서 네 기능을 함께 정한다.
+        */}
+        <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "3 1 0%" }}>
+          <TranscriptDiffPanel
+            items={transcriptDiffItems}
+            previousCall={transcriptDiffPreviousCall}
+          />
+        </section>
+
         {/*
           종합 판단은 어닝콜이 끝나야 도착한다. 도착 전에는 자리를 비워 두고
           신호 피드가 열을 다 쓰게 한다 — 빈 카드를 미리 띄워 둘 이유가 없다.

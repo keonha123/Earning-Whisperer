@@ -187,6 +187,31 @@ export const IPC_CHANNELS = {
   FACTCHECK_BATCH_RECEIVED: 'terminal:factcheck:batch-received',
 
   /**
+   * 직전 콜 발언 대조 동적 구독.
+   * Backend: STOMP /topic/transcript-diff/{ticker}.
+   * FACTCHECK_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  TRANSCRIPT_DIFF_SUBSCRIBE: 'terminal:transcript-diff:subscribe',
+  TRANSCRIPT_DIFF_UNSUBSCRIBE: 'terminal:transcript-diff:unsubscribe',
+
+  /**
+   * STOMP 직전 콜 대조 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, sequence,
+   *   previous_document: { document_id, title, published_at, fiscal_quarter, source_url },
+   *   items: [{ topic, change_type, summary_ko, current_claim, prior_claim,
+   *             confidence, risk_score,
+   *             evidence: [{ document_id, source, title, published_at, source_url,
+   *                          snippet, relevance_score, confidence_score }] }]
+   * }
+   * 백엔드는 items 가 1건 이상일 때만 발행한다 — 주제와 무관한 발언은 도착하지 않는다.
+   * 그래서 도착 건수는 세그먼트 수보다 훨씬 적다.
+   * 변환·검증은 store 의 upsertDiff 에서 수행.
+   */
+  TRANSCRIPT_DIFF_RECEIVED: 'terminal:transcript-diff:received',
+
+  /**
    * 어닝콜 종료 후 종합 판단 동적 구독.
    * Backend Contract 4.7: STOMP /topic/evaluation/{ticker}.
    * FACTCHECK_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
