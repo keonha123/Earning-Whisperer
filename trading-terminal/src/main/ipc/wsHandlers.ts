@@ -110,6 +110,19 @@ export function registerWsHandlers() {
   })
 
   /*
+   * 직전 콜 대조 동적 구독. 팩트체크와 동일한 규약.
+   */
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_DIFF_SUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.subscribeTranscriptDiff(payload.ticker)
+  })
+
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_DIFF_UNSUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.unsubscribeTranscriptDiff(payload.ticker)
+  })
+
+  /*
    * 종합 판단 동적 구독 (Contract 4.7). 팩트체크와 동일한 규약.
    */
   registerHandler<{ ticker: string }, void>(IPC_CHANNELS.EVALUATION_SUBSCRIBE, (_e, payload) => {

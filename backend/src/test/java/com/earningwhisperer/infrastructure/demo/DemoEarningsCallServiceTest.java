@@ -6,6 +6,8 @@ import com.earningwhisperer.domain.transcript.TranscriptSessionRegistry;
 import com.earningwhisperer.infrastructure.aiengine.AiEngineClient;
 import com.earningwhisperer.infrastructure.aiengine.LiveFactCheckModels;
 import com.earningwhisperer.infrastructure.websocket.FactCheckPublisher;
+import com.earningwhisperer.infrastructure.aiengine.TranscriptDiffModels;
+import com.earningwhisperer.infrastructure.websocket.TranscriptDiffPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -57,8 +59,16 @@ class DemoEarningsCallServiceTest {
                                                FactCheckPublisher publisher,
                                                EarningsSummaryService summaryService,
                                                long intervalMs) {
-        service = new DemoEarningsCallService(transcript, client, publisher, summaryService,
+        service = new DemoEarningsCallService(transcript, client, publisher, noopDiffPublisher(), summaryService,
                 new ObjectMapper(), SCRIPT, intervalMs, AI_TIMEOUT_MS);
+        return service;
+    }
+
+    private DemoEarningsCallService newServiceWithDiff(AiEngineClient client,
+                                                       TranscriptDiffPublisher diffPublisher,
+                                                       long intervalMs) {
+        service = new DemoEarningsCallService(new RecordingTranscriptService(), client, noopPublisher(),
+                diffPublisher, noopSummaryService(), new ObjectMapper(), SCRIPT, intervalMs, AI_TIMEOUT_MS);
         return service;
     }
 
@@ -221,7 +231,7 @@ class DemoEarningsCallServiceTest {
     @Test
     void 스크립트가_없으면_시작하지_않는다() {
         service = new DemoEarningsCallService(new RecordingTranscriptService(), disabledClient(),
-                noopPublisher(), noopSummaryService(), new ObjectMapper(),
+                noopPublisher(), noopDiffPublisher(), noopSummaryService(), new ObjectMapper(),
                 "data/does-not-exist.json", 1, AI_TIMEOUT_MS);
 
         DemoEarningsCallService.StartResult result = service.start("ORCL");
@@ -410,7 +420,7 @@ class DemoEarningsCallServiceTest {
 
     /** 비활성 클라이언트. 공개 생성자를 쓰되 enabled=false 라 호출이 발생하지 않는다. */
     private static AiEngineClient disabledClient() {
-        return new AiEngineClient("http://localhost:1", false, false, 100);
+        return new AiEngineClient("http://localhost:1", false, false, false, 100);
     }
 
     @Test
@@ -505,7 +515,7 @@ class DemoEarningsCallServiceTest {
         final List<String> calls = new CopyOnWriteArrayList<>();
 
         RecordingSummaryService() {
-            super(new AiEngineClient("http://localhost:1", false, false, 100), null, null);
+            super(new AiEngineClient("http://localhost:1", false, false, false, 100), null, null);
         }
 
         @Override
@@ -521,8 +531,102 @@ class DemoEarningsCallServiceTest {
      * 것은 재생 경로이지 종합 판단이 아니다.
      */
     private EarningsSummaryService noopSummaryService() {
-        return new EarningsSummaryService(new AiEngineClient("http://localhost:1", false, false, 100),
+        return new EarningsSummaryService(new AiEngineClient("http://localhost:1", false, false, false, 100),
                 null, null);
+    }
+
+    @Test
+    void 과거_콜_대조는_모든_세그먼트에_대해_호출된다() {
+        // 주제 판정은 엔진 몫이다. 백엔드가 미리 거르면 판정 기준이 둘로 갈린다.
+        AtomicInteger calls = new AtomicInteger();
+        AiEngineClient client = new AiEngineClient(null, false, false, true) {
+            @Override
+            public Optional<TranscriptDiffModels.DiffResponse> transcriptDiff(
+                    TranscriptDiffModels.DiffRequest request) {
+                calls.incrementAndGet();
+                return Optional.of(diffResponse(List.of()));
+            }
+        };
+        DemoEarningsCallService svc = newServiceWithDiff(client, noopDiffPublisher(), 1);
+
+        int total = svc.start("ORCL").segmentCount();
+
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(calls.get()).isEqualTo(total));
+    }
+
+    @Test
+    void 과거_콜_대조가_비활성화면_AI_Engine_을_호출하지_않는다() {
+        AtomicInteger calls = new AtomicInteger();
+        AiEngineClient client = new AiEngineClient(null, false, false, false) {
+            @Override
+            public Optional<TranscriptDiffModels.DiffResponse> transcriptDiff(
+                    TranscriptDiffModels.DiffRequest request) {
+                calls.incrementAndGet();
+                return Optional.empty();
+            }
+        };
+        DemoEarningsCallService svc = newServiceWithDiff(client, noopDiffPublisher(), 1);
+
+        int total = svc.start("ORCL").segmentCount();
+
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(service.status("ORCL")).isEmpty());
+        assertThat(total).isPositive();
+        assertThat(calls.get()).isZero();
+    }
+
+    @Test
+    void 과거_콜_대조는_항목이_있을_때만_발행된다() {
+        List<Integer> published = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        AtomicInteger calls = new AtomicInteger();
+        // 홀수 번째 호출만 항목을 돌려주는 스텁.
+        AiEngineClient client = new AiEngineClient(null, false, false, true) {
+            @Override
+            public Optional<TranscriptDiffModels.DiffResponse> transcriptDiff(
+                    TranscriptDiffModels.DiffRequest request) {
+                boolean hasItem = calls.incrementAndGet() % 2 == 1;
+                return Optional.of(diffResponse(hasItem ? List.of(diffItem()) : List.of()));
+            }
+        };
+        TranscriptDiffPublisher recording = new TranscriptDiffPublisher(null) {
+            @Override
+            public void publish(String ticker, String callId, int sequence,
+                                TranscriptDiffModels.DiffResponse diff) {
+                if (diff != null && diff.hasItems()) {
+                    published.add(sequence);
+                }
+            }
+        };
+        DemoEarningsCallService svc = newServiceWithDiff(client, recording, 1);
+
+        int total = svc.start("ORCL").segmentCount();
+
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(calls.get()).isEqualTo(total));
+        await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(published).hasSize((total + 1) / 2));
+    }
+
+    private static TranscriptDiffModels.DiffResponse diffResponse(List<TranscriptDiffModels.DiffItem> items) {
+        return new TranscriptDiffModels.DiffResponse(true, "ORCL",
+                new TranscriptDiffModels.PreviousDocument("factset:ORCL:prev", "직전 콜",
+                        "2026-05-21", "FY2027Q1", null),
+                items, List.of());
+    }
+
+    private static TranscriptDiffModels.DiffItem diffItem() {
+        return new TranscriptDiffModels.DiffItem("guidance", "improved", "가이던스가 상향되었습니다.",
+                "현재 발언", "직전 발언", 0.8, 0.2, List.of());
+    }
+
+    private static TranscriptDiffPublisher noopDiffPublisher() {
+        return new TranscriptDiffPublisher(null) {
+            @Override
+            public void publish(String ticker, String callId, int sequence,
+                                TranscriptDiffModels.DiffResponse diff) {
+            }
+        };
     }
 
     private static FactCheckPublisher noopPublisher() {

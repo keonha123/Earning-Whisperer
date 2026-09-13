@@ -5,7 +5,9 @@ import com.earningwhisperer.domain.transcript.TranscriptService;
 import com.earningwhisperer.domain.transcript.TranscriptSessionRegistry;
 import com.earningwhisperer.infrastructure.aiengine.AiEngineClient;
 import com.earningwhisperer.infrastructure.aiengine.LiveFactCheckModels;
+import com.earningwhisperer.infrastructure.aiengine.TranscriptDiffModels;
 import com.earningwhisperer.infrastructure.websocket.FactCheckPublisher;
+import com.earningwhisperer.infrastructure.websocket.TranscriptDiffPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +51,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>팩트체크 스레드</b> — 단일 스레드. AI Engine 이 ticker 별 3문장 버퍼를 유지하고
  *       sequence 역행을 REJECTED 로 처리하므로, 제출은 <b>반드시 순서대로 직렬화</b>되어야
  *       한다. 단일 스레드 executor 가 그 순서를 보장한다.</li>
+ *   <li><b>과거 콜 대조 스레드</b> — 단일 스레드. 팩트체크와 나눠 쓰는 이유는 순서가 아니라
+ *       <b>지연</b>이다. 팩트체크 한 배치가 실측 약 5초이고 세그먼트 간격이 6초라 여유가
+ *       거의 없다. 같은 스레드에 대조를 얹으면 팩트체크 카드가 스크립트보다 뒤처진다.
+ *       대조는 문장을 버퍼링하지 않으므로 순서 제약이 없다.</li>
  * </ul>
  */
 @Slf4j
@@ -58,9 +64,13 @@ public class DemoEarningsCallService {
     /** 이 이상 큐가 쌓이면 팩트체크가 스크립트를 따라가지 못하고 있다는 뜻이다. */
     private static final int FACT_CHECK_QUEUE_WARN_THRESHOLD = 3;
 
+    /** 대조 큐 경고 기준. 팩트체크와 같은 기준을 쓴다. */
+    private static final int TRANSCRIPT_DIFF_QUEUE_WARN_THRESHOLD = 3;
+
     private final TranscriptService transcriptService;
     private final AiEngineClient aiEngineClient;
     private final FactCheckPublisher factCheckPublisher;
+    private final TranscriptDiffPublisher transcriptDiffPublisher;
     private final EarningsSummaryService summaryService;
     private final ObjectMapper objectMapper;
     private final String scriptPath;
@@ -114,6 +124,7 @@ public class DemoEarningsCallService {
             TranscriptService transcriptService,
             AiEngineClient aiEngineClient,
             FactCheckPublisher factCheckPublisher,
+            TranscriptDiffPublisher transcriptDiffPublisher,
             EarningsSummaryService summaryService,
             ObjectMapper objectMapper,
             @Value("${demo.earnings-call.script-path:data/demo-earnings-call.json}") String scriptPath,
@@ -123,6 +134,7 @@ public class DemoEarningsCallService {
         this.transcriptService = transcriptService;
         this.aiEngineClient = aiEngineClient;
         this.factCheckPublisher = factCheckPublisher;
+        this.transcriptDiffPublisher = transcriptDiffPublisher;
         this.summaryService = summaryService;
         this.objectMapper = objectMapper;
         this.scriptPath = scriptPath;
@@ -310,6 +322,7 @@ public class DemoEarningsCallService {
                 } else {
                     session.publishedCount = i + 1;
                     submitForFactCheck(session, raw, segmentEpochSecond, isLast);
+                    submitForTranscriptDiff(session, raw, segmentEpochSecond);
                 }
 
                 if (!isLast) {
@@ -479,6 +492,42 @@ public class DemoEarningsCallService {
     }
 
     /**
+     * 직전 콜 대조를 대조 스레드에 넘긴다. 재생 스레드는 여기서 대기하지 않는다.
+     *
+     * <p>모든 세그먼트를 넘긴다. 주제와 무관한 발언은 엔진이
+     * {@code current_chunk_not_material} 로 걸러 내고, 발행자가 빈 결과를 버린다.
+     * 백엔드에서 미리 주제를 판정하면 엔진의 판정 기준과 둘로 갈린다.
+     */
+    private void submitForTranscriptDiff(Session session, DemoEarningsCallScript.Segment raw, long timestamp) {
+        if (!aiEngineClient.isTranscriptDiffEnabled()) {
+            return;
+        }
+        TranscriptDiffModels.DiffRequest request =
+                TranscriptDiffModels.DiffRequest.forEarningsCall(session.ticker, raw.text(), timestamp);
+        int queued = session.transcriptDiff.getQueue().size();
+        if (queued >= TRANSCRIPT_DIFF_QUEUE_WARN_THRESHOLD) {
+            log.warn("[DemoCall] 과거 콜 대조 큐 적체 - ticker={} queued={} (AI Engine 응답이 재생 간격보다 느립니다. "
+                    + "ai-engine.transcript-diff-enabled=false 로 끄면 팩트체크만 남습니다)", session.ticker, queued);
+        }
+        try {
+            session.transcriptDiff.execute(() -> {
+                if (session.stopRequested.get()) {
+                    return;
+                }
+                aiEngineClient.transcriptDiff(request)
+                        .ifPresent(diff -> transcriptDiffPublisher.publish(
+                                session.ticker, session.callId, raw.sequence(), diff));
+            });
+        } catch (RejectedExecutionException e) {
+            log.debug("[DemoCall] 과거 콜 대조 제출 생략(종료 중) - ticker={} sequence={}",
+                    session.ticker, raw.sequence());
+        } catch (Exception e) {
+            log.warn("[DemoCall] 과거 콜 대조 제출 실패 - ticker={} sequence={} error={}",
+                    session.ticker, raw.sequence(), e.toString());
+        }
+    }
+
+    /**
      * 스크립트 세그먼트를 검증한다. 문제가 없으면 null, 있으면 사유 문자열.
      *
      * <p>여기서 잡지 않으면 시연 당일에야 드러나는 것들이다.
@@ -568,6 +617,8 @@ public class DemoEarningsCallService {
         final ExecutorService playback;
         /** 큐 깊이를 관찰해야 하므로 ThreadPoolExecutor 로 직접 만든다. */
         final ThreadPoolExecutor factCheck;
+        /** 과거 콜 대조 전용. 팩트체크와 지연을 나눠 갖기 위해 따로 둔다. */
+        final ThreadPoolExecutor transcriptDiff;
         volatile Future<?> playbackFuture;
         volatile int publishedCount;
 
@@ -577,33 +628,52 @@ public class DemoEarningsCallService {
             this.totalSegments = totalSegments;
             this.playback = singleThread("demo-call-play-" + ticker);
             this.factCheck = singleThread("demo-call-fc-" + ticker);
+            this.transcriptDiff = singleThread("demo-call-diff-" + ticker);
         }
 
         /**
-         * executor 2개를 종료한다.
+         * executor 3개를 종료한다.
          *
-         * <p>{@code graceMillis} 는 <b>팩트체크 큐</b>에만 적용된다. 0 이면 대기 없이 즉시
-         * 폐기한다(중지 경로 — HTTP 워커 스레드를 붙들지 않기 위해). 정상 종료 경로에서는
-         * 마지막 배치가 유실되지 않도록 AI Engine 타임아웃보다 넉넉한 값을 넘긴다.
+         * <p>{@code graceMillis} 는 <b>팩트체크 큐와 대조 큐</b>에만 적용된다. 0 이면 대기
+         * 없이 즉시 폐기한다(중지 경로 — HTTP 워커 스레드를 붙들지 않기 위해). 정상 종료
+         * 경로에서는 마지막 배치가 유실되지 않도록 AI Engine 타임아웃보다 넉넉한 값을 넘긴다.
+         *
+         * <p>대기는 두 큐가 나눠 쓴다. 각각에 전체 시간을 주면 최악의 경우 두 배를 기다리게
+         * 되고, 그만큼 중지 응답이 늦어진다.
          *
          * <p>주의: 이 메서드는 재생 스레드 자신이 호출하기도 한다. 따라서 여기에
          * {@code playback.awaitTermination} 을 추가하면 자기 자신을 기다리는 데드락이 된다.
          */
         void shutdown(long graceMillis) {
             factCheck.shutdown();
+            transcriptDiff.shutdown();
             playback.shutdown();
             if (graceMillis > 0) {
-                try {
-                    if (!factCheck.awaitTermination(graceMillis, TimeUnit.MILLISECONDS)) {
-                        log.warn("[DemoCall] 팩트체크 큐를 {}ms 내에 비우지 못했습니다 - ticker={} 남은 작업={}",
-                                graceMillis, ticker, factCheck.getQueue().size());
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+                long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(graceMillis);
+                awaitQuietly(factCheck, "팩트체크", remainingMillis(deadline));
+                awaitQuietly(transcriptDiff, "과거 콜 대조", remainingMillis(deadline));
             }
             factCheck.shutdownNow();
+            transcriptDiff.shutdownNow();
             playback.shutdownNow();
+        }
+
+        private static long remainingMillis(long deadlineNanos) {
+            return Math.max(0, TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()));
+        }
+
+        private void awaitQuietly(ThreadPoolExecutor executor, String label, long millis) {
+            if (millis <= 0) {
+                return;
+            }
+            try {
+                if (!executor.awaitTermination(millis, TimeUnit.MILLISECONDS)) {
+                    log.warn("[DemoCall] {} 큐를 {}ms 내에 비우지 못했습니다 - ticker={} 남은 작업={}",
+                            label, millis, ticker, executor.getQueue().size());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         private static ThreadPoolExecutor singleThread(String name) {
