@@ -102,9 +102,17 @@ function createWindow() {
   })
 }
 
+/** 트레이 아이콘 한 변 크기(px). 원본은 1024 라 줄여서 넘긴다. */
+const TRAY_ICON_SIZE = 18
+
 function createTray() {
   const icon = nativeImage.createFromPath(join(__dirname, '../../resources/icon.png'))
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
+  // 1024px 원본을 그대로 넘기면 메뉴 바 높이에 맞춰 축소되면서 흐려진다.
+  // 트레이 크기로 미리 줄여서 넘긴다.
+  const trayIcon = icon.isEmpty()
+    ? nativeImage.createEmpty()
+    : icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE })
+  tray = new Tray(trayIcon)
   tray.setToolTip('EarningWhisperer Terminal')
   tray.setContextMenu(
     Menu.buildFromTemplate([
