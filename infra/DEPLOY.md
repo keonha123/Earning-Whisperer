@@ -565,25 +565,46 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 인스톨러가 나오면 GitHub Releases 에서 내려받아 설치하는 방식이 됩니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
 
-빌드 설정(`trading-terminal/electron-builder.config.ts`, `npm run package`)은 이미 있지만 **실행한 적이 없습니다.**
+### 빌드 방법
+
+**Windows 에서 빌드해야 합니다.** `.exe` 인스톨러(NSIS)를 만드는 단계에서 Windows 도구가 필요합니다. macOS 에서는 `wine` 없이는 이 단계에 이르지 못합니다.
+
+빌드 시점에 환경변수를 넣어야 합니다. 패키징된 앱에는 `.env` 파일이 들어가지 않아서, 값이 없으면 서버에 붙지 못한 채 화면만 뜹니다 (#118).
+
+```powershell
+# 값을 주는 방법 1 — 셸 환경변수
+$env:BACKEND_URL="http://43.200.26.70:8082"
+$env:OAUTH_GOOGLE_CLIENT_ID="<keonha 에게 요청>"
+$env:OAUTH_KAKAO_CLIENT_ID="<keonha 에게 요청>"
+$env:EW_ALLOW_INSECURE_BACKEND="1"   # 주소가 평문 http 인 동안만 필요
+npm run package
+```
+
+값을 파일로 두려면 `trading-terminal/.env.production.local` 에 적습니다. 우선순위는 **셸 환경 > `.env.production.local` > `.env.production`** 이고, 두 파일 모두 git ignored 입니다.
+
+`BACKEND_URL` 이 평문 `http` 이고 localhost 가 아니면 빌드가 멈춥니다. 시연용으로 쓸 때만 `EW_ALLOW_INSECURE_BACKEND=1` 을 함께 지정합니다. 도메인과 HTTPS 가 적용되면(#120) 이 플래그가 필요 없어집니다.
+
+값 없이 패키징하면 앱이 기동할 때 대화상자로 알립니다. 조용히 `localhost` 로 동작하지 않습니다.
+
+산출물은 `trading-terminal/dist/` 에 나옵니다.
 
 ### 남은 작업
 
-인스톨러를 **만들고 검증**하는 데 필요한 것입니다.
-
 | 이슈 | 내용 |
 |---|---|
-| #118 | 패키징 빌드에 `BACKEND_URL` 등 환경변수 주입. 현재 상태로 패키징하면 기본값 `localhost:8082` 로 굳어 서버에 붙지 못합니다 |
-| #119 | 앱 아이콘 리소스(`resources/icon.png`) 추가. 현재 디렉터리가 없어 dev 트레이 아이콘도 비어 있습니다 |
-| #115 | 빌드 검증 — `keytar`(KIS 자격증명 저장), 시연 화면 표시, 무서명 경고 처리 |
-
-인스톨러를 **배포**하는 데 필요한 것입니다.
-
-| 이슈 | 내용 |
-|---|---|
+| #115 | 빌드 검증 — Windows 에서 `.exe` 생성, 설치 후 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시 |
 | #120 | 도메인 등록과 HTTPS 도입. 주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 하고, 팀 밖으로 배포하면 JWT 가 평문으로 오갑니다 |
+| #129 | 앱 아이콘 디자인 교체. 현재 아이콘은 임시입니다 |
 
-코드 서명은 하지 않을 경우 Windows SmartScreen 경고가 뜹니다. 차단은 아니고 **추가 정보 → 실행** 으로 넘어갈 수 있습니다. macOS 는 Gatekeeper 가 실행을 거부하므로 별도 판단이 필요합니다.
+#118(환경변수 주입)과 #119(아이콘 리소스)는 완료되었습니다.
+
+### 알아두실 점
+
+**설정 파일 이름이 동작에 걸립니다.** 현재 이름은 `trading-terminal/electron-builder.ts` 입니다. electron-builder 는 설정 파일을 `electron-builder.{yml,yaml,json,json5,toml,js,cjs,mjs,ts}` 이름으로만 찾습니다. 이전 이름인 `electron-builder.config.ts` 는 그 목록에 없어 **한 번도 읽히지 않았고**, `appId` · `productName` · `files` · `nsis` 설정이 전부 무시된 채로 패키징되고 있었습니다.
+
+**코드 서명을 하지 않으면 경고가 뜹니다.** Windows 는 SmartScreen 이 "Windows에서 PC를 보호했습니다" 창을 띄웁니다. 차단은 아니고 **추가 정보 → 실행** 으로 넘어갈 수 있습니다. 평판은 파일 해시 단위라 빌드마다 다시 뜹니다.
+
+**macOS 빌드는 실행되지 않습니다.** 서명하지 않은 맥 앱을 실행하면 최근 macOS 는 악성코드로 간주해 **차단하고 휴지통으로 옮깁니다**(2026-09-14 확인). 경고창 수준이 아닙니다. `electron-builder.ts` 에 `mac.target: dmg` 설정이 남아 있지만 배포 대상이 아닙니다.
 
 ---
 
