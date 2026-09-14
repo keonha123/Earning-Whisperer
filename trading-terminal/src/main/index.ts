@@ -1,6 +1,6 @@
-// dev 환경변수 로딩은 반드시 첫 import 여야 한다 (모듈 최상위 process.env 참조보다 먼저). 이유는 loadEnv.ts 참조.
-import './loadEnv'
-import { app, BrowserWindow, session, Tray, Menu, nativeImage, screen } from 'electron'
+// 환경변수 로딩은 반드시 첫 import 여야 한다 (모듈 최상위 process.env 참조보다 먼저). 이유는 loadEnv.ts 참조.
+import { missingPackagedEnv } from './loadEnv'
+import { app, BrowserWindow, session, Tray, Menu, nativeImage, screen, dialog } from 'electron'
 import keytar from 'keytar'
 import { join } from 'path'
 
@@ -157,10 +157,33 @@ app.whenReady().then(async () => {
     console.warn('[main] legacy 키 마이그레이션 실패 (무시):', e)
   }
   await restorePaperTradingFlag()
+  warnIfPackagedEnvMissing()
   registerAllHandlers()
   createWindow()
   createTray()
 })
+
+/**
+ * 패키징본에 환경변수가 주입되지 않았으면 알린다.
+ *
+ * 값이 없어도 앱은 뜬다 — `BACKEND_URL` 은 `localhost:8082` 로 떨어지고 로그인은
+ * client ID 가 없다는 예외로 실패한다. 화면에는 "서버가 응답하지 않는다" 로만 보여서
+ * 빌드가 잘못됐다는 사실이 드러나지 않는다. 그래서 기동 시 한 번 명시한다.
+ *
+ * 잘못된 인스톨러를 배포한 쪽에 원인을 알리는 목적이라 로그가 아니라 대화상자로 띄운다.
+ * 설치본에는 콘솔이 없다.
+ */
+function warnIfPackagedEnvMissing() {
+  if (missingPackagedEnv.length === 0) return
+  const names = missingPackagedEnv.join(', ')
+  console.error(`[main] 패키징 빌드에 환경변수가 주입되지 않았습니다: ${names}`)
+  dialog.showErrorBox(
+    '빌드 설정 오류',
+    `이 설치본에는 다음 값이 들어 있지 않습니다.\n\n${names}\n\n` +
+      '서버에 연결되지 않거나 로그인이 되지 않습니다. ' +
+      '빌드한 사람에게 알려 주세요 — 빌드 전에 해당 환경변수를 설정해야 합니다.',
+  )
+}
 
 app.on('window-all-closed', () => {
   // 트레이 상주 — 앱 종료 안 함
