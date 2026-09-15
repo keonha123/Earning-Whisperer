@@ -1,5 +1,34 @@
 # AI Engine Rebuild Track
 
+## GitHub Issue #123 Qdrant Evidence Retrieval Fix
+
+### Scope Guard
+- [x] Keep the change inside the AI engine evidence and transcript retrieval paths
+- [x] Preserve existing public HTTP request and response contracts
+- [x] Preserve the user's unrelated `infra/docker-compose.yml` modification
+- [x] Avoid destructive in-place Qdrant collection migration
+
+### Implementation
+- [x] Centralize embedding configuration/provider selection for hash, OpenAI, and Gemini
+- [x] Align external evidence store, payload schema, embedding version, and vector dimensions
+- [x] Keep transcript retrieval on its explicitly selected embedding configuration
+- [x] Merge request-scoped evidence without persisting transient documents
+- [x] Reuse one external retrieval result for prompt context and confidence policy
+
+### Validation
+- [x] Add provider, store/filter, payload compatibility, dimension, and analysis-flow regression tests
+- [x] Run focused pytest and compile validation
+- [x] Run the full AI Engine regression suite when the local runtime is available
+
+### Review
+- Added one strict embedding configuration/provider path shared by external evidence and transcript repositories.
+- Wired the analysis evidence repository to `store=external` with `EXTERNAL_EMBEDDING_*`, while transcripts use `EMBEDDING_*`.
+- Added compatible mapping for external `doc_id/text/url/published_at` payloads, embedding-version filters, and fail-fast Qdrant dimension checks.
+- Reused the single external retrieval result for both prompt citations and confidence policy, and merged transient request evidence without Qdrant upserts.
+- Added `EMBEDDING_VERSION` and documented versioned reindex requirements; no live collection was deleted or migrated.
+- Validation: issue-focused suite `38 passed`; local Qdrant writer-to-reader integration passed; compile and `git diff --check` passed.
+- Regression: `205 passed, 1 deselected` with the existing zero-latency Gemini coalescing timing test excluded. The separate review-model test passes when `GEMINI_REVIEW_MODEL` is pinned to its expected value; local `.env` currently overrides it.
+
 ## Live News Fact Check Service Track
 
 ### Scope Guard

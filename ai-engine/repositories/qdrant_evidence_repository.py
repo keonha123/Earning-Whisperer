@@ -6,7 +6,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
 try:
-    from core.external_retriever import HashEmbeddingProvider, OpenAIEmbeddingProvider
+    from core.external_retriever import HashEmbeddingProvider, build_embedding_provider, resolve_embedding_config
     from models.evidence_models import (
         EvidenceBackend,
         EvidenceCitation,
@@ -15,8 +15,9 @@ try:
         EvidenceRetrievalResult,
         EvidenceSourceType,
     )
+    from repositories.evidence_store_repository import EvidenceStoreRepository
 except ImportError:  # pragma: no cover
-    from ..core.external_retriever import HashEmbeddingProvider, OpenAIEmbeddingProvider
+    from ..core.external_retriever import HashEmbeddingProvider, build_embedding_provider, resolve_embedding_config
     from ..models.evidence_models import (
         EvidenceBackend,
         EvidenceCitation,
@@ -25,6 +26,7 @@ except ImportError:  # pragma: no cover
         EvidenceRetrievalResult,
         EvidenceSourceType,
     )
+    from .evidence_store_repository import EvidenceStoreRepository
 
 
 class EmbeddingProvider(Protocol):
@@ -158,7 +160,7 @@ def _published_at_text(value: Any) -> str | None:
 def _source_type(value: Any) -> EvidenceSourceType:
     raw = value.value if hasattr(value, "value") else str(value or EvidenceSourceType.OTHER.value)
     try:
-        return EvidenceSourceType(raw)
+        return EvidenceSourceType(str(raw).strip().upper())
     except ValueError:
         return EvidenceSourceType.OTHER
 
@@ -176,6 +178,30 @@ def _score_value(point: Any) -> float:
     if isinstance(point, Mapping):
         return float(point.get("score") or 0.0)
     return 0.0
+
+
+def _collection_vector_size(collection_info: Any) -> int | None:
+    def _field(value: Any, name: str) -> Any:
+        if isinstance(value, Mapping):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    config = _field(collection_info, "config")
+    params = _field(config, "params")
+    vectors = _field(params, "vectors")
+    if vectors is None:
+        return None
+    direct_size = _field(vectors, "size")
+    if direct_size is not None:
+        return int(direct_size)
+    if isinstance(vectors, Mapping):
+        candidate = vectors.get("dense")
+        if candidate is None and len(vectors) == 1:
+            candidate = next(iter(vectors.values()))
+        candidate_size = _field(candidate, "size")
+        if candidate_size is not None:
+            return int(candidate_size)
+    return None
 
 
 def _extract_points(response: Any) -> list[Any]:
@@ -231,6 +257,7 @@ class QdrantEvidenceRepository:
         store_name: str = "evidence",
         embedding_provider: EmbeddingProvider | None = None,
         embedding_dimension: int = 256,
+        embedding_version: str | None = None,
         chunk_size_chars: int = 1200,
         chunk_overlap_chars: int = 160,
     ) -> None:
@@ -238,6 +265,10 @@ class QdrantEvidenceRepository:
         self.store_name = str(store_name or "evidence")
         self.embedding_dimension = _parse_embedding_dimension(embedding_dimension)
         self.embedding_provider = embedding_provider or HashEmbeddingProvider(dimension=self.embedding_dimension)
+        self.embedding_version = str(
+            embedding_version
+            or f"{self.embedding_provider.name}-{self.embedding_dimension}-v1"
+        ).strip()
         self.chunk_size_chars = max(400, int(chunk_size_chars))
         self.chunk_overlap_chars = max(0, int(chunk_overlap_chars))
         self.client = client or self._build_client(url=url, path=path)
@@ -250,23 +281,22 @@ class QdrantEvidenceRepository:
         settings: Any,
         collection_name: str | None = None,
         store_name: str = "evidence",
+        embedding_scope: str = "default",
     ) -> "QdrantEvidenceRepository":
-        provider_name = str(getattr(settings, "embedding_provider", "hash") or "hash").strip().lower()
-        dimension = _parse_embedding_dimension(getattr(settings, "embedding_dimension", 256))
-        if provider_name == "openai":
-            provider = OpenAIEmbeddingProvider(
-                model=str(getattr(settings, "embedding_model", "text-embedding-3-small")),
-                dimension=dimension,
-            )
-        else:
-            provider = HashEmbeddingProvider(dimension=dimension)
+        embedding_config = resolve_embedding_config(settings, scope=embedding_scope)
+        provider = build_embedding_provider(
+            provider=embedding_config.provider,
+            model=embedding_config.model,
+            dimension=embedding_config.dimension,
+        )
         return cls(
             url=str(getattr(settings, "qdrant_url", "") or ""),
             path=str(getattr(settings, "qdrant_path", "") or ""),
             collection_name=collection_name or str(getattr(settings, "qdrant_collection_name", "earningwhisperer_evidence") or "earningwhisperer_evidence"),
             store_name=store_name,
             embedding_provider=provider,
-            embedding_dimension=dimension,
+            embedding_dimension=embedding_config.dimension,
+            embedding_version=embedding_config.version,
             chunk_size_chars=int(getattr(settings, "external_chunk_size_chars", 1200)),
             chunk_overlap_chars=int(getattr(settings, "external_chunk_overlap_chars", 160)),
         )
@@ -285,6 +315,15 @@ class QdrantEvidenceRepository:
 
     def _ensure_collection(self) -> None:
         if self.client.collection_exists(collection_name=self.collection_name):
+            if hasattr(self.client, "get_collection"):
+                collection_info = self.client.get_collection(collection_name=self.collection_name)
+                actual_dimension = _collection_vector_size(collection_info)
+                if actual_dimension is not None and actual_dimension != self.embedding_dimension:
+                    raise RuntimeError(
+                        "Qdrant vector dimension mismatch for "
+                        f"{self.collection_name}: collection={actual_dimension}, configured={self.embedding_dimension}. "
+                        "Create and reindex a versioned collection before switching embedding settings."
+                    )
             return
         try:
             from qdrant_client import models
@@ -339,6 +378,8 @@ class QdrantEvidenceRepository:
                     "chunk_index": index,
                     "chunk_text": chunk,
                     "reliability_score": float(document.reliability_score),
+                    "embedding_provider": self.embedding_provider.name,
+                    "embedding_version": self.embedding_version,
                 }
                 if entry.get("speaker"):
                     payload["speaker"] = entry["speaker"]
@@ -367,11 +408,17 @@ class QdrantEvidenceRepository:
         filters = [
             self._match_filter("store", self.store_name),
             self._match_filter("ticker", request.ticker.upper()),
+            self._match_filter("embedding_version", self.embedding_version),
         ]
         if request.source_types:
-            filters.append(self._any_filter("source_type", [item.value for item in request.source_types]))
+            source_values = [value for item in request.source_types for value in (item.value, item.value.lower())]
+            filters.append(self._any_filter("source_type", source_values))
         points = self._query(query_vector, limit=request.top_k, filters=filters)
         citations = [self._point_to_citation(point) for point in points]
+        citations = [item for item in citations if item.document_id and item.snippet]
+        if request.documents:
+            transient_result = EvidenceStoreRepository().search(request)
+            citations = self._merge_citations(citations, transient_result.evidence, limit=request.top_k)
         coverage = self._coverage_score(citations)
         confidence_adjustment = self._confidence_adjustment(coverage, citations)
         warnings: list[str] = []
@@ -397,6 +444,7 @@ class QdrantEvidenceRepository:
             self._match_filter("store", self.store_name),
             self._match_filter("ticker", ticker.upper()),
             self._match_filter("source_type", EvidenceSourceType.EARNINGS_CALL.value),
+            self._match_filter("embedding_version", self.embedding_version),
         ]
         points = self._scroll(filters=filters, limit=256)
         latest: dict[str, Any] | None = None
@@ -436,8 +484,10 @@ class QdrantEvidenceRepository:
             self._match_filter("ticker", ticker.upper()),
             self._match_filter("source_type", EvidenceSourceType.EARNINGS_CALL.value),
             self._match_filter("document_id", document_id),
+            self._match_filter("embedding_version", self.embedding_version),
         ]
-        return [self._point_to_citation(point) for point in self._query(query_vector, limit=top_k, filters=filters)]
+        citations = [self._point_to_citation(point) for point in self._query(query_vector, limit=top_k, filters=filters)]
+        return [item for item in citations if item.document_id and item.snippet]
 
     def _query(self, query_vector: Sequence[float], *, limit: int, filters: Sequence[Any]) -> list[Any]:
         query_filter = self._filter(filters)
@@ -541,24 +591,55 @@ class QdrantEvidenceRepository:
         return 0.0
 
     @staticmethod
+    def _merge_citations(
+        persistent: Sequence[EvidenceCitation],
+        transient: Sequence[EvidenceCitation],
+        *,
+        limit: int,
+    ) -> list[EvidenceCitation]:
+        merged: dict[tuple[str, str], EvidenceCitation] = {}
+        for citation in [*persistent, *transient]:
+            key = (citation.document_id, citation.snippet)
+            previous = merged.get(key)
+            if previous is None or citation.confidence_score > previous.confidence_score:
+                merged[key] = citation
+        ranked = sorted(
+            merged.values(),
+            key=lambda item: (-item.relevance_score, -item.confidence_score, item.document_id),
+        )
+        return ranked[: max(1, int(limit))]
+
+    @staticmethod
     def _point_to_citation(point: Any) -> EvidenceCitation:
         payload = _payload_value(point)
         score = max(0.0, min(1.0, _score_value(point)))
         reliability = max(0.0, min(1.0, float(payload.get("reliability_score") or 0.6)))
         confidence = max(0.0, min(1.0, 0.70 * score + 0.30 * reliability))
-        metadata = dict(payload.get("metadata_json") or {})
-        for key in ("speaker", "turn_index", "speaker_turn_count"):
+        raw_metadata = payload.get("metadata_json") or payload.get("metadata") or {}
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+        for key in ("speaker", "turn_index", "speaker_turn_count", "embedding_provider", "embedding_version", "form_type"):
             if key in payload:
                 metadata[key] = payload[key]
+        published_at = payload.get("published_at_text")
+        if published_at is None:
+            published_at = _published_at_text(payload.get("published_at"))
+        source = (
+            payload.get("source")
+            or payload.get("provider")
+            or metadata.get("provider")
+            or payload.get("form_type")
+            or payload.get("source_type")
+            or "unknown"
+        )
         return EvidenceCitation(
-            document_id=str(payload.get("document_id") or payload.get("chunk_id") or ""),
+            document_id=str(payload.get("document_id") or payload.get("doc_id") or payload.get("chunk_id") or ""),
             ticker=str(payload.get("ticker") or "").upper() or None,
             source_type=_source_type(payload.get("source_type")),
-            source=str(payload.get("source") or "unknown"),
+            source=str(source),
             title=payload.get("title"),
-            published_at=payload.get("published_at_text"),
-            source_url=payload.get("source_url"),
-            snippet=_clip(str(payload.get("chunk_text") or "")),
+            published_at=published_at,
+            source_url=payload.get("source_url") or payload.get("url"),
+            snippet=_clip(str(payload.get("chunk_text") or payload.get("text") or "")),
             relevance_score=round(score, 4),
             reliability_score=round(reliability, 4),
             confidence_score=round(confidence, 4),

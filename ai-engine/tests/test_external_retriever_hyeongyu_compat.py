@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from core.external_retriever import ExternalDocument, InMemoryExternalRetriever, QdrantExternalRetriever, _bm25_lexical_scores, external_retriever
 
 
@@ -145,6 +147,22 @@ def test_qdrant_external_retriever_versions_news_vectors_and_queries() -> None:
     assert results[0].semantic_score == 0.91
     assert "embedding_version" in str(client.query_filter)
     assert "openai-test-v1" in str(client.query_filter)
+
+
+def test_qdrant_external_retriever_rejects_collection_dimension_mismatch() -> None:
+    class DimensionMismatchClient(FakeQdrantClient):
+        def get_collection(self, *, collection_name):
+            return SimpleNamespace(
+                config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(size=768)))
+            )
+
+    with pytest.raises(RuntimeError, match="collection=768, configured=4"):
+        QdrantExternalRetriever(
+            client=DimensionMismatchClient(),
+            embedding_provider=StaticEmbeddingProvider(),
+            collection_name="existing_external",
+            embedding_version="openai-test-v1",
+        )
 
 
 def test_memory_retriever_excludes_future_and_expired_news() -> None:

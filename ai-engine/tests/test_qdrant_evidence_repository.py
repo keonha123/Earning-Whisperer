@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import main
+from core.external_retriever import ExternalDocument, QdrantExternalRetriever
 from config import Settings
 from models.evidence_models import EvidenceBackend, EvidenceDocument, EvidenceRetrievalRequest, EvidenceSourceType
 from repositories.qdrant_evidence_repository import QdrantEvidenceRepository
@@ -12,16 +14,18 @@ from repositories.qdrant_evidence_repository import QdrantEvidenceRepository
 
 class StaticEmbeddingProvider:
     name = "static"
-    dimension = 4
+    dimension = 32
 
     def embed_texts(self, texts):
-        return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
+        return [[1.0, *([0.0] * 31)] for _ in texts]
 
 
 class FakeQdrantClient:
     def __init__(self) -> None:
         self.points = []
         self.created = False
+        self.query_filter = None
+        self.scroll_filter = None
 
     def collection_exists(self, *, collection_name: str) -> bool:
         return True
@@ -33,9 +37,11 @@ class FakeQdrantClient:
         self.points.extend(points)
 
     def query_points(self, **kwargs):
+        self.query_filter = kwargs.get("query_filter")
         return SimpleNamespace(points=[{"payload": _payload(point), "score": 0.91} for point in self.points])
 
     def scroll(self, **kwargs):
+        self.scroll_filter = kwargs.get("scroll_filter")
         return ([{"payload": _payload(point), "score": 0.0} for point in self.points], None)
 
 
@@ -43,6 +49,17 @@ def _payload(point):
     if isinstance(point, dict):
         return point["payload"]
     return point.payload
+
+
+def _filter_match_value(query_filter, key):
+    conditions = query_filter.get("must", []) if isinstance(query_filter, dict) else query_filter.must
+    for condition in conditions:
+        condition_key = condition.get("key") if isinstance(condition, dict) else condition.key
+        if condition_key != key:
+            continue
+        match = condition.get("match") if isinstance(condition, dict) else condition.match
+        return match.get("value") if isinstance(match, dict) else match.value
+    return None
 
 
 def _repo(client: FakeQdrantClient | None = None) -> QdrantEvidenceRepository:
@@ -143,6 +160,7 @@ def test_qdrant_repository_finds_latest_transcript() -> None:
     assert latest is not None
     assert latest["document_id"] == "manual:NVDA:new"
     assert latest["fiscal_quarter"] == "Q4_2025"
+    assert _filter_match_value(repo.client.scroll_filter, "embedding_version") == "static-32-v1"
 
 
 def test_qdrant_repository_requires_location_without_injected_client() -> None:
@@ -175,6 +193,55 @@ def test_qdrant_repository_from_settings_allows_collection_override(tmp_path) ->
     assert repo.store_name == "transcript"
 
 
+def test_main_builders_select_external_and_transcript_embedding_scopes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        QdrantEvidenceRepository,
+        "_build_client",
+        staticmethod(lambda **kwargs: FakeQdrantClient()),
+    )
+    monkeypatch.setattr(QdrantEvidenceRepository, "_ensure_collection", lambda self: None)
+    settings = Settings(
+        VECTOR_STORE_BACKEND="qdrant",
+        QDRANT_PATH="",
+        QDRANT_URL="http://qdrant.test",
+        QDRANT_COLLECTION_NAME="main_evidence",
+        QDRANT_TRANSCRIPT_COLLECTION_NAME="transcript_evidence",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_MODEL="gemini-embedding-001",
+        EMBEDDING_DIMENSION=768,
+        EMBEDDING_VERSION="gemini-embedding-001-768-v1",
+        EXTERNAL_EMBEDDING_PROVIDER="openai",
+        EXTERNAL_EMBEDDING_MODEL="text-embedding-3-small",
+        EXTERNAL_EMBEDDING_DIMENSION=512,
+        EXTERNAL_EMBEDDING_VERSION="openai-text-embedding-3-small-512-v1",
+    )
+
+    evidence_repo = main._build_evidence_repository(settings, None)
+    transcript_repo = main._build_transcript_repository(settings)
+
+    assert evidence_repo.store_name == "external"
+    assert evidence_repo.embedding_provider.name == "openai"
+    assert evidence_repo.embedding_dimension == 512
+    assert evidence_repo.embedding_version == "openai-text-embedding-3-small-512-v1"
+    assert transcript_repo.store_name == "transcript"
+    assert transcript_repo.embedding_provider.name == "gemini"
+    assert transcript_repo.embedding_dimension == 768
+    assert transcript_repo.embedding_version == "gemini-embedding-001-768-v1"
+
+
+def test_qdrant_repository_rejects_unknown_embedding_provider(tmp_path) -> None:
+    settings = Settings(
+        VECTOR_STORE_BACKEND="qdrant",
+        QDRANT_PATH=str(tmp_path),
+        QDRANT_URL="",
+        EMBEDDING_PROVIDER="typo-provider",
+        EMBEDDING_DIMENSION=64,
+    )
+
+    with pytest.raises(ValueError, match="Unknown EMBEDDING_PROVIDER"):
+        QdrantEvidenceRepository.from_settings(settings=settings)
+
+
 def test_qdrant_repository_uses_store_name_in_payload() -> None:
     client = FakeQdrantClient()
     repo = QdrantEvidenceRepository(
@@ -203,6 +270,146 @@ def test_qdrant_repository_uses_store_name_in_payload() -> None:
 
     payload = _payload(client.points[0])
     assert payload["store"] == "transcript"
+    assert payload["embedding_provider"] == "static"
+    assert payload["embedding_version"] == "static-32-v1"
+
+
+def test_qdrant_repository_maps_external_payload_and_filters_embedding_version() -> None:
+    client = FakeQdrantClient()
+    client.points.append(
+        {
+            "payload": {
+                "store": "external",
+                "doc_id": "news:WMT:guidance",
+                "ticker": "WMT",
+                "text": "Walmart raised full-year sales guidance to four to five percent.",
+                "title": "Walmart guidance update",
+                "published_at": 1_788_748_800,
+                "source_type": "news",
+                "url": "https://example.test/wmt",
+                "embedding_provider": "gemini",
+                "embedding_version": "gemini-test-v1",
+                "metadata": {"provider": "wire", "reliability_score": 0.9},
+            },
+            "score": 0.91,
+        }
+    )
+    repo = QdrantEvidenceRepository(
+        client=client,
+        collection_name="external_evidence",
+        store_name="external",
+        embedding_provider=StaticEmbeddingProvider(),
+        embedding_dimension=4,
+        embedding_version="gemini-test-v1",
+    )
+
+    result = repo.search(EvidenceRetrievalRequest(ticker="WMT", query="raised guidance", top_k=3))
+
+    assert result.evidence
+    citation = result.evidence[0]
+    assert citation.document_id == "news:WMT:guidance"
+    assert citation.source_type == EvidenceSourceType.NEWS
+    assert citation.source == "wire"
+    assert citation.snippet.startswith("Walmart raised full-year")
+    assert citation.source_url == "https://example.test/wmt"
+    assert citation.published_at == "2026-09-07"
+    assert _filter_match_value(client.query_filter, "store") == "external"
+    assert _filter_match_value(client.query_filter, "embedding_version") == "gemini-test-v1"
+
+
+def test_qdrant_repository_reads_points_written_by_external_retriever(tmp_path) -> None:
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(path=str(tmp_path))
+    try:
+        provider = StaticEmbeddingProvider()
+        writer = QdrantExternalRetriever(
+            client=client,
+            embedding_provider=provider,
+            collection_name="shared_external",
+            embedding_version="static-32-v1",
+        )
+        writer.upsert_documents(
+            [
+                ExternalDocument(
+                    doc_id="news:WMT:integration",
+                    ticker="WMT",
+                    text="Walmart raised full-year sales guidance.",
+                    title="Walmart guidance",
+                    published_at=1_788_748_800,
+                    source_type="news",
+                    url="https://example.test/wmt-integration",
+                    metadata={"provider": "wire"},
+                )
+            ]
+        )
+        repository = QdrantEvidenceRepository(
+            client=client,
+            collection_name="shared_external",
+            store_name="external",
+            embedding_provider=provider,
+            embedding_dimension=32,
+            embedding_version="static-32-v1",
+        )
+
+        result = repository.search(
+            EvidenceRetrievalRequest(ticker="WMT", query="raised sales guidance", top_k=3)
+        )
+
+        assert result.missing_evidence is False
+        assert result.evidence[0].document_id == "news:WMT:integration"
+        assert result.evidence[0].snippet == "Walmart raised full-year sales guidance."
+        assert result.evidence[0].source_type == EvidenceSourceType.NEWS
+    finally:
+        client.close()
+
+
+def test_qdrant_repository_merges_request_scoped_documents_without_upsert() -> None:
+    client = FakeQdrantClient()
+    repo = QdrantEvidenceRepository(
+        client=client,
+        collection_name="external_evidence",
+        store_name="external",
+        embedding_provider=StaticEmbeddingProvider(),
+        embedding_dimension=4,
+    )
+
+    result = repo.search(
+        EvidenceRetrievalRequest(
+            ticker="WMT",
+            query="raised sales guidance",
+            documents=[
+                EvidenceDocument(
+                    document_id="request:WMT:guidance",
+                    ticker="WMT",
+                    source_type=EvidenceSourceType.EARNINGS_RELEASE,
+                    source="request payload",
+                    content="Walmart raised full-year sales guidance.",
+                    reliability_score=0.9,
+                )
+            ],
+        )
+    )
+
+    assert result.evidence
+    assert result.evidence[0].document_id == "request:WMT:guidance"
+    assert client.points == []
+
+
+def test_qdrant_repository_rejects_existing_collection_dimension_mismatch() -> None:
+    class DimensionMismatchClient(FakeQdrantClient):
+        def get_collection(self, *, collection_name):
+            return SimpleNamespace(
+                config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(size=768)))
+            )
+
+    with pytest.raises(RuntimeError, match="collection=768, configured=512"):
+        QdrantEvidenceRepository(
+            client=DimensionMismatchClient(),
+            collection_name="existing_evidence",
+            embedding_provider=StaticEmbeddingProvider(),
+            embedding_dimension=512,
+        )
 
 
 def test_transcript_repository_chunks_by_speaker_turn_and_stores_current_speaker_only() -> None:
