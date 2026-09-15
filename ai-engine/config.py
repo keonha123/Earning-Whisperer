@@ -145,6 +145,7 @@ class Settings(BaseSettings):
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
     embedding_dimension: int = Field(default=256, alias="EMBEDDING_DIMENSION")
+    embedding_version: str = Field(default="", alias="EMBEDDING_VERSION")
     external_embedding_provider: str = Field(default="", alias="EXTERNAL_EMBEDDING_PROVIDER")
     external_embedding_model: str = Field(default="", alias="EXTERNAL_EMBEDDING_MODEL")
     external_embedding_dimension: int = Field(default=0, alias="EXTERNAL_EMBEDDING_DIMENSION")
