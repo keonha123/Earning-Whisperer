@@ -1,5 +1,22 @@
 # AI Engine Rebuild Track
 
+## Transcript Diff LLM Response Shape Fix
+
+### Implementation
+- [x] Accept both `{ "items": [...] }` and top-level `[...]` Gemini responses
+- [x] Keep malformed or unsupported responses on the existing deterministic fallback path
+- [x] Clarify the prompt's expected top-level JSON object shape
+- [x] Add a regression test for the top-level array response observed in the live smoke test
+
+### Validation
+- [x] Run transcript ingestion/diff regression tests
+- [x] Re-run the live Gemini + Qdrant transcript diff smoke test without fallback warnings
+
+### Review
+- Targeted transcript ingestion/diff suite: `8 passed`.
+- Full AI Engine regression suite: `206 passed, 1 deselected`; the existing zero-latency Gemini coalescing timing test remains excluded.
+- Live Gemini + Qdrant smoke test returned three LLM-authored diff items with no fallback warnings.
+
 ## GitHub Issue #123 Qdrant Evidence Retrieval Fix
 
 ### Scope Guard
