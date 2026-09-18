@@ -1,6 +1,6 @@
 # 배포 운영 매뉴얼
 
-시연용 서버의 구성과 운영 방법입니다. 2026년 9월 13일 기준입니다.
+시연용 서버의 구성과 운영 방법입니다. 2026년 9월 18일 기준입니다.
 
 - 대상 독자: 팀원 전원
 - 다루는 범위: AWS 시연 서버의 구성 · 연결 · 재배포 · 검증 · 비용
@@ -37,9 +37,11 @@ AWS 는 서버가 존재하는 시간에 과금하기 때문에, **당분간 개
 | 인스턴스 | `ew-backend`, `i-0e932167662542771`, t3.small (2 vCPU / 2GB) |
 | OS · 디스크 | Ubuntu 24.04, 16GB gp3 |
 | 고정 IP | `43.200.26.70` (탄력적 IP) |
-| 보안 그룹 | `launch-wizard-2` — 인바운드 22(SSH), 8082(백엔드) 전체 개방 |
+| 보안 그룹 | `launch-wizard-2` — 인바운드 22(SSH) 만 개방 |
 | SSH | `ssh ubuntu@43.200.26.70` (키페어 `ew-mac`) |
-| 백엔드 | `http://43.200.26.70:8082` · 상태 확인 `GET /actuator/health` |
+| 도메인 | `logothea.com` (Cloudflare Registrar) |
+| 백엔드 | **`https://api.logothea.com`** · 상태 확인 `GET /actuator/health` |
+| 백엔드 (서버 내부) | `127.0.0.1:8082` — 루프백만 듣습니다. `cloudflared` 만 붙습니다 |
 | ai-engine | `127.0.0.1:8000` (외부 비공개, 백엔드만 호출) · 상태 확인 `GET /health` |
 | IAM CLI 사용자 | `ew-cli` (Describe/Start/Stop/ModifyInstanceAttribute 권한만) |
 
@@ -54,12 +56,42 @@ ai-engine.env         ai-engine 환경변수 (권한 600)
 docker-compose.yml    컨테이너 4개 정의 (저장소의 infra/aws/docker-compose.yml 과 동일)
 ```
 
-systemd 유닛 두 개는 `/etc/systemd/system/` 에 있고, 저장소의 `infra/aws/` 아래 같은 이름 파일과 동일합니다.
+터널 설정은 `/etc/cloudflared/` 에 따로 있습니다.
 
-- `earning-whisperer-backend.service`
-- `earning-whisperer-ai-engine.service`
+```
+config.yml            터널 라우팅 (저장소의 infra/aws/cloudflared-config.yml 과 동일)
+<터널ID>.json          터널 자격증명 (권한 600, 저장소에 없음)
+```
+
+systemd 유닛 세 개가 `/etc/systemd/system/` 에 있습니다.
+
+- `earning-whisperer-backend.service` — 저장소의 `infra/aws/` 아래 같은 이름 파일과 동일합니다
+- `earning-whisperer-ai-engine.service` — 위와 같습니다
+- `cloudflared.service` — `cloudflared service install` 이 생성한 것이라 저장소에 사본이 없습니다
 
 `*.env` 파일에는 시크릿이 들어 있어 저장소에 없습니다. 어떤 키가 필요한지는 `backend/.env.example` 과 `ai-engine/.env.example` 을 보시면 됩니다.
+
+### 요청이 서버까지 가는 경로
+
+```
+터미널 앱 ──HTTPS/WSS──▶ Cloudflare 엣지 ──터널──▶ cloudflared ──평문──▶ Spring Boot
+                        (TLS 인증서를 여기서 관리)              127.0.0.1:8082
+```
+
+TLS 인증서는 Cloudflare 엣지가 발급·갱신합니다. 서버에는 인증서 파일이 없고, Spring Boot 는
+평문 HTTP 로만 응답합니다. `cloudflared` 는 같은 기계 안에서 `127.0.0.1:8082` 로 붙기 때문에
+이 구간은 서버 밖으로 나가지 않습니다.
+
+백엔드와 ai-engine 은 모두 루프백(`127.0.0.1`)만 바인딩합니다. 서버에는 네트워크 인터페이스가
+여럿 있어서(`lo` 127.0.0.1, `ens5` 172.31.41.205, Docker 브리지 172.17·172.18.0.1) 기본값이면
+그 전부에서 요청을 받습니다. 루프백으로 좁혀 두면 보안 그룹이 열려도 애플리케이션이 외부
+요청을 받지 않습니다 — 방어가 두 겹이 됩니다.
+
+터널은 서버의 `cloudflared` 가 **바깥으로 나가서** 맺은 연결이고, 요청은 그 연결을 거꾸로 타고
+들어옵니다. 그래서 **인바운드 포트를 열지 않습니다.** 보안 그룹에 443 도 8082 도 없습니다.
+
+IP(`43.200.26.70`)로 직접 붙는 경로는 2026-09-18 에 닫았습니다. `http://43.200.26.70:8082` 로
+접속을 시도하면 응답하지 않습니다.
 
 ---
 
@@ -83,13 +115,17 @@ Windows 를 쓰신다면 **WSL 터미널과 Windows 터미널을 섞어 쓰지 �
 
 ### 3-2. 환경변수
 
-`trading-terminal/.env.example` 을 `.env.local` 로 복사하고 세 값을 채웁니다. `.env.local` 은 git ignored 라서 저장소를 받아도 들어 있지 않습니다.
+`trading-terminal/.env.example` 을 `.env.local` 로 복사하고 OAuth client ID 두 값을 채웁니다. `BACKEND_URL` 은 템플릿에 시연 서버 주소가 들어 있어 그대로 두면 됩니다. `.env.local` 은 git ignored 라서 저장소를 받아도 들어 있지 않습니다.
 
 ```
-BACKEND_URL=http://43.200.26.70:8082
+BACKEND_URL=https://api.logothea.com
 OAUTH_GOOGLE_CLIENT_ID=<keonha 에게 요청>
 OAUTH_KAKAO_CLIENT_ID=<keonha 에게 요청>
 ```
+
+**예전에 `http://43.200.26.70:8082` 를 쓰셨다면 위 주소로 바꿔야 합니다.** 그 경로는 닫혀 있고,
+열려 있더라도 서버가 refresh 토큰 쿠키에 `Secure` 를 붙이기 때문에 앱이 그 쿠키를 보관하지
+않습니다 — 로그인은 되지만 15분 뒤 액세스 토큰이 만료될 때 갱신에 실패합니다.
 
 두 OAuth client ID 는 새로 발급받지 않고 팀이 쓰는 값을 그대로 쓰면 됩니다. client secret 은 서버만 가지고 있어서 앱에는 필요하지 않습니다. **client ID 값은 저장소에 두지 않기로 했습니다** — `keonha` 에게 요청하시면 됩니다.
 
@@ -103,7 +139,7 @@ npm run dev
 
 Electron 창이 뜨면 정상입니다. 로그인은 구글 또는 카카오로 하시면 기본 브라우저가 열렸다가 앱으로 돌아옵니다.
 
-**서버가 켜져 있어야 로그인이 됩니다.** 평소에는 중지해 두므로, 브라우저에서 `http://43.200.26.70:8082/actuator/health` 를 열어 `{"status":"UP"}` 이 나오는지 먼저 확인하시면 됩니다. 응답이 없으면 인스턴스가 꺼져 있는 상태입니다 ([1장](#1-무엇이-올라가-있나)).
+**서버가 켜져 있어야 로그인이 됩니다.** 평소에는 중지해 두므로, 브라우저에서 `https://api.logothea.com/actuator/health` 를 열어 `{"status":"UP"}` 이 나오는지 먼저 확인하시면 됩니다. 응답이 없으면 인스턴스가 꺼져 있는 상태입니다 ([1장](#1-무엇이-올라가-있나)).
 
 ### 3-4. 각자 준비해야 하는 것 / 서버에 이미 있는 것
 
@@ -127,12 +163,14 @@ KIS 자격증명이 각자인 이유는 주문이 각자 계좌로 나가기 때
 
 ### 3-6. 안 될 때
 
-먼저 서버가 살아있는지 봅니다. 브라우저에서 `http://43.200.26.70:8082/actuator/health` 를 열어 `{"status":"UP"}` 이 나오면 서버는 정상입니다.
+먼저 서버가 살아있는지 봅니다. 브라우저에서 `https://api.logothea.com/actuator/health` 를 열어 `{"status":"UP"}` 이 나오면 서버는 정상입니다.
 
 | 증상 | 원인 |
 |---|---|
 | health 가 열리지 않는다 | **인스턴스가 중지 상태입니다.** 평소에는 꺼 두므로 가장 흔한 경우입니다 ([4장](#4-일상-운영)) |
 | 창은 뜨는데 데이터가 안 들어온다 | 서버가 꺼져 있거나, `BACKEND_URL` 이 비어 있거나 오타입니다. 값을 바꾼 뒤 앱을 재시작하지 않은 경우도 많습니다 |
+| 로그인은 되는데 15분쯤 뒤 로그아웃된다 | `BACKEND_URL` 이 아직 `http://43.200.26.70:8082` 입니다 ([3-2](#3-2-환경변수)) |
+| health 는 열리는데 앱만 안 붙는다 | 터널은 살아 있고 백엔드가 죽은 경우입니다. 이때 health 는 Cloudflare 가 아니라 백엔드가 응답하므로, 오히려 `502` 가 보이면 백엔드 쪽입니다 ([4장](#4-일상-운영)) |
 | 로그인 후 앱으로 돌아오지 않는다 | 9000 포트가 다른 프로그램에 점유되어 있습니다 |
 | 모듈을 찾지 못한다는 오류 | WSL · Windows 터미널 혼용 문제입니다 ([3-1](#3-1-받아오기)) |
 
@@ -143,12 +181,20 @@ KIS 자격증명이 각자인 이유는 주문이 각자 계좌로 나가기 때
 ### 상태 확인
 
 ```bash
-systemctl status earning-whisperer-backend earning-whisperer-ai-engine
+systemctl status earning-whisperer-backend earning-whisperer-ai-engine cloudflared
 docker ps
-curl -s localhost:8082/actuator/health     # {"status":"UP"}
+curl -s localhost:8082/actuator/health     # {"status":"UP"}  서버 안에서 직접
 curl -s localhost:8000/health              # {"status":"ok",...}
 free -h
 ```
+
+바깥에서 보려면 터널을 거쳐야 합니다.
+
+```bash
+curl -s https://api.logothea.com/actuator/health
+```
+
+둘 중 안쪽만 UP 이면 터널 문제이고, 둘 다 안 되면 백엔드 문제입니다.
 
 ### 로그
 
@@ -156,6 +202,7 @@ free -h
 journalctl -u earning-whisperer-backend -f
 journalctl -u earning-whisperer-ai-engine -f
 journalctl -u earning-whisperer-backend -u earning-whisperer-ai-engine -f   # 함께 보기
+journalctl -u cloudflared -f                                                # 터널
 ```
 
 ### 재시작
@@ -163,8 +210,12 @@ journalctl -u earning-whisperer-backend -u earning-whisperer-ai-engine -f   # �
 ```bash
 sudo systemctl restart earning-whisperer-backend
 sudo systemctl restart earning-whisperer-ai-engine
+sudo systemctl restart cloudflared                      # 터널
 cd /opt/earning-whisperer && docker compose restart     # DB · Redis · Qdrant
 ```
+
+`cloudflared` 를 재시작하면 연결이 다시 맺어지는 몇 초 동안 앱이 끊깁니다. 터미널은 재연결을
+스스로 시도하지만, 시연 중에는 건드리지 않는 편이 안전합니다.
 
 ### 켜고 끄기
 
@@ -173,7 +224,7 @@ aws ec2 start-instances --region ap-northeast-2 --instance-ids i-0e9321676625427
 aws ec2 stop-instances  --region ap-northeast-2 --instance-ids i-0e932167662542771
 ```
 
-탄력적 IP 가 붙어 있어 다시 켜도 주소는 같습니다. 컨테이너 4개는 `restart: unless-stopped`, systemd 유닛 2개는 `enabled` 상태라 부팅과 함께 자동으로 올라옵니다. 부팅 후 약 1분이면 health 가 UP 이 됩니다.
+도메인이 터널을 가리키고 있어 다시 켜도 주소는 같습니다. 컨테이너 4개는 `restart: unless-stopped`, systemd 유닛 3개(backend · ai-engine · cloudflared)는 `enabled` 상태라 부팅과 함께 자동으로 올라옵니다. 부팅 후 약 1분이면 health 가 UP 이 됩니다.
 
 콘솔에서 작업할 때는 우측 상단 리전이 서울인지 먼저 확인하세요. Billing 화면을 거치면 리전이 버지니아(us-east-1)로 바뀌어, 인스턴스가 사라진 것처럼 보입니다.
 
@@ -343,6 +394,19 @@ sudo systemctl restart earning-whisperer-backend
 | `FINNHUB_API_KEY` (backend) | Market 화면 시세와 주문 기준가가 전일종가에 묶입니다. 시가총액 상위 50종목 실시간 시세를 이 키로 받습니다 |
 | `FMP_API_KEY` (backend) | 전일종가가 갱신되지 않아 등락률이 틀어집니다. 무료 등급이 하루 250요청이라 여러 환경에서 같은 키를 쓰지 않는 편이 좋습니다 |
 
+이 서버에만 있고 로컬 `.env.example` 에는 없는 값이 둘 있습니다. HTTPS 도입과 함께 넣은 것입니다.
+
+| 키 | 값 | 비우면 |
+|---|---|---|
+| `JWT_COOKIE_SECURE` | `'true'` | 서버가 refresh 토큰 쿠키에 `Secure` 를 붙이지 않아 토큰이 평문으로 오갑니다 |
+| `SERVER_ADDRESS` | `'127.0.0.1'` | 백엔드가 모든 인터페이스에서 요청을 받습니다. 보안 그룹이 열리면 그대로 노출됩니다 |
+
+`SERVER_ADDRESS` 는 Spring Boot 의 `server.address` 에 대응합니다. `application.yml` 은 jar 안에
+있어 고치면 재빌드가 필요한데, 환경변수로 주면 서버에서 한 줄만 바꾸고 재시작하면 됩니다.
+
+로컬 개발에서는 둘 다 필요하지 않습니다. 로컬은 평문이어도 `BackendClient.ts` 가 `localhost` 를
+보안 채널로 취급하고, 바인딩을 좁힐 이유도 없습니다.
+
 ---
 
 ## 6. 근거 데이터 (Qdrant)
@@ -430,6 +494,18 @@ AWS 는 서버가 존재하는 시간에 과금합니다. 그래서 당분간 �
 
 시연이 끝나고 더 쓸 일이 없으면 인스턴스를 종료(Terminate)하고, 탄력적 IP 메뉴에서 `43.200.26.70` 을 릴리스해야 $0 이 됩니다. 탄력적 IP 는 인스턴스와 별개로 남아 계속 과금됩니다.
 
+AWS 외에 도메인 비용이 따로 있습니다.
+
+| 항목 | 비용 |
+|---|---|
+| `logothea.com` (Cloudflare Registrar) | 연 $10.46 · 자동 갱신 |
+| Cloudflare DNS · Tunnel · TLS 인증서 | $0 (무료 등급) |
+
+Cloudflare 는 도메인을 원가로 판매하므로 등록 대행 마진이 없습니다. 대신 네임서버를 Cloudflare
+로 쓰는 것이 전제인데, 터널을 쓰는 구성에서는 제약이 되지 않습니다.
+
+터널을 쓰는 동안은 탄력적 IP 가 필수는 아닙니다. 다만 SSH 접속에 쓰고 있어 유지합니다.
+
 ### 실측 메모리
 
 전체를 올린 상태의 측정값입니다.
@@ -470,7 +546,7 @@ ai-engine 의 `requirements.txt` 에는 torch · transformers 가 없습니다. 
 
 **1) 인스턴스 생성** — EC2 콘솔(서울)에서 Ubuntu 24.04, t3.small, 키페어 `ew-mac`, 스토리지 16GB gp3.
 
-**2) 보안 그룹** — 인바운드에 22, 8082 추가.
+**2) 보안 그룹** — 인바운드에 22 만 추가. 애플리케이션 트래픽은 터널을 지나므로 8082 도 443 도 열지 않습니다.
 
 **3) 탄력적 IP** — `43.200.26.70` 을 새 인스턴스에 연결.
 
@@ -510,9 +586,47 @@ sudo cp /opt/earning-whisperer/earning-whisperer-ai-engine.service /etc/systemd/
 sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai-engine
 ```
 
-**8) 근거 데이터 복원** — [6장](#6-근거-데이터-qdrant) 의 스냅샷 절차. 재적재는 하지 않습니다.
+**8) 터널** — `cloudflared` 를 설치하고 기존 터널 설정을 올립니다.
 
-**9) 검증** — [7장](#7-검증).
+```bash
+sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+  | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \
+  | sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+sudo apt-get update && sudo apt-get install -y cloudflared
+```
+
+터널 자체를 새로 만들어야 한다면 브라우저 인증이 한 번 필요합니다. 서버에는 브라우저가 없으므로
+출력된 URL 을 로컬로 옮겨 열어야 합니다.
+
+```bash
+# 서버에서 — 명령이 인증을 기다리며 떠 있으므로 백그라운드로 두고 URL 만 봅니다
+nohup cloudflared tunnel login > /tmp/cf-login.log 2>&1 &
+sleep 8 && cat /tmp/cf-login.log
+```
+
+출력된 URL 을 로컬 브라우저에 붙여 Cloudflare 에 로그인하고 `logothea.com` 을 승인하면,
+서버의 `cloudflared` 가 `~/.cloudflared/cert.pem` 을 자동으로 받아 갑니다. 이것은 TLS 인증서가 아니라 계정 인증서입니다 — 이 서버가 해당 도메인에 터널과 DNS 를
+만들 권한을 갖는다는 증명입니다.
+
+```bash
+cloudflared tunnel create ew-backend
+cloudflared tunnel route dns ew-backend api.logothea.com   # CNAME 을 자동 등록합니다
+```
+
+`infra/aws/cloudflared-config.yml` 을 `/etc/cloudflared/config.yml` 로 올리고, 생성된
+`<터널ID>.json` 을 같은 디렉터리에 권한 600 으로 둔 뒤 설정 파일의 `tunnel` · `credentials-file`
+값을 새 ID 로 맞춥니다.
+
+```bash
+sudo cloudflared --config /etc/cloudflared/config.yml service install
+sudo systemctl enable --now cloudflared
+```
+
+**9) 근거 데이터 복원** — [6장](#6-근거-데이터-qdrant) 의 스냅샷 절차. 재적재는 하지 않습니다.
+
+**10) 검증** — [7장](#7-검증).
 
 ---
 
@@ -520,7 +634,9 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 운영상 알고 있어야 하는 것들입니다.
 
-- **HTTPS 가 없습니다.** Electron 은 브라우저와 달리 mixed content 제약이 없어 `ws://` 도 동작합니다. JWT 가 평문으로 오가지만 시연과 테스트 계정 범위에서는 감수하기로 했습니다. 웹 프론트를 외부에 공개하거나 터미널 인스톨러를 배포하려면 TLS 가 필요합니다([12장](#12-trading-terminal-배포-계획), [부록 B](#부록-b--보류된-웹-배포-경로)).
+- **서버가 켜져 있지 않으면 터널도 없습니다.** Cloudflare 엣지는 살아 있지만 연결할 곳이 없어 `530`(Argo Tunnel error)이 돌아옵니다. 인스턴스가 꺼져 있을 때의 정상 응답으로 보시면 됩니다.
+- **가용성은 터널 하나에 달려 있습니다.** `cloudflared` 가 죽으면 백엔드가 살아 있어도 외부에서 붙을 수 없습니다. `systemctl status cloudflared` 를 상태 확인 목록에 넣어 두었습니다 ([4장](#4-일상-운영)).
+- **백엔드와 ai-engine 은 평문 HTTP 입니다.** 둘 다 루프백만 바인딩해 서버 밖으로 평문이 나가지 않습니다. 같은 서버에 다른 사용자가 있다면 이 전제가 깨집니다.
 - **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
@@ -573,16 +689,17 @@ sudo systemctl daemon-reload && sudo systemctl enable --now earning-whisperer-ai
 
 ```powershell
 # 값을 주는 방법 1 — 셸 환경변수
-$env:BACKEND_URL="http://43.200.26.70:8082"
+$env:BACKEND_URL="https://api.logothea.com"
 $env:OAUTH_GOOGLE_CLIENT_ID="<keonha 에게 요청>"
 $env:OAUTH_KAKAO_CLIENT_ID="<keonha 에게 요청>"
-$env:EW_ALLOW_INSECURE_BACKEND="1"   # 주소가 평문 http 인 동안만 필요
 npm run package
 ```
 
 값을 파일로 두려면 `trading-terminal/.env.production.local` 에 적습니다. 우선순위는 **셸 환경 > `.env.production.local` > `.env.production`** 이고, 두 파일 모두 git ignored 입니다.
 
-`BACKEND_URL` 이 평문 `http` 이고 localhost 가 아니면 빌드가 멈춥니다. 시연용으로 쓸 때만 `EW_ALLOW_INSECURE_BACKEND=1` 을 함께 지정합니다. 도메인과 HTTPS 가 적용되면(#120) 이 플래그가 필요 없어집니다.
+`BACKEND_URL` 이 평문 `http` 이고 localhost 가 아니면 빌드가 멈춥니다. `https://api.logothea.com`
+을 쓰는 동안은 이 검사에 걸리지 않습니다. `EW_ALLOW_INSECURE_BACKEND=1` 로 검사를 넘길 수는
+있지만, 이제 용도가 로컬 백엔드를 다른 기기에서 가리키는 경우 정도로 좁아졌습니다.
 
 값 없이 패키징하면 앱이 기동할 때 대화상자로 알립니다. 조용히 `localhost` 로 동작하지 않습니다.
 
@@ -593,10 +710,11 @@ npm run package
 | 이슈 | 내용 |
 |---|---|
 | #115 | 빌드 검증 — Windows 에서 `.exe` 생성, 설치 후 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시 |
-| #120 | 도메인 등록과 HTTPS 도입. 주소를 IP 로 박으면 서버를 옮길 때 인스톨러를 다시 만들어야 하고, 팀 밖으로 배포하면 JWT 가 평문으로 오갑니다 |
 | #129 | 앱 아이콘 디자인 교체. 현재 아이콘은 임시입니다 |
 
-#118(환경변수 주입)과 #119(아이콘 리소스)는 완료되었습니다.
+#118(환경변수 주입), #119(아이콘 리소스), #120(도메인과 HTTPS)은 완료되었습니다. 인스톨러에
+박히는 주소가 `https://api.logothea.com` 이 되어, 서버를 옮기더라도 인스톨러를 다시 만들 필요가
+없습니다.
 
 ### 알아두실 점
 

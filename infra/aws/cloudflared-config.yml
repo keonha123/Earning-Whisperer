@@ -1,0 +1,17 @@
+# Cloudflare Tunnel 설정. 서버의 /etc/cloudflared/config.yml 과 동일하게 유지합니다.
+#
+# 터널을 새로 만들면 ID 가 바뀌므로 아래 두 값을 새 ID 로 맞춰야 합니다.
+# 자격증명 파일(<터널ID>.json)은 접속 권한 그 자체라 저장소에 두지 않습니다.
+# 재구축 절차는 DEPLOY.md 9장에 있습니다.
+tunnel: 08f68ebe-ec39-4307-a9ba-51143765cd6c
+credentials-file: /etc/cloudflared/08f68ebe-ec39-4307-a9ba-51143765cd6c.json
+
+# 엣지로 맺는 연결 수. 기본 4 는 t3.small 에 과합니다.
+ha-connections: 2
+
+ingress:
+  - hostname: api.logothea.com
+    service: http://127.0.0.1:8082
+  # 정의되지 않은 호스트네임은 404 로 받습니다.
+  # hostname 없는 항목이 마지막에 없으면 cloudflared 가 기동을 거부합니다.
+  - service: http_status:404
