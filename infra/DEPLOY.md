@@ -41,7 +41,7 @@ AWS 는 서버가 존재하는 시간에 과금하기 때문에, **당분간 개
 | SSH | `ssh ubuntu@43.200.26.70` (키페어 `ew-mac`) |
 | 도메인 | `logothea.com` (Cloudflare Registrar) |
 | 백엔드 | **`https://api.logothea.com`** · 상태 확인 `GET /actuator/health` |
-| 백엔드 (서버 내부) | `*:8082` — 외부 접속은 보안 그룹에서 막고 있습니다 ([10장](#10-제약)) |
+| 백엔드 (서버 내부) | `127.0.0.1:8082` — 루프백만 듣습니다. `cloudflared` 만 붙습니다 |
 | ai-engine | `127.0.0.1:8000` (외부 비공개, 백엔드만 호출) · 상태 확인 `GET /health` |
 | IAM CLI 사용자 | `ew-cli` (Describe/Start/Stop/ModifyInstanceAttribute 권한만) |
 
@@ -80,8 +80,12 @@ systemd 유닛 세 개가 `/etc/systemd/system/` 에 있습니다.
 
 TLS 인증서는 Cloudflare 엣지가 발급·갱신합니다. 서버에는 인증서 파일이 없고, Spring Boot 는
 평문 HTTP 로만 응답합니다. `cloudflared` 는 같은 기계 안에서 `127.0.0.1:8082` 로 붙기 때문에
-이 구간은 서버 밖으로 나가지 않습니다. 다만 백엔드 자체는 `*:8082`(모든 인터페이스)에
-바인딩되어 있어, 외부 접속을 막는 것은 보안 그룹입니다 ([10장](#10-제약)).
+이 구간은 서버 밖으로 나가지 않습니다.
+
+백엔드와 ai-engine 은 모두 루프백(`127.0.0.1`)만 바인딩합니다. 서버에는 네트워크 인터페이스가
+여럿 있어서(`lo` 127.0.0.1, `ens5` 172.31.41.205, Docker 브리지 172.17·172.18.0.1) 기본값이면
+그 전부에서 요청을 받습니다. 루프백으로 좁혀 두면 보안 그룹이 열려도 애플리케이션이 외부
+요청을 받지 않습니다 — 방어가 두 겹이 됩니다.
 
 터널은 서버의 `cloudflared` 가 **바깥으로 나가서** 맺은 연결이고, 요청은 그 연결을 거꾸로 타고
 들어옵니다. 그래서 **인바운드 포트를 열지 않습니다.** 보안 그룹에 443 도 8082 도 없습니다.
@@ -390,6 +394,19 @@ sudo systemctl restart earning-whisperer-backend
 | `FINNHUB_API_KEY` (backend) | Market 화면 시세와 주문 기준가가 전일종가에 묶입니다. 시가총액 상위 50종목 실시간 시세를 이 키로 받습니다 |
 | `FMP_API_KEY` (backend) | 전일종가가 갱신되지 않아 등락률이 틀어집니다. 무료 등급이 하루 250요청이라 여러 환경에서 같은 키를 쓰지 않는 편이 좋습니다 |
 
+이 서버에만 있고 로컬 `.env.example` 에는 없는 값이 둘 있습니다. HTTPS 도입과 함께 넣은 것입니다.
+
+| 키 | 값 | 비우면 |
+|---|---|---|
+| `JWT_COOKIE_SECURE` | `'true'` | 서버가 refresh 토큰 쿠키에 `Secure` 를 붙이지 않아 토큰이 평문으로 오갑니다 |
+| `SERVER_ADDRESS` | `'127.0.0.1'` | 백엔드가 모든 인터페이스에서 요청을 받습니다. 보안 그룹이 열리면 그대로 노출됩니다 |
+
+`SERVER_ADDRESS` 는 Spring Boot 의 `server.address` 에 대응합니다. `application.yml` 은 jar 안에
+있어 고치면 재빌드가 필요한데, 환경변수로 주면 서버에서 한 줄만 바꾸고 재시작하면 됩니다.
+
+로컬 개발에서는 둘 다 필요하지 않습니다. 로컬은 평문이어도 `BackendClient.ts` 가 `localhost` 를
+보안 채널로 취급하고, 바인딩을 좁힐 이유도 없습니다.
+
 ---
 
 ## 6. 근거 데이터 (Qdrant)
@@ -619,7 +636,7 @@ sudo systemctl enable --now cloudflared
 
 - **서버가 켜져 있지 않으면 터널도 없습니다.** Cloudflare 엣지는 살아 있지만 연결할 곳이 없어 `530`(Argo Tunnel error)이 돌아옵니다. 인스턴스가 꺼져 있을 때의 정상 응답으로 보시면 됩니다.
 - **가용성은 터널 하나에 달려 있습니다.** `cloudflared` 가 죽으면 백엔드가 살아 있어도 외부에서 붙을 수 없습니다. `systemctl status cloudflared` 를 상태 확인 목록에 넣어 두었습니다 ([4장](#4-일상-운영)).
-- **백엔드는 평문 HTTP 로 `*:8082`(모든 인터페이스)에 바인딩되어 있습니다.** ai-engine 은 `127.0.0.1:8000` 으로 루프백만 듣는데 백엔드는 그렇지 않아, 외부 접속을 막는 것이 보안 그룹 하나뿐입니다. `server.address` 를 지정해 방어를 한 겹 더 두는 편이 낫습니다.
+- **백엔드와 ai-engine 은 평문 HTTP 입니다.** 둘 다 루프백만 바인딩해 서버 밖으로 평문이 나가지 않습니다. 같은 서버에 다른 사용자가 있다면 이 전제가 깨집니다.
 - **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
