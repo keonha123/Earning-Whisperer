@@ -289,6 +289,13 @@ echo "<받은 공개키>" >> ~/.ssh/authorized_keys
 실측으로 ai-engine 39초, backend 36초입니다(인스턴스 시작 시간 포함). `--start` · `--stop` 은
 AWS CLI 와 EC2 Start/Stop 권한이 필요하고, 나머지는 SSH 만 있으면 됩니다.
 
+동시에 두 사람이 돌리지 못하게 서버 쪽 락을 씁니다. 다른 배포가 진행 중이면 시작하지 않고
+알려 줍니다. `all` 은 ai-engine 을 먼저 올립니다 — 백엔드가 ai-engine 을 호출하는 방향이라
+순서를 뒤집으면 새 백엔드가 옛 ai-engine 과 맞지 않습니다.
+
+배포가 실패하면 인스턴스를 자동으로 끄지 않습니다. 원인을 봐야 하기 때문이고, 대신 정지
+명령을 출력합니다.
+
 스크립트가 다루지 않는 것이 셋 있습니다. 서버 환경변수 변경([5-3](#5-3-환경변수)), Qdrant 근거
 데이터 반영([6장](#6-근거-데이터-qdrant)), 컨테이너 재생성([4장](#4-일상-운영))입니다.
 
@@ -317,15 +324,23 @@ Windows 에서는 `gradlew.bat` 를 쓰고 `JAVA_HOME` 을 환경변수로 설�
 서버에서 교체합니다.
 
 ```bash
+BACKUP=/opt/earning-whisperer/backend.jar.$(date +%Y%m%d-%H%M%S)
+cp /opt/earning-whisperer/backend.jar "$BACKUP"
 sudo systemctl stop earning-whisperer-backend
-cp /opt/earning-whisperer/backend.jar /opt/earning-whisperer/backend.jar.prev
-mv /tmp/backend.jar /opt/earning-whisperer/backend.jar
+mv ~/backend.jar /opt/earning-whisperer/backend.jar
 sudo systemctl start earning-whisperer-backend
 journalctl -u earning-whisperer-backend -f
 ```
 
-실행 중인 jar 를 덮으면 JVM 이 클래스를 읽다 깨지므로 멈추고 바꿉니다. 이전 jar 를
-`backend.jar.prev` 로 남겨 두면 문제가 생겼을 때 되돌릴 수 있습니다 — 스크립트도 그렇게 합니다.
+실행 중인 jar 를 덮으면 JVM 이 클래스를 읽다 깨지므로 멈추고 바꿉니다.
+
+백업 이름에 시각을 넣는 이유가 있습니다. 고정 이름(`backend.jar.prev`)이면 깨진 jar 를 두 번
+배포할 때 백업이 깨진 jar 로 덮여 되돌릴 대상이 사라집니다. 스크립트는 시각으로 남기고 최근
+3개만 유지합니다(jar 하나가 63MB 입니다). 교체 중 실패하면 백업으로 되돌리고 서비스를 다시
+띄웁니다 — 멈춘 채로 끝나지 않게 합니다.
+
+전송을 `/tmp` 대신 홈 디렉터리에 받는 이유도 같은 성격입니다. `/tmp/backend.jar` 처럼 고정
+이름을 쓰면 두 사람이 몇 초 차이로 배포할 때 남의 jar 를 설치하게 됩니다.
 
 로그에 `Started EarningWhispererApplication` 이 찍히면 정상입니다. 20~30초 걸립니다.
 
@@ -333,7 +348,7 @@ journalctl -u earning-whisperer-backend -f
 
 ```bash
 cd ai-engine
-rsync -az --delete \
+rsync -az --delete --filter 'protect data/' \
   --exclude '.venv/' --exclude '__pycache__/' --exclude '*.pyc' \
   --exclude '.env' --exclude '.env.example' --exclude 'tests/' --exclude 'docs/' \
   --exclude '.pytest_cache/' --exclude 'data/yfinance_cache/' \
@@ -343,7 +358,9 @@ ssh ubuntu@43.200.26.70 'sudo systemctl restart earning-whisperer-ai-engine'
 
 `.env` 를 제외하는 이유는 서버 값이 `/opt/earning-whisperer/ai-engine.env` 에 따로 있고 `DATABASE_URL` · `REDIS_URL` · `QDRANT_URL` 이 서버 기준(`127.0.0.1`)으로 다르기 때문입니다.
 
-`requirements.txt` 를 고쳤다면 의존성도 갱신합니다. 스크립트는 서버 쪽 파일과 해시를 비교해 달라졌을 때만 이 명령을 돌립니다 — 매번 돌리면 배포가 몇 분 길어지고, 건너뛰면 새 의존성이 없어 기동에 실패합니다.
+`--filter 'protect data/'` 는 `data/` 아래를 삭제 대상에서 뺍니다. 저장소에 없는 서버 산출물이 그 아래에 생기는데, `--delete` 가 지우면 로컬에 없으니 되돌릴 수 없습니다. 파일 갱신은 그대로 이루어집니다.
+
+`requirements.txt` 를 고쳤다면 의존성도 갱신합니다. 스크립트는 서버 쪽 파일과 해시를 비교해 달라졌을 때만 이 명령을 돌립니다 — 매번 돌리면 배포가 몇 분 길어지고, 건너뛰면 새 의존성이 없어 기동에 실패합니다. 비교는 `rsync` **전에** 합니다. `rsync` 가 `requirements.txt` 까지 동기화하므로 뒤에 비교하면 항상 같아 보입니다.
 
 ```bash
 ssh ubuntu@43.200.26.70 '/opt/earning-whisperer/ai-engine/.venv/bin/pip install -r /opt/earning-whisperer/ai-engine/requirements.txt'
