@@ -276,6 +276,25 @@ echo "<받은 공개키>" >> ~/.ssh/authorized_keys
 
 ## 5. 재배포
 
+`infra/deploy.sh` 가 아래 절차를 담고 있습니다. 손으로 할 때 틀리기 쉬운 지점 — `JAVA_HOME`
+버전, `rsync` 제외 목록, 배포 후 health 확인 — 을 스크립트가 처리합니다.
+
+```bash
+./infra/deploy.sh ai-engine              # 동기화 + 재시작 + 확인
+./infra/deploy.sh backend                # 빌드 + 교체 + 확인
+./infra/deploy.sh all --start --stop     # 켜고 배포하고 다시 끄기
+./infra/deploy.sh backend --dry-run      # 무엇을 할지만 출력 (서버가 꺼져 있어도 됩니다)
+```
+
+실측으로 ai-engine 39초, backend 36초입니다(인스턴스 시작 시간 포함). `--start` · `--stop` 은
+AWS CLI 와 EC2 Start/Stop 권한이 필요하고, 나머지는 SSH 만 있으면 됩니다.
+
+스크립트가 다루지 않는 것이 셋 있습니다. 서버 환경변수 변경([5-3](#5-3-환경변수)), Qdrant 근거
+데이터 반영([6장](#6-근거-데이터-qdrant)), 컨테이너 재생성([4장](#4-일상-운영))입니다.
+
+아래는 스크립트가 실제로 수행하는 내용입니다. 손으로 할 때나 스크립트가 실패한 원인을 볼 때
+참고하시면 됩니다.
+
 ### 5-1. backend
 
 jar 는 로컬에서 빌드해 서버로 올립니다. `build.gradle` 이 **JDK 17 toolchain** 을 요구하므로 `JAVA_HOME` 이 JDK 17 을 가리켜야 합니다.
@@ -299,10 +318,14 @@ Windows 에서는 `gradlew.bat` 를 쓰고 `JAVA_HOME` 을 환경변수로 설�
 
 ```bash
 sudo systemctl stop earning-whisperer-backend
+cp /opt/earning-whisperer/backend.jar /opt/earning-whisperer/backend.jar.prev
 mv /tmp/backend.jar /opt/earning-whisperer/backend.jar
 sudo systemctl start earning-whisperer-backend
 journalctl -u earning-whisperer-backend -f
 ```
+
+실행 중인 jar 를 덮으면 JVM 이 클래스를 읽다 깨지므로 멈추고 바꿉니다. 이전 jar 를
+`backend.jar.prev` 로 남겨 두면 문제가 생겼을 때 되돌릴 수 있습니다 — 스크립트도 그렇게 합니다.
 
 로그에 `Started EarningWhispererApplication` 이 찍히면 정상입니다. 20~30초 걸립니다.
 
@@ -320,7 +343,7 @@ ssh ubuntu@43.200.26.70 'sudo systemctl restart earning-whisperer-ai-engine'
 
 `.env` 를 제외하는 이유는 서버 값이 `/opt/earning-whisperer/ai-engine.env` 에 따로 있고 `DATABASE_URL` · `REDIS_URL` · `QDRANT_URL` 이 서버 기준(`127.0.0.1`)으로 다르기 때문입니다.
 
-`requirements.txt` 를 고쳤다면 의존성도 갱신합니다.
+`requirements.txt` 를 고쳤다면 의존성도 갱신합니다. 스크립트는 서버 쪽 파일과 해시를 비교해 달라졌을 때만 이 명령을 돌립니다 — 매번 돌리면 배포가 몇 분 길어지고, 건너뛰면 새 의존성이 없어 기동에 실패합니다.
 
 ```bash
 ssh ubuntu@43.200.26.70 '/opt/earning-whisperer/ai-engine/.venv/bin/pip install -r /opt/earning-whisperer/ai-engine/requirements.txt'
