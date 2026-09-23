@@ -276,6 +276,33 @@ echo "<받은 공개키>" >> ~/.ssh/authorized_keys
 
 ## 5. 재배포
 
+`infra/deploy.sh` 가 아래 절차를 담고 있습니다. 손으로 할 때 틀리기 쉬운 지점 — `JAVA_HOME`
+버전, `rsync` 제외 목록, 배포 후 health 확인 — 을 스크립트가 처리합니다.
+
+```bash
+./infra/deploy.sh ai-engine              # 동기화 + 재시작 + 확인
+./infra/deploy.sh backend                # 빌드 + 교체 + 확인
+./infra/deploy.sh all --start --stop     # 켜고 배포하고 다시 끄기
+./infra/deploy.sh backend --dry-run      # 무엇을 할지만 출력 (서버가 꺼져 있어도 됩니다)
+```
+
+실측으로 ai-engine 39초, backend 36초입니다(인스턴스 시작 시간 포함). `--start` · `--stop` 은
+AWS CLI 와 EC2 Start/Stop 권한이 필요하고, 나머지는 SSH 만 있으면 됩니다.
+
+동시에 두 사람이 돌리지 못하게 서버에 락 파일(`/opt/earning-whisperer/.deploy.lock`)을 남깁니다.
+다른 배포가 진행 중이면 누가 언제 잡았는지 알려 주고 시작하지 않습니다. 배포가 비정상 종료해
+락만 남았다면 안내되는 명령으로 지우고 다시 시도하면 됩니다. `all` 은 ai-engine 을 먼저 올립니다 — 백엔드가 ai-engine 을 호출하는 방향이라
+순서를 뒤집으면 새 백엔드가 옛 ai-engine 과 맞지 않습니다.
+
+배포가 실패하면 인스턴스를 자동으로 끄지 않습니다. 원인을 봐야 하기 때문이고, 대신 정지
+명령을 출력합니다.
+
+스크립트가 다루지 않는 것이 셋 있습니다. 서버 환경변수 변경([5-3](#5-3-환경변수)), Qdrant 근거
+데이터 반영([6장](#6-근거-데이터-qdrant)), 컨테이너 재생성([4장](#4-일상-운영))입니다.
+
+아래는 스크립트가 실제로 수행하는 내용입니다. 손으로 할 때나 스크립트가 실패한 원인을 볼 때
+참고하시면 됩니다.
+
 ### 5-1. backend
 
 jar 는 로컬에서 빌드해 서버로 올립니다. `build.gradle` 이 **JDK 17 toolchain** 을 요구하므로 `JAVA_HOME` 이 JDK 17 을 가리켜야 합니다.
@@ -298,11 +325,27 @@ Windows 에서는 `gradlew.bat` 를 쓰고 `JAVA_HOME` 을 환경변수로 설�
 서버에서 교체합니다.
 
 ```bash
+BACKUP=/opt/earning-whisperer/backend.jar.$(date +%Y%m%d-%H%M%S)
+cp /opt/earning-whisperer/backend.jar "$BACKUP"
 sudo systemctl stop earning-whisperer-backend
-mv /tmp/backend.jar /opt/earning-whisperer/backend.jar
+mv ~/backend.jar /opt/earning-whisperer/backend.jar
 sudo systemctl start earning-whisperer-backend
 journalctl -u earning-whisperer-backend -f
 ```
+
+실행 중인 jar 를 덮으면 JVM 이 클래스를 읽다 깨지므로 멈추고 바꿉니다.
+
+백업 이름에 시각을 넣는 이유가 있습니다. 고정 이름(`backend.jar.prev`)이면 깨진 jar 를 두 번
+배포할 때 백업이 깨진 jar 로 덮여 되돌릴 대상이 사라집니다. 스크립트는 시각으로 남기고 최근
+3개만 유지합니다(jar 하나가 63MB 입니다). 교체 중 실패하면 백업으로 되돌리고 서비스를 다시
+띄웁니다 — 멈춘 채로 끝나지 않게 합니다.
+
+교체가 성공했는데 **새 jar 가 기동하지 못하는 경우**도 되돌립니다. systemd 는 프로세스가
+떴는지만 보고 성공을 돌려주므로, JVM 이 몇 초 뒤 죽으면 교체는 성공으로 끝나고 서비스만
+죽어 있습니다. 그래서 health 확인 실패도 롤백 대상으로 두었습니다.
+
+전송을 `/tmp` 대신 홈 디렉터리에 받는 이유도 같은 성격입니다. `/tmp/backend.jar` 처럼 고정
+이름을 쓰면 두 사람이 몇 초 차이로 배포할 때 남의 jar 를 설치하게 됩니다.
 
 로그에 `Started EarningWhispererApplication` 이 찍히면 정상입니다. 20~30초 걸립니다.
 
@@ -310,7 +353,7 @@ journalctl -u earning-whisperer-backend -f
 
 ```bash
 cd ai-engine
-rsync -az --delete \
+rsync -az --delete --filter 'protect /data/' \
   --exclude '.venv/' --exclude '__pycache__/' --exclude '*.pyc' \
   --exclude '.env' --exclude '.env.example' --exclude 'tests/' --exclude 'docs/' \
   --exclude '.pytest_cache/' --exclude 'data/yfinance_cache/' \
@@ -320,7 +363,9 @@ ssh ubuntu@43.200.26.70 'sudo systemctl restart earning-whisperer-ai-engine'
 
 `.env` 를 제외하는 이유는 서버 값이 `/opt/earning-whisperer/ai-engine.env` 에 따로 있고 `DATABASE_URL` · `REDIS_URL` · `QDRANT_URL` 이 서버 기준(`127.0.0.1`)으로 다르기 때문입니다.
 
-`requirements.txt` 를 고쳤다면 의존성도 갱신합니다.
+`--filter 'protect /data/'` 는 `data/` 아래를 삭제 대상에서 뺍니다. 앞의 `/` 는 전송 루트에 앵커해서, `pkg/data/` 처럼 다른 위치의 `data` 디렉터리까지 보호되지 않게 합니다. 저장소에 없는 서버 산출물이 그 아래에 생기는데, `--delete` 가 지우면 로컬에 없으니 되돌릴 수 없습니다. 파일 갱신은 그대로 이루어집니다.
+
+`requirements.txt` 를 고쳤다면 의존성도 갱신합니다. 스크립트는 서버 쪽 파일과 해시를 비교해 달라졌을 때만 이 명령을 돌립니다 — 매번 돌리면 배포가 몇 분 길어지고, 건너뛰면 새 의존성이 없어 기동에 실패합니다. 비교는 `rsync` **전에** 합니다. `rsync` 가 `requirements.txt` 까지 동기화하므로 뒤에 비교하면 항상 같아 보입니다.
 
 ```bash
 ssh ubuntu@43.200.26.70 '/opt/earning-whisperer/ai-engine/.venv/bin/pip install -r /opt/earning-whisperer/ai-engine/requirements.txt'
