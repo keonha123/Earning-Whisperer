@@ -3,10 +3,12 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import main
+from core.external_retriever import ExternalRetrievedDocument
 from core.prompt_builder import build_prompt
 from core.trade_plan import build_trade_plan
 from models.evidence_models import (
     ClaimDiffRequest,
+    EvidenceBackend,
     EvidenceDocument,
     EvidenceRetrievalRequest,
     EvidenceSourceType,
@@ -17,7 +19,7 @@ from models.evidence_models import (
     OmissionAnalysisRequest,
     TradeExitPlanRequest,
 )
-from models.request_models import MarketData
+from models.request_models import MarketData, SourceType
 from models.signal_models import GeminiAnalysisResult, StrategyDecision, StrategyName
 from services.evidence_retrieval_service import EvidenceRetrievalService
 
@@ -74,6 +76,74 @@ def test_prompt_accepts_explicit_evidence_context() -> None:
 
     assert "EVIDENCE_LAYER:" in prompt
     assert "RAG_EVIDENCE:" in prompt
+
+
+def test_analysis_retrieval_merges_request_and_external_evidence() -> None:
+    service = EvidenceRetrievalService()
+    result = service.retrieve_for_analysis(
+        ticker="NVDA",
+        current_chunk="Management raised guidance as data center demand remained strong.",
+        source_type=SourceType.EARNINGS_CALL,
+        market_data=MarketData(ticker="NVDA", current_price=100.0),
+        canonical_bundle=None,
+        source_health=None,
+        request_metadata={},
+        evidence_documents=_documents(),
+        external_documents=[
+            ExternalRetrievedDocument(
+                doc_id="news:NVDA:guidance",
+                text="NVIDIA raised guidance after stronger data center demand.",
+                score=0.91,
+                semantic_score=0.94,
+                title="NVIDIA guidance update",
+                published_at=1_788_748_800,
+                source_type="news",
+                url="https://example.test/nvda",
+                metadata={"provider": "wire", "reliability_score": 0.9},
+            )
+        ],
+    )
+
+    assert result.missing_evidence is False
+    assert result.confidence_adjustment >= 0.0
+    assert any(item.document_id == "news:NVDA:guidance" for item in result.evidence)
+    assert any(item.source == "2026 Q1 earnings release" for item in result.evidence)
+    assert "none retrieved" not in result.evidence_context
+    assert "NVIDIA raised guidance" in result.evidence_context
+
+
+def test_analysis_retrieval_reuses_external_results_without_second_repository_search() -> None:
+    class FailingPersistentRepository:
+        backend = EvidenceBackend.QDRANT
+
+        def search(self, request):
+            raise AssertionError("analysis should not repeat the persistent external search")
+
+    service = EvidenceRetrievalService(repository=FailingPersistentRepository())
+    result = service.retrieve_for_analysis(
+        ticker="WMT",
+        current_chunk="We are raising full-year sales guidance.",
+        source_type=SourceType.EARNINGS_CALL,
+        market_data=MarketData(ticker="WMT", current_price=100.0),
+        canonical_bundle=None,
+        source_health=None,
+        request_metadata={},
+        evidence_documents=None,
+        external_documents=[
+            ExternalRetrievedDocument(
+                doc_id="news:WMT:guidance",
+                text="Walmart raised its full-year sales guidance.",
+                score=0.9,
+                semantic_score=0.92,
+                source_type="news",
+                metadata={"provider": "wire", "reliability_score": 0.9},
+            )
+        ],
+    )
+
+    assert result.backend == EvidenceBackend.QDRANT
+    assert result.missing_evidence is False
+    assert result.evidence[0].document_id == "news:WMT:guidance"
 
 
 def test_fact_check_supported_and_contradicted() -> None:

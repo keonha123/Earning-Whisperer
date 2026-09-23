@@ -108,6 +108,14 @@ class EmbeddingProvider(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    provider: str
+    model: str
+    dimension: int
+    version: str
+
+
 class HashEmbeddingProvider:
     """Deterministic local embedding fallback for tests/offline runs."""
 
@@ -465,9 +473,13 @@ class QdrantExternalRetriever(BaseExternalRetriever):
         super().__init__(requested_backend=requested_backend, effective_backend=self.backend_name)
         settings = get_settings()
         self.collection_name = collection_name or settings.qdrant_collection_name
-        provider, model, dimension, version = _external_embedding_config(settings)
-        self.embedding_provider = embedding_provider or _build_embedding_provider(provider=provider, model=model, dimension=dimension)
-        self.embedding_version = embedding_version or version
+        embedding_config = resolve_embedding_config(settings, scope="external")
+        self.embedding_provider = embedding_provider or build_embedding_provider(
+            provider=embedding_config.provider,
+            model=embedding_config.model,
+            dimension=embedding_config.dimension,
+        )
+        self.embedding_version = embedding_version or embedding_config.version
         self.client = client or self._build_client(url=settings.qdrant_url, path=settings.qdrant_path)
         self._count_cache: dict[str, tuple[int, float]] = {}
         self._ensure_collection()
@@ -486,6 +498,16 @@ class QdrantExternalRetriever(BaseExternalRetriever):
 
     def _ensure_collection(self) -> None:
         if self.client.collection_exists(collection_name=self.collection_name):
+            if hasattr(self.client, "get_collection"):
+                collection_info = self.client.get_collection(collection_name=self.collection_name)
+                actual_dimension = _collection_vector_size(collection_info)
+                if actual_dimension is not None and actual_dimension != self.embedding_provider.dimension:
+                    raise RuntimeError(
+                        "Qdrant vector dimension mismatch for "
+                        f"{self.collection_name}: collection={actual_dimension}, "
+                        f"configured={self.embedding_provider.dimension}. "
+                        "Create and reindex a versioned collection before switching embedding settings."
+                    )
             return
         try:
             from qdrant_client import models
@@ -874,16 +896,16 @@ class ExternalRetrieverFacade:
     @staticmethod
     def _settings_signature() -> tuple[Any, ...]:
         settings = get_settings()
-        provider, model, dimension, version = _external_embedding_config(settings)
+        embedding_config = resolve_embedding_config(settings, scope="external")
         return (
             settings.vector_store_backend,
             settings.qdrant_url,
             settings.qdrant_path,
             settings.qdrant_collection_name,
-            provider,
-            model,
-            dimension,
-            version,
+            embedding_config.provider,
+            embedding_config.model,
+            embedding_config.dimension,
+            embedding_config.version,
         )
 
     @staticmethod
@@ -895,21 +917,69 @@ class ExternalRetrieverFacade:
         return InMemoryExternalRetriever(requested_backend=requested or "memory")
 
 
-def _external_embedding_config(settings: Any | None = None) -> tuple[str, str, int, str]:
+def resolve_embedding_config(settings: Any | None = None, *, scope: str = "default") -> EmbeddingConfig:
     settings = settings or get_settings()
-    provider = (settings.external_embedding_provider or settings.embedding_provider).strip().lower()
-    model = (settings.external_embedding_model or settings.embedding_model).strip()
-    dimension = int(settings.external_embedding_dimension or settings.embedding_dimension)
-    configured_version = str(settings.external_embedding_version or "").strip()
-    version = configured_version or f"{provider}-{model}-{dimension}-v1"
-    return provider, model, dimension, version
+    normalized_scope = str(scope or "default").strip().lower()
+    if normalized_scope == "external":
+        provider = str(
+            getattr(settings, "external_embedding_provider", "")
+            or getattr(settings, "embedding_provider", "hash")
+            or "hash"
+        ).strip().lower()
+        model = str(
+            getattr(settings, "external_embedding_model", "")
+            or getattr(settings, "embedding_model", "text-embedding-3-small")
+            or "text-embedding-3-small"
+        ).strip()
+        dimension = int(
+            getattr(settings, "external_embedding_dimension", 0)
+            or getattr(settings, "embedding_dimension", 256)
+            or 256
+        )
+        configured_version = str(getattr(settings, "external_embedding_version", "") or "").strip()
+    elif normalized_scope in {"default", "transcript"}:
+        provider = str(getattr(settings, "embedding_provider", "hash") or "hash").strip().lower()
+        model = str(
+            getattr(settings, "embedding_model", "text-embedding-3-small")
+            or "text-embedding-3-small"
+        ).strip()
+        dimension = int(getattr(settings, "embedding_dimension", 256) or 256)
+        configured_version = str(getattr(settings, "embedding_version", "") or "").strip()
+    else:
+        raise ValueError(f"Unknown embedding configuration scope: {scope}")
+    effective_dimension = max(32, dimension)
+    version = configured_version or f"{provider}-{model}-{effective_dimension}-v1"
+    return EmbeddingConfig(
+        provider=provider,
+        model=model,
+        dimension=effective_dimension,
+        version=version,
+    )
 
 
-def _build_embedding_provider(*, provider: str | None = None, model: str | None = None, dimension: int | None = None) -> EmbeddingProvider:
-    settings = get_settings()
-    effective_provider = (provider or settings.embedding_provider).strip().lower()
-    effective_model = (model or settings.embedding_model).strip()
-    effective_dimension = int(dimension or settings.embedding_dimension)
+def build_embedding_provider(
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    dimension: int | None = None,
+) -> EmbeddingProvider:
+    settings = None
+    if provider is None or model is None or dimension is None:
+        settings = get_settings()
+    effective_provider = str(
+        provider
+        or getattr(settings, "embedding_provider", "hash")
+        or "hash"
+    ).strip().lower()
+    effective_model = str(
+        model
+        or getattr(settings, "embedding_model", "text-embedding-3-small")
+        or "text-embedding-3-small"
+    ).strip()
+    effective_dimension = max(
+        32,
+        int(dimension or getattr(settings, "embedding_dimension", 256) or 256),
+    )
     if effective_provider == "openai":
         return OpenAIEmbeddingProvider(model=effective_model, dimension=effective_dimension)
     if effective_provider == "gemini":
@@ -919,6 +989,15 @@ def _build_embedding_provider(*, provider: str | None = None, model: str | None 
         # 의미 검색이 죽은 채로 조용히 돌아간다.
         raise ValueError(f"Unknown EMBEDDING_PROVIDER: {effective_provider}")
     return HashEmbeddingProvider(dimension=effective_dimension)
+
+
+def _external_embedding_config(settings: Any | None = None) -> tuple[str, str, int, str]:
+    config = resolve_embedding_config(settings, scope="external")
+    return config.provider, config.model, config.dimension, config.version
+
+
+def _build_embedding_provider(*, provider: str | None = None, model: str | None = None, dimension: int | None = None) -> EmbeddingProvider:
+    return build_embedding_provider(provider=provider, model=model, dimension=dimension)
 
 
 def _chunk_document(document: ExternalDocument) -> list[ExternalDocument]:
@@ -1158,13 +1237,39 @@ def _qdrant_points(response: Any) -> list[Any]:
     return []
 
 
+def _collection_vector_size(collection_info: Any) -> int | None:
+    def _field(value: Any, name: str) -> Any:
+        if isinstance(value, Mapping):
+            return value.get(name)
+        return getattr(value, name, None)
+
+    config = _field(collection_info, "config")
+    params = _field(config, "params")
+    vectors = _field(params, "vectors")
+    if vectors is None:
+        return None
+    direct_size = _field(vectors, "size")
+    if direct_size is not None:
+        return int(direct_size)
+    if isinstance(vectors, Mapping):
+        candidate = vectors.get(_QDRANT_COLLECTION_VECTOR_NAME)
+        if candidate is None and len(vectors) == 1:
+            candidate = next(iter(vectors.values()))
+        candidate_size = _field(candidate, "size")
+        if candidate_size is not None:
+            return int(candidate_size)
+    return None
+
+
 external_retriever = ExternalRetrieverFacade()
 
 
 __all__ = [
+    "EmbeddingConfig",
     "ExternalDocument",
     "ExternalRetrievedDocument",
     "ExternalRetrieverFacade",
+    "GeminiEmbeddingProvider",
     "HashEmbeddingProvider",
     "InMemoryExternalRetriever",
     "OpenAIEmbeddingProvider",
@@ -1173,5 +1278,7 @@ __all__ = [
     "_build_embedding_provider",
     "_business_signal_score",
     "_chunk_document",
+    "build_embedding_provider",
     "external_retriever",
+    "resolve_embedding_config",
 ]

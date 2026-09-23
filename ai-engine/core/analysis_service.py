@@ -48,7 +48,7 @@ class AnalysisService:
         self.transcript_enhancer = TranscriptSignalEnhancer()
         self.canonical_bundle_service = CanonicalBundleService()
         self.evidence_service = kwargs.get("evidence_service") or EvidenceRetrievalService()
-        self.external_retriever = external_retriever
+        self.external_retriever = kwargs.get("external_retriever") or external_retriever
         self.route_counts: dict[str, int] = {}
         self.source_health_telemetry = SourceHealthTelemetry()
         self.signal_data_hub = SignalDataHub()
@@ -118,6 +118,14 @@ class AnalysisService:
             ticker=ticker,
             feature_bundle=feature_bundle,
         )
+        external_documents = self.external_retriever.retrieve(
+            query=f"{ticker} {current_chunk}",
+            ticker=ticker,
+            chunk_timestamp=int((request_metadata or {}).get("timestamp") or 0),
+            preferred_sources=[],
+            lookback_days=int(getattr(settings, "rag_external_default_lookback_days", 30)),
+            limit=int(getattr(settings, "rag_top_k", 5)),
+        )
         evidence_result = self.evidence_service.retrieve_for_analysis(
             ticker=ticker,
             current_chunk=current_chunk,
@@ -127,19 +135,9 @@ class AnalysisService:
             source_health=source_health,
             request_metadata=dict(request_metadata or {}),
             evidence_documents=evidence_documents,
+            external_documents=external_documents,
         )
-        external_documents = self.external_retriever.retrieve(
-            query=f"{ticker} {current_chunk}",
-            ticker=ticker,
-            chunk_timestamp=int((request_metadata or {}).get("timestamp") or 0),
-            preferred_sources=[],
-            lookback_days=int(getattr(settings, "rag_external_default_lookback_days", 30)),
-            limit=int(getattr(settings, "rag_top_k", 5)),
-        )
-        external_context = self._external_evidence_context(external_documents)
         evidence_context = evidence_result.evidence_context
-        if external_context:
-            evidence_context = f"{external_context}\n\n{evidence_context}" if evidence_context else external_context
         phase1 = score_phase1(
             current_chunk=current_chunk,
             market_data=market_data,
@@ -290,19 +288,6 @@ class AnalysisService:
             ),
         )
         return parsed
-
-    @staticmethod
-    def _external_evidence_context(documents: list[object]) -> str:
-        if not documents:
-            return ""
-        lines = ["EXTERNAL_EVIDENCE:"]
-        for item in documents[:5]:
-            lines.append(
-                f"- {getattr(item, 'source_type', 'external')} | {getattr(item, 'title', '')} | "
-                f"score={float(getattr(item, 'score', 0.0) or 0.0):.2f} | {str(getattr(item, 'text', ''))[:420]}"
-            )
-        return "\n".join(lines)
-
 
 async def run_analysis(
     *,
