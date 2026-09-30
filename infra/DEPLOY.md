@@ -342,8 +342,10 @@ AWS CLI 와 EC2 Start/Stop 권한이 필요하고, 나머지는 SSH 만 있으�
 
 동시에 두 사람이 돌리지 못하게 서버에 락 파일(`/opt/earning-whisperer/.deploy.lock`)을 남깁니다.
 다른 배포가 진행 중이면 누가 언제 잡았는지 알려 주고 시작하지 않습니다. 배포가 비정상 종료해
-락만 남았다면 안내되는 명령으로 지우고 다시 시도하면 됩니다. `all` 은 ai-engine 을 먼저 올립니다 — 백엔드가 ai-engine 을 호출하는 방향이라
-순서를 뒤집으면 새 백엔드가 옛 ai-engine 과 맞지 않습니다.
+락만 남았다면 안내되는 명령으로 지우고 다시 시도하면 됩니다.
+
+`all` 은 ai-engine 을 먼저 올립니다 — 백엔드가 ai-engine 을 호출하는 방향이라 순서를 뒤집으면
+새 백엔드가 옛 ai-engine 과 맞지 않습니다.
 
 배포가 실패하면 인스턴스를 자동으로 끄지 않습니다. 원인을 봐야 하기 때문이고, 대신 정지
 명령을 출력합니다.
@@ -439,12 +441,12 @@ sudo systemctl restart earning-whisperer-backend
 | `FINNHUB_API_KEY` (backend) | Market 화면 시세와 주문 기준가가 전일종가에 묶입니다. 시가총액 상위 50종목 실시간 시세를 이 키로 받습니다 |
 | `FMP_API_KEY` (backend) | 전일종가가 갱신되지 않아 등락률이 틀어집니다. 무료 등급이 하루 250요청이라 여러 환경에서 같은 키를 쓰지 않는 편이 좋습니다 |
 
-이 서버에만 있고 로컬 `.env.example` 에는 없는 값이 둘 있습니다. HTTPS 도입과 함께 넣은 것입니다.
+HTTPS 를 도입하며 값을 바꾸거나 새로 넣은 것이 둘 있습니다. 서버와 로컬의 값이 달라야 하는 항목입니다.
 
-| 키 | 값 | 비우면 |
-|---|---|---|
-| `JWT_COOKIE_SECURE` | `'true'` | 서버가 refresh 토큰 쿠키에 `Secure` 를 붙이지 않아 토큰이 평문으로 오갑니다 |
-| `SERVER_ADDRESS` | `'127.0.0.1'` | 백엔드가 모든 인터페이스에서 요청을 받습니다. 보안 그룹이 열리면 그대로 노출됩니다 |
+| 키 | 서버 값 | `backend/.env.example` | 비우면 |
+|---|---|---|---|
+| `JWT_COOKIE_SECURE` | `'true'` | `false` 로 있습니다 | 서버가 refresh 토큰 쿠키에 `Secure` 를 붙이지 않아 토큰이 평문으로 오갑니다 |
+| `SERVER_ADDRESS` | `'127.0.0.1'` | 주석으로 있습니다 | 백엔드가 모든 인터페이스에서 요청을 받습니다. 보안 그룹이 열리면 그대로 노출됩니다 |
 
 `SERVER_ADDRESS` 는 Spring Boot 의 `server.address` 에 대응합니다. `application.yml` 은 jar 안에
 있어 고치면 재빌드가 필요한데, 환경변수로 주면 서버에서 한 줄만 바꾸고 재시작하면 됩니다.
@@ -476,7 +478,22 @@ ssh ubuntu@43.200.26.70 "curl -X POST 'http://localhost:6333/collections/earning
 
 compose 의 Qdrant 태그를 **로컬과 같은 버전으로 맞춰야 합니다** (현재 `v1.19.1`). 스냅샷은 하위 버전으로 복원되지 않습니다.
 
-컬렉션 `earningwhisperer_transcripts` 는 비어 있습니다. ai-engine 이 필요할 때 직접 만듭니다.
+### 트랜스크립트 컬렉션
+
+컬렉션 `earningwhisperer_transcripts` 에는 직전 콜(WMT FY27 Q1, 2026-05-21) 68청크가 들어 있습니다.
+"직전 분기 대비" 패널이 이 데이터를 찾아 씁니다.
+
+2026-09-19 까지 이 컬렉션이 서버에서 비어 있었습니다. 로컬에는 들어 있어서 로컬 테스트로는
+정상으로 보였고, 서버에서만 패널이 빈 채로 떴습니다. 컬렉션 이름이 문서에 "비어 있습니다" 로
+적혀 있던 것도 이유입니다 — 기록해 두고도 문제로 읽히지 않았습니다.
+
+서버를 재구축하거나 이 컬렉션을 비웠다면 위 뉴스와 같은 스냅샷 절차로 채우면 됩니다.
+컬렉션 이름만 `earningwhisperer_transcripts` 로 바꾸면 되고, 임베딩 호출이 0회입니다.
+
+원본은 `data_pipeline/data/demo/wmt-2026q1-transcript.json` 에 있습니다. 스냅샷이 없어
+원본에서 다시 적재해야 한다면 Gemini 임베딩을 68요청 씁니다 — 뉴스 395건과 달리 무료 등급
+한도에 부담이 없는 양입니다. 적재 도구는 #133 에 포함되어 있고, 머지되면 이 문단에 명령을
+적겠습니다.
 
 ---
 
@@ -611,7 +628,10 @@ sudo mkdir -p /opt/earning-whisperer && sudo chown ubuntu:ubuntu /opt/earning-wh
 - `infra/aws/docker-compose.yml`
 - `infra/aws/earning-whisperer-backend.service`, `earning-whisperer-ai-engine.service`
 - `backend.jar` ([5-1](#5-1-backend))
-- `backend.env` — `backend/.env.example` 기준으로 채우되 `DB_URL` 을 `jdbc:mysql://127.0.0.1:3306/earning_whisperer?...&allowPublicKeyRetrieval=true` 로 잡습니다
+- `backend.env` — `backend/.env.example` 기준으로 채우되 세 가지를 서버 값으로 바꿉니다 ([5-3](#5-3-환경변수))
+  - `DB_URL` 을 `jdbc:mysql://127.0.0.1:3306/earning_whisperer?...&allowPublicKeyRetrieval=true` 로
+  - `JWT_COOKIE_SECURE='true'` — `.env.example` 에는 `false` 로 있습니다. 그대로 두면 HTTPS 인데 토큰이 평문으로 오갑니다
+  - `SERVER_ADDRESS='127.0.0.1'` — `.env.example` 에 주석으로 있습니다. 빠뜨리면 백엔드가 모든 인터페이스에서 요청을 받아 방어가 보안 그룹 한 겹으로 돌아갑니다
 - compose 용 `.env` — `MYSQL_ROOT_PASSWORD`, `MYSQL_USER=user`, `MYSQL_PASSWORD`, `POSTGRES_PASSWORD`. `MYSQL_PASSWORD` 는 `backend.env` 의 `DB_PASSWORD` 와, `POSTGRES_PASSWORD` 는 `ai-engine.env` 의 `DATABASE_URL` 비밀번호와 같아야 합니다
 
 **6) 컨테이너와 백엔드 기동**
