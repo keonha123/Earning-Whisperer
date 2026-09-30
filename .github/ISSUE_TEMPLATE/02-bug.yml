@@ -60,7 +60,7 @@ body:
         "재현 실패" 라고 적고 관찰된 정황만 남겨 주셔도 도움이 됩니다. 간헐적 문제를
         한 번 보고 넘기지 않는 데 쓸 수 있습니다.
       placeholder: |
-        1. 터미널 실행 (BACKEND_URL=http://43.200.26.70:8082)
+        1. 터미널 실행 (BACKEND_URL=https://api.logothea.com)
         2. 로그인 → Market → WMT → TradingRoom
         3. "시연 시작" 클릭
         4. 3번째 세그먼트에서 팩트체크 카드가 뜨지 않음

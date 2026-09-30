@@ -1,6 +1,6 @@
 # 배포 운영 매뉴얼
 
-시연용 서버의 구성과 운영 방법입니다. 2026년 9월 18일 기준입니다.
+시연용 서버의 구성과 운영 방법입니다. 2026년 9월 30일 기준입니다.
 
 - 대상 독자: 팀원 전원
 - 다루는 범위: AWS 시연 서버의 구성 · 연결 · 재배포 · 검증 · 비용
@@ -12,7 +12,7 @@
 
 | 서버에 있는 것 | 서버에 없는 것 |
 |---|---|
-| backend (Spring Boot jar, systemd) | data_pipeline (STT · 웹캐스트 수집 — [10장](#10-제약) 참고) |
+| backend (Spring Boot jar, systemd) · cloudflared (터널, systemd) | data_pipeline (STT · 웹캐스트 수집 — [10장](#10-제약) 참고) |
 | ai-engine (FastAPI/uvicorn, systemd) | frontend (보류 — [부록 B](#부록-b--보류된-웹-배포-경로)) |
 | MySQL 8, Redis 7, PostgreSQL 16, Qdrant 1.19 (Docker) | trading-terminal (각자 노트북에서 실행 — [12장](#12-trading-terminal-배포-계획)) |
 
@@ -170,7 +170,7 @@ KIS 자격증명이 각자인 이유는 주문이 각자 계좌로 나가기 때
 | health 가 열리지 않는다 | **인스턴스가 중지 상태입니다.** 평소에는 꺼 두므로 가장 흔한 경우입니다 ([4장](#4-일상-운영)) |
 | 창은 뜨는데 데이터가 안 들어온다 | 서버가 꺼져 있거나, `BACKEND_URL` 이 비어 있거나 오타입니다. 값을 바꾼 뒤 앱을 재시작하지 않은 경우도 많습니다 |
 | 로그인은 되는데 15분쯤 뒤 로그아웃된다 | `BACKEND_URL` 이 아직 `http://43.200.26.70:8082` 입니다 ([3-2](#3-2-환경변수)) |
-| health 는 열리는데 앱만 안 붙는다 | 터널은 살아 있고 백엔드가 죽은 경우입니다. 이때 health 는 Cloudflare 가 아니라 백엔드가 응답하므로, 오히려 `502` 가 보이면 백엔드 쪽입니다 ([4장](#4-일상-운영)) |
+| health 가 `502` 로 열린다 | 터널은 살아 있는데 백엔드가 죽은 경우입니다. `502` 는 Cloudflare 가 터널 너머에 닿지 못했다는 뜻입니다 ([4장](#4-일상-운영)) |
 | 로그인 후 앱으로 돌아오지 않는다 | 9000 포트가 다른 프로그램에 점유되어 있습니다 |
 | 모듈을 찾지 못한다는 오류 | WSL · Windows 터미널 혼용 문제입니다 ([3-1](#3-1-받아오기)) |
 
@@ -260,7 +260,10 @@ aws ec2 stop-instances  --region ap-northeast-2 --instance-ids i-0e9321676625427
 | ai-engine 재배포 | IAM + 백엔드 인스턴스 SSH |
 | data_pipeline 배포 | IAM + 파이프라인 인스턴스 SSH ([11장](#11-data_pipeline-배포-계획)) |
 
----|---|---|
+무엇으로 무엇을 할 수 있는지는 이렇게 갈립니다.
+
+| 하려는 것 | 필요한 것 | 서버가 꺼져 있을 때 |
+|---|---|---|
 | 인스턴스 켜기 · 끄기 | **IAM** (콘솔 로그인 또는 액세스 키) | 가능 — 이 방법뿐입니다 |
 | SSH 접속 (로그 확인 · 재배포) | 서버의 `~/.ssh/authorized_keys` | 불가능 — 꺼진 서버에는 접속할 수 없습니다 |
 
@@ -351,7 +354,8 @@ AWS CLI 와 EC2 Start/Stop 권한이 필요하고, 나머지는 SSH 만 있으�
 명령을 출력합니다.
 
 스크립트가 다루지 않는 것이 셋 있습니다. 서버 환경변수 변경([5-3](#5-3-환경변수)), Qdrant 근거
-데이터 반영([6장](#6-근거-데이터-qdrant)), 컨테이너 재생성([4장](#4-일상-운영))입니다.
+데이터 반영([6장](#6-근거-데이터-qdrant)), 컨테이너 조작입니다. 컨테이너는 재시작만 [4장](#4-일상-운영)에
+있고, 정의를 바꿔 다시 만드는 절차는 [9장](#9-처음부터-다시-만들기) 6단계입니다.
 
 아래는 스크립트가 실제로 수행하는 내용입니다. 손으로 할 때나 스크립트가 실패한 원인을 볼 때
 참고하시면 됩니다.
@@ -363,7 +367,7 @@ jar 는 로컬에서 빌드해 서버로 올립니다. `build.gradle` 이 **JDK 
 ```bash
 cd backend
 ./gradlew bootJar -x test
-scp build/libs/earningwhisperer-backend-0.0.1-SNAPSHOT.jar ubuntu@43.200.26.70:/tmp/backend.jar
+scp build/libs/earningwhisperer-backend-0.0.1-SNAPSHOT.jar ubuntu@43.200.26.70:~/backend.jar
 ```
 
 JDK 가 여러 개 설치되어 있으면 빌드 전에 `JAVA_HOME` 을 지정하세요.
@@ -516,6 +520,8 @@ curl 'http://localhost:8000/v1/engine/evidence/readiness?ticker=WMT&as_of=178722
 # → {"ticker":"WMT","document_count":393,...,"ready":true}
 ```
 
+적재한 것은 395건인데 393 으로 나옵니다. `as_of` 가 콜 시각이라 그 뒤에 발행된 기사가 빠집니다.
+
 **3) 팩트체크 동작** — 문장 3개 단위 배치입니다. **2개까지는 `BUFFERING` 이고 LLM 이 돌지 않습니다.** `is_session_end=true` 로 1~2문장만 보내면 `partial_batch_discarded` 로 버려집니다.
 
 ```bash
@@ -628,10 +634,11 @@ sudo mkdir -p /opt/earning-whisperer && sudo chown ubuntu:ubuntu /opt/earning-wh
 - `infra/aws/docker-compose.yml`
 - `infra/aws/earning-whisperer-backend.service`, `earning-whisperer-ai-engine.service`
 - `backend.jar` ([5-1](#5-1-backend))
-- `backend.env` — `backend/.env.example` 기준으로 채우되 세 가지를 서버 값으로 바꿉니다 ([5-3](#5-3-환경변수))
+- `backend.env` — `backend/.env.example` 기준으로 채우되 아래를 서버 값으로 바꿉니다 ([5-3](#5-3-환경변수))
   - `DB_URL` 을 `jdbc:mysql://127.0.0.1:3306/earning_whisperer?...&allowPublicKeyRetrieval=true` 로
   - `JWT_COOKIE_SECURE='true'` — `.env.example` 에는 `false` 로 있습니다. 그대로 두면 HTTPS 인데 토큰이 평문으로 오갑니다
   - `SERVER_ADDRESS='127.0.0.1'` — `.env.example` 에 주석으로 있습니다. 빠뜨리면 백엔드가 모든 인터페이스에서 요청을 받아 방어가 보안 그룹 한 겹으로 돌아갑니다
+  - `GOOGLE_REDIRECT_URIS` · `KAKAO_REDIRECT_URIS` 에 `http://localhost:9000/auth/callback` 을 넣습니다. `.env.example` 값은 포트가 `3000` 인데 그것은 웹 프론트 기준이고, 터미널 앱의 콜백 포트는 `9000` 입니다 ([3-2](#3-2-환경변수)). 빠뜨리면 로그인 창은 뜨는데 콜백에서 막힙니다
 - compose 용 `.env` — `MYSQL_ROOT_PASSWORD`, `MYSQL_USER=user`, `MYSQL_PASSWORD`, `POSTGRES_PASSWORD`. `MYSQL_PASSWORD` 는 `backend.env` 의 `DB_PASSWORD` 와, `POSTGRES_PASSWORD` 는 `ai-engine.env` 의 `DATABASE_URL` 비밀번호와 같아야 합니다
 
 **6) 컨테이너와 백엔드 기동**
@@ -777,9 +784,9 @@ npm run package
 | #115 | 빌드 검증 — Windows 에서 `.exe` 생성, 설치 후 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시 |
 | #129 | 앱 아이콘 디자인 교체. 현재 아이콘은 임시입니다 |
 
-#118(환경변수 주입), #119(아이콘 리소스), #120(도메인과 HTTPS)은 완료되었습니다. 인스톨러에
-박히는 주소가 `https://api.logothea.com` 이 되어, 서버를 옮기더라도 인스톨러를 다시 만들 필요가
-없습니다.
+#118(환경변수 주입)과 #119(아이콘 리소스)는 완료되었습니다. #120(도메인과 HTTPS)은 서버 적용이
+끝났고 시연 완주 리허설만 남아 열려 있습니다. 인스톨러에 박히는 주소가 `https://api.logothea.com`
+이 되어, 서버를 옮기더라도 인스톨러를 다시 만들 필요가 없습니다.
 
 ### 알아두실 점
 
