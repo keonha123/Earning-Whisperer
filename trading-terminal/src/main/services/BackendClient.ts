@@ -286,6 +286,28 @@ export type DemoStartResult =
   | { ok: false; reason: 'ALREADY_RUNNING' | 'FAILED'; message: string }
 
 export const BackendClient = {
+  /**
+   * 액세스 토큰을 갱신한다. REST 401 재시도 경로 밖에서 갱신이 필요한 쪽을 위한 입구다.
+   *
+   * STOMP 가 그 경우다 — 서버가 인증 실패로 연결을 거부해도 그건 HTTP 401 이 아니라
+   * STOMP ERROR 프레임이라 응답 인터셉터를 타지 않는다. 갱신 수단이 없으면 만료된
+   * 토큰으로 재연결을 영원히 반복한다.
+   *
+   * 갱신이 이미 진행 중이면 그 약속을 공유한다. 최종 실패(refresh token 무효)는
+   * 등록된 절차를 태워 세션을 정리한다.
+   */
+  async refreshSession(): Promise<void> {
+    if (!mainState.backendRefreshToken) {
+      throw new Error('보관 중인 refresh token 이 없습니다.')
+    }
+    try {
+      await refreshAccessToken()
+    } catch (e) {
+      if (isSessionEnded(e)) endSession()
+      throw e
+    }
+  },
+
   async login(email: string, password: string): Promise<{ token: string; user: unknown }> {
     const { data } = await http.post('/api/v1/auth/login', { email, password })
     return { token: data.access_token, user: data }

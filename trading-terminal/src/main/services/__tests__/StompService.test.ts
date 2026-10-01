@@ -18,6 +18,7 @@ vi.mock('../TradeExecutor', () => ({
 vi.mock('../BackendClient', () => ({
   BackendClient: {
     fetchPendingTrades: vi.fn(async () => []),
+    refreshSession: vi.fn(async () => undefined),
   },
 }))
 
@@ -94,6 +95,8 @@ const last = (): FakeClient => clients[clients.length - 1]
  */
 async function loadService() {
   vi.resetModules()
+  const { BackendClient } = await import('../BackendClient')
+  vi.mocked(BackendClient.refreshSession).mockResolvedValue(undefined)
   const stompjs = await import('@stomp/stompjs')
   vi.mocked(stompjs.Client).mockImplementation(
     (function (config: StompCallbacks) {
@@ -105,8 +108,11 @@ async function loadService() {
   // resetModules 로 electron mock 도 새로 만들어지므로 같은 레지스트리에서 가져온다.
   const { BrowserWindow } = await import('electron')
   const { StompService } = await import('../StompService')
-  return { StompService, mainState, BrowserWindow }
+  return { StompService, mainState, BrowserWindow, BackendClient }
 }
+
+/** 백엔드가 인증 실패로 끊었을 때 보내는 ERROR 프레임. 서버 인터셉터의 메시지와 같아야 한다. */
+const AUTH_ERROR_FRAME = { headers: { message: 'STOMP 인증 실패' } }
 
 /** renderer 로 push 된 WS_STATUS_CHANGED 중 특정 status 만 센다. */
 function countStatusPush(sendSpy: ReturnType<typeof vi.fn>, status: string): number {
@@ -232,5 +238,135 @@ describe('StompService — 재연결 중첩 방지', () => {
       vi.advanceTimersByTime(1)
       expect(clients).toHaveLength(i + 2)
     }
+  })
+})
+
+describe('StompService — 인증 실패 후 재연결', () => {
+  /*
+   * 액세스 토큰 수명은 15분이다. 서버가 만료된 토큰의 연결을 거부하게 된 뒤로는,
+   * 갱신 없이 재연결하면 같은 토큰으로 영원히 거부당한다. REST 의 401 재시도 경로는
+   * STOMP ERROR 프레임을 보지 못하므로 StompService 가 직접 갱신해야 한다.
+   */
+  it('인증 실패 ERROR 프레임을 받으면 토큰을 갱신하고 지연 없이 재연결한다', async () => {
+    const { StompService, BackendClient } = await loadService()
+    StompService.connect()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+
+    /*
+     * 타이머를 전진시키지 않고 마이크로태스크만 비운다. vi.waitFor 는 fake timer 가 켜져
+     * 있으면 폴링마다 타이머를 전진시키므로, 그걸 쓰면 백오프를 거쳐 재연결해도 통과한다.
+     */
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(BackendClient.refreshSession).toHaveBeenCalledTimes(1)
+    // 타이머를 전혀 전진시키지 않았는데 새 client 가 생겼다 = 백오프를 거치지 않았다
+    expect(clients).toHaveLength(2)
+  })
+
+  it('갱신한 토큰으로도 거부당하면 갱신을 반복하지 않고 백오프로 넘어간다', async () => {
+    /*
+     * refreshSession 성공은 refresh token 이 멀쩡하다는 뜻일 뿐, 새 액세스 토큰이 통과한다는
+     * 보장이 아니다. 서버 비밀키가 바뀌었거나 시계가 어긋나면 갱신한 토큰도 거부되는데,
+     * 그때마다 다시 갱신하면 지연 없는 재연결이 계속 돌아 자기 백엔드를 두드린다.
+     */
+    const { StompService, BackendClient } = await loadService()
+    StompService.connect()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(clients).toHaveLength(2)
+
+    // 갱신한 토큰으로 붙은 두 번째 연결도 거부당한다
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(BackendClient.refreshSession).toHaveBeenCalledTimes(1)
+    expect(clients).toHaveLength(2)
+
+    // 백오프로 넘어가 2초 뒤에 붙는다
+    vi.advanceTimersByTime(2000)
+    expect(clients).toHaveLength(3)
+  })
+
+  it('연결에 성공하면 다음 인증 실패에서 다시 갱신한다', async () => {
+    const { StompService, BackendClient } = await loadService()
+    StompService.connect()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // 갱신한 토큰으로 연결에 성공했다
+    last().onConnect!()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(BackendClient.refreshSession).toHaveBeenCalledTimes(2)
+  })
+
+  it('인증 실패가 아닌 에러는 토큰을 갱신하지 않고 기존 백오프로 재연결한다', async () => {
+    const { StompService, BackendClient } = await loadService()
+    StompService.connect()
+
+    last().connected = false
+    last().onStompError!({ headers: { message: 'destination 을 찾을 수 없습니다' } })
+
+    expect(BackendClient.refreshSession).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(2000)
+    expect(clients).toHaveLength(2)
+  })
+
+  it('토큰 갱신이 실패하면 백오프로 돌아가고 즉시 재연결하지 않는다', async () => {
+    const { StompService, BackendClient } = await loadService()
+    vi.mocked(BackendClient.refreshSession).mockRejectedValue(new Error('일시적 실패'))
+    StompService.connect()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+
+    // 거부 핸들러까지 실행된 뒤에 확인한다. 안 그러면 "아직 아무 일도 안 일어났다" 를 단정한다
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(BackendClient.refreshSession).toHaveBeenCalled()
+    expect(clients).toHaveLength(1)
+
+    vi.advanceTimersByTime(2000)
+    expect(clients).toHaveLength(2)
+  })
+
+  it('갱신이 최종 실패해 세션이 끝나면 재연결하지 않고 DISCONNECTED 로 끝난다', async () => {
+    const { StompService, mainState, BackendClient, BrowserWindow } = await loadService()
+    // refresh token 이 무효면 BackendClient 가 세션을 정리해 backendToken 을 비운다
+    vi.mocked(BackendClient.refreshSession).mockImplementation(async () => {
+      mainState.setBackendToken(null)
+      throw new Error('refresh token 무효')
+    })
+    const sendSpy = vi.mocked(BrowserWindow.getAllWindows()[0].webContents.send)
+    StompService.connect()
+    sendSpy.mockClear()
+
+    last().connected = false
+    last().onStompError!(AUTH_ERROR_FRAME)
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // 다시 붙지 않는데 화면만 재연결 중으로 남으면 안 된다
+    expect(countStatusPush(sendSpy, 'RECONNECTING')).toBe(0)
+    expect(countStatusPush(sendSpy, 'DISCONNECTED')).toBeGreaterThan(0)
+    vi.advanceTimersByTime(60000)
+    expect(clients).toHaveLength(1)
   })
 })
