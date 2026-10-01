@@ -121,6 +121,9 @@ def test_analysis_retrieval_reuses_external_results_without_second_repository_se
 
     service = EvidenceRetrievalService(repository=FailingPersistentRepository())
     result = service.retrieve_for_analysis(
+        # 외부 근거를 실제로 가져온 쪽을 그대로 전달한다. self.repository 기준으로 보고하면
+        # 메모리 백엔드를 쓴 회차에도 저장소 설정 때문에 QDRANT 로 찍힌다
+        external_backend="qdrant",
         ticker="WMT",
         current_chunk="We are raising full-year sales guidance.",
         source_type=SourceType.EARNINGS_CALL,
@@ -279,3 +282,47 @@ def test_evidence_api_endpoints_smoke() -> None:
     assert impact.json()["impacted"]
     assert exits.status_code == 200
     assert exits.json()["stop_loss"]["price"] < 100.0
+
+
+def _analysis_result(external_backend):
+    class PersistentRepository:
+        """저장소 설정은 Qdrant 지만, 분석 경로의 외부 근거는 ExternalRetriever 가 가져온다."""
+
+        backend = EvidenceBackend.QDRANT
+
+        def search(self, request):
+            raise AssertionError("analysis should not repeat the persistent external search")
+
+    return EvidenceRetrievalService(repository=PersistentRepository()).retrieve_for_analysis(
+        external_backend=external_backend,
+        ticker="WMT",
+        current_chunk="We are raising full-year sales guidance.",
+        source_type=SourceType.EARNINGS_CALL,
+        market_data=MarketData(ticker="WMT", current_price=100.0),
+        canonical_bundle=None,
+        source_health=None,
+        request_metadata={},
+        evidence_documents=None,
+        external_documents=[
+            ExternalRetrievedDocument(
+                doc_id="news:WMT:guidance",
+                text="Walmart raised its full-year sales guidance.",
+                score=0.9,
+                semantic_score=0.92,
+                source_type="news",
+                metadata={"provider": "wire", "reliability_score": 0.9},
+            )
+        ],
+    )
+
+
+def test_analysis_backend_follows_external_retriever_not_repository() -> None:
+    """메모리 백엔드로 가져왔으면 저장소 설정이 Qdrant 여도 QDRANT 로 보고하지 않는다."""
+    assert _analysis_result("memory").backend == EvidenceBackend.LOCAL_SPARSE
+    assert _analysis_result("qdrant").backend == EvidenceBackend.QDRANT
+
+
+def test_analysis_backend_falls_back_when_retriever_is_unknown() -> None:
+    """보고용 값이라 모르는 이름 때문에 분석을 실패시키지 않는다."""
+    assert _analysis_result(None).backend == EvidenceBackend.LOCAL_SPARSE
+    assert _analysis_result("something-new").backend == EvidenceBackend.LOCAL_SPARSE

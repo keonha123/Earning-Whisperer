@@ -211,6 +211,25 @@ def _external_published_at(value: Any) -> str | None:
     return None
 
 
+def _external_backend(name: str | None, *, fallback: EvidenceBackend) -> EvidenceBackend:
+    """실제로 외부 근거를 가져온 retriever 를 EvidenceBackend 로 옮긴다.
+
+    ``self.repository`` 를 기준으로 삼으면 안 된다. 이 경로의 외부 근거는
+    ``ExternalRetriever`` 가 가져오고 ``self.repository`` 는 요청 단위 문서만 다루므로,
+    저장소 설정이 Qdrant 라는 이유로 QDRANT 를 보고하면 실제로 메모리 백엔드를 쓴 회차에도
+    QDRANT 로 찍힌다.
+
+    아는 이름이 아니면 요청 단위 결과의 backend 를 그대로 쓴다. 보고용 값이라
+    모르는 값 때문에 분석을 실패시키지 않는다.
+    """
+    mapping = {
+        "qdrant": EvidenceBackend.QDRANT,
+        "faiss": EvidenceBackend.FAISS,
+        "memory": EvidenceBackend.LOCAL_SPARSE,
+    }
+    return mapping.get(str(name or "").strip().lower(), fallback)
+
+
 class EvidenceRetrievalService:
     def __init__(self, repository: EvidenceStoreRepository | None = None) -> None:
         self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.LOCAL_SPARSE)
@@ -230,6 +249,7 @@ class EvidenceRetrievalService:
         request_metadata: dict[str, Any] | None,
         evidence_documents: list[EvidenceDocument] | None,
         external_documents: Iterable[Any] | None = None,
+        external_backend: str | None = None,
         top_k: int = 5,
     ) -> EvidenceRetrievalResult:
         documents: list[EvidenceDocument] = []
@@ -265,7 +285,7 @@ class EvidenceRetrievalService:
             warnings.append("no_retrieved_evidence")
         elif coverage < 0.35:
             warnings.append("weak_retrieved_evidence")
-        backend = getattr(self.repository, "backend", transient_result.backend)
+        backend = _external_backend(external_backend, fallback=transient_result.backend)
         return EvidenceRetrievalResult(
             ticker=ticker.upper(),
             query=query,

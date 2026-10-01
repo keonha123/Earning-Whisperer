@@ -243,7 +243,21 @@ def _metadata_payload(document: EvidenceDocument) -> dict[str, Any]:
 
 
 class QdrantEvidenceRepository:
-    """Qdrant-backed evidence repository for transcript/RAG documents."""
+    """Qdrant-backed evidence repository for transcript/RAG documents.
+
+    임베딩 호환성 정책
+    ------------------
+    서로 다른 임베딩 공간의 벡터는 같은 컬렉션에 섞지 않는다. provider/model/dimension 이
+    바뀌면 **새 컬렉션에 재색인한 뒤 전환**한다. 즉 호환성은 컬렉션 단위로 보장한다.
+
+    그래서 ``embedding_version`` 은 포인트에 기록만 하고 **조회 필터로는 쓰지 않는다**.
+    컬렉션 안의 벡터가 모두 같은 공간이라는 것이 전제라 걸러낼 것이 없고, 필터를 걸면
+    값이 없거나 다른 기존 포인트가 조회에서 통째로 빠진다. 실제로 필터를 걸었을 때
+    트랜스크립트 68청크가 0건이 되는 것을 확인했다.
+
+    기록해 두는 값은 "이 컬렉션이 어떤 임베딩으로 만들어졌는가" 를 사후에 확인하는
+    용도다. 전환이 끝났는지 점검하거나, 섞인 것이 있는지 찾을 때 쓴다.
+    """
 
     backend = EvidenceBackend.QDRANT
 
@@ -408,7 +422,6 @@ class QdrantEvidenceRepository:
         filters = [
             self._match_filter("store", self.store_name),
             self._match_filter("ticker", request.ticker.upper()),
-            self._match_filter("embedding_version", self.embedding_version),
         ]
         if request.source_types:
             source_values = [value for item in request.source_types for value in (item.value, item.value.lower())]
@@ -444,7 +457,6 @@ class QdrantEvidenceRepository:
             self._match_filter("store", self.store_name),
             self._match_filter("ticker", ticker.upper()),
             self._match_filter("source_type", EvidenceSourceType.EARNINGS_CALL.value),
-            self._match_filter("embedding_version", self.embedding_version),
         ]
         points = self._scroll(filters=filters, limit=256)
         latest: dict[str, Any] | None = None
@@ -484,7 +496,6 @@ class QdrantEvidenceRepository:
             self._match_filter("ticker", ticker.upper()),
             self._match_filter("source_type", EvidenceSourceType.EARNINGS_CALL.value),
             self._match_filter("document_id", document_id),
-            self._match_filter("embedding_version", self.embedding_version),
         ]
         citations = [self._point_to_citation(point) for point in self._query(query_vector, limit=top_k, filters=filters)]
         return [item for item in citations if item.document_id and item.snippet]

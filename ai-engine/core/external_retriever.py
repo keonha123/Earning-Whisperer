@@ -708,10 +708,11 @@ class QdrantExternalRetriever(BaseExternalRetriever):
     ) -> list[ExternalRetrievedDocument]:
         settings = get_settings()
         lower_bound = _lower_bound_timestamp(chunk_timestamp=chunk_timestamp, lookback_days=lookback_days)
+        # embedding_version 은 조회 필터로 쓰지 않는다 — 호환성은 컬렉션 단위로 보장한다.
+        # QdrantEvidenceRepository 의 클래스 docstring 에 정책을 적어 두었다.
         filters = [
             self._match_filter("store", "external"),
             self._match_filter("ticker", ticker.upper()),
-            self._match_filter("embedding_version", self.embedding_version),
             self._range_filter("published_at", gte=lower_bound, lte=chunk_timestamp if chunk_timestamp else None),
         ]
         preferred = [str(src).strip().lower() for src in (preferred_sources or []) if src]

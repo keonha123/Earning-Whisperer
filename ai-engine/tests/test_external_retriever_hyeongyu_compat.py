@@ -109,7 +109,7 @@ def test_bm25_scores_prioritize_exact_event_terms() -> None:
     assert scores["a"] > scores.get("b", 0.0)
 
 
-def test_qdrant_external_retriever_versions_news_vectors_and_queries() -> None:
+def test_qdrant_external_retriever_records_version_but_does_not_filter_on_it() -> None:
     now = int(time.time())
     client = FakeQdrantClient()
     retriever = QdrantExternalRetriever(
@@ -145,8 +145,10 @@ def test_qdrant_external_retriever_versions_news_vectors_and_queries() -> None:
 
     assert results
     assert results[0].semantic_score == 0.91
-    assert "embedding_version" in str(client.query_filter)
-    assert "openai-test-v1" in str(client.query_filter)
+    # 호환성은 컬렉션 단위로 보장한다 — 조회에 embedding_version 을 걸지 않는다.
+    # 걸면 적재 시점과 설정이 다른 기존 포인트가 통째로 빠진다.
+    assert "embedding_version" not in str(client.query_filter)
+    assert "openai-test-v1" not in str(client.query_filter)
 
 
 def test_qdrant_external_retriever_rejects_collection_dimension_mismatch() -> None:

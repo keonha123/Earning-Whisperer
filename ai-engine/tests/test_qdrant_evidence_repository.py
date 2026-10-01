@@ -20,6 +20,52 @@ class StaticEmbeddingProvider:
         return [[1.0, *([0.0] * 31)] for _ in texts]
 
 
+def _filter_conditions(query_filter):
+    if query_filter is None:
+        return []
+    return query_filter.get("must", []) if isinstance(query_filter, dict) else list(query_filter.must)
+
+
+def _condition_parts(condition):
+    if isinstance(condition, dict):
+        return condition.get("key"), condition.get("match"), condition.get("range")
+    return (
+        getattr(condition, "key", None),
+        getattr(condition, "match", None),
+        getattr(condition, "range", None),
+    )
+
+
+def _payload_matches(payload, query_filter) -> bool:
+    """Qdrant 의 must 조건을 payload 에 실제로 적용한다.
+
+    필터를 기록만 하고 전부 돌려주면, 조회에서 포인트를 걸러 내는 필터를 더하거나 빼도
+    테스트가 통과한다. 그 차이가 이 저장소에서 실제로 문제가 되는 지점이라
+    (embedding_version 필터 하나로 68청크가 0건이 되었다) 여기서 걸러 준다.
+    """
+    for condition in _filter_conditions(query_filter):
+        key, match, rng = _condition_parts(condition)
+        if key is None:
+            continue
+        actual = payload.get(key)
+        if match is not None:
+            if isinstance(match, dict):
+                expected, any_values = match.get("value"), match.get("any")
+            else:
+                expected = getattr(match, "value", None)
+                any_values = getattr(match, "any", None)
+            if any_values is not None:
+                if actual not in list(any_values):
+                    return False
+            elif actual != expected:
+                return False
+        if rng is not None:
+            lt = rng.get("lt") if isinstance(rng, dict) else getattr(rng, "lt", None)
+            if lt is not None and not (actual is not None and actual < lt):
+                return False
+    return True
+
+
 class FakeQdrantClient:
     def __init__(self) -> None:
         self.points = []
@@ -36,13 +82,21 @@ class FakeQdrantClient:
     def upsert(self, *, collection_name: str, points) -> None:
         self.points.extend(points)
 
+    def _matching(self, query_filter):
+        return [point for point in self.points if _payload_matches(_payload(point), query_filter)]
+
     def query_points(self, **kwargs):
         self.query_filter = kwargs.get("query_filter")
-        return SimpleNamespace(points=[{"payload": _payload(point), "score": 0.91} for point in self.points])
+        matched = self._matching(self.query_filter)
+        limit = kwargs.get("limit")
+        if limit is not None:
+            matched = matched[: int(limit)]
+        return SimpleNamespace(points=[{"payload": _payload(point), "score": 0.91} for point in matched])
 
     def scroll(self, **kwargs):
         self.scroll_filter = kwargs.get("scroll_filter")
-        return ([{"payload": _payload(point), "score": 0.0} for point in self.points], None)
+        matched = self._matching(self.scroll_filter)
+        return ([{"payload": _payload(point), "score": 0.0} for point in matched], None)
 
 
 def _payload(point):
@@ -160,7 +214,8 @@ def test_qdrant_repository_finds_latest_transcript() -> None:
     assert latest is not None
     assert latest["document_id"] == "manual:NVDA:new"
     assert latest["fiscal_quarter"] == "Q4_2025"
-    assert _filter_match_value(repo.client.scroll_filter, "embedding_version") == "static-32-v1"
+    # 임베딩 호환성은 컬렉션 단위로 보장한다 — 조회에 embedding_version 을 걸지 않는다
+    assert _filter_match_value(repo.client.scroll_filter, "embedding_version") is None
 
 
 def test_qdrant_repository_requires_location_without_injected_client() -> None:
@@ -274,7 +329,7 @@ def test_qdrant_repository_uses_store_name_in_payload() -> None:
     assert payload["embedding_version"] == "static-32-v1"
 
 
-def test_qdrant_repository_maps_external_payload_and_filters_embedding_version() -> None:
+def test_qdrant_repository_maps_external_payload() -> None:
     client = FakeQdrantClient()
     client.points.append(
         {
@@ -314,7 +369,7 @@ def test_qdrant_repository_maps_external_payload_and_filters_embedding_version()
     assert citation.source_url == "https://example.test/wmt"
     assert citation.published_at == "2026-09-07"
     assert _filter_match_value(client.query_filter, "store") == "external"
-    assert _filter_match_value(client.query_filter, "embedding_version") == "gemini-test-v1"
+    assert _filter_match_value(client.query_filter, "ticker") == "WMT"
 
 
 def test_qdrant_repository_reads_points_written_by_external_retriever(tmp_path) -> None:
@@ -463,3 +518,187 @@ def test_transcript_repository_chunks_by_speaker_turn_and_stores_current_speaker
     assert second_payload["speaker"] == "Colette Kress"
     assert second_payload["turn_index"] == 1
     assert second_payload["chunk_text"] == "Data center revenue accelerated and margins expanded."
+
+
+def _stored_point(**overrides):
+    """저장소가 쓴 형태의 포인트. embedding_version 을 바꿔 가며 쓰려고 둔다."""
+    payload = {
+        "store": "evidence",
+        "document_id": "manual:WMT:prior",
+        "doc_id": "manual:WMT:prior",
+        "ticker": "WMT",
+        "text": "Walmart reported 7,200 rollbacks in the prior quarter.",
+        "content": "Walmart reported 7,200 rollbacks in the prior quarter.",
+        "title": "Prior call",
+        "source_type": EvidenceSourceType.EARNINGS_CALL.value,
+        "published_at_epoch": 1_780_000_000,
+        "embedding_provider": "gemini",
+        "embedding_version": "gemini-embedding-001-768-v1",
+    }
+    payload.update(overrides)
+    return {"payload": payload, "score": 0.91}
+
+
+def test_search_returns_points_whose_embedding_version_differs() -> None:
+    """저장된 값과 설정이 달라도 조회된다.
+
+    임베딩 호환성은 컬렉션 단위로 보장하므로 조회 단계에서 걸러내지 않는다. 필터를 걸면
+    설정을 바꾸거나 값이 없는 기존 포인트가 통째로 빠지는데, 서버에서 트랜스크립트 68청크가
+    0건이 된 것이 이 경우였다.
+    """
+    client = FakeQdrantClient()
+    client.points.append(_stored_point())
+    client.points.append(_stored_point(document_id="manual:WMT:legacy", doc_id="manual:WMT:legacy"))
+    client.points[1]["payload"].pop("embedding_version")  # 버전 없이 적재된 옛 포인트
+    repo = QdrantEvidenceRepository(
+        client=client,
+        collection_name="test_evidence",
+        embedding_provider=StaticEmbeddingProvider(),
+        embedding_dimension=4,
+        embedding_version="hash-32-v2",  # 저장된 값과 다른 설정
+    )
+
+    result = repo.search(EvidenceRetrievalRequest(ticker="WMT", query="rollbacks", top_k=5))
+
+    assert len(result.evidence) == 2
+    assert _filter_match_value(client.query_filter, "embedding_version") is None
+
+
+def test_search_still_filters_store_and_ticker() -> None:
+    """버전 필터를 뺀 것이 다른 필터까지 느슨해진 것은 아니다."""
+    client = FakeQdrantClient()
+    client.points.append(_stored_point())
+    client.points.append(_stored_point(ticker="NVDA", document_id="manual:NVDA:x", doc_id="manual:NVDA:x"))
+    client.points.append(_stored_point(store="external", document_id="news:WMT:y", doc_id="news:WMT:y"))
+    repo = _repo(client)
+
+    result = repo.search(EvidenceRetrievalRequest(ticker="WMT", query="rollbacks", top_k=5))
+
+    assert [item.document_id for item in result.evidence] == ["manual:WMT:prior"]
+
+
+def test_prior_transcript_chunks_ignore_embedding_version() -> None:
+    client = FakeQdrantClient()
+    client.points.append(_stored_point())
+    repo = QdrantEvidenceRepository(
+        client=client,
+        collection_name="test_evidence",
+        embedding_provider=StaticEmbeddingProvider(),
+        embedding_dimension=4,
+        embedding_version="hash-32-v2",
+    )
+
+    citations = repo.search_prior_transcript_chunks(
+        ticker="WMT", query="rollbacks", document_id="manual:WMT:prior", top_k=3
+    )
+
+    assert [item.document_id for item in citations] == ["manual:WMT:prior"]
+    assert _filter_match_value(client.query_filter, "embedding_version") is None
+    assert _filter_match_value(client.query_filter, "document_id") == "manual:WMT:prior"
+
+
+def test_find_latest_transcript_ignores_embedding_version() -> None:
+    client = FakeQdrantClient()
+    client.points.append(_stored_point())
+    repo = QdrantEvidenceRepository(
+        client=client,
+        collection_name="test_evidence",
+        embedding_provider=StaticEmbeddingProvider(),
+        embedding_dimension=4,
+        embedding_version="hash-32-v2",
+    )
+
+    latest = repo.find_latest_transcript(ticker="WMT", before=datetime(2026, 6, 1, tzinfo=UTC))
+
+    assert latest is not None
+    assert latest["document_id"] == "manual:WMT:prior"
+
+
+def test_embedding_version_is_still_written_to_payload() -> None:
+    """조회에는 안 쓰지만 추적용으로는 남긴다."""
+    client = FakeQdrantClient()
+    repo = _repo(client)
+    repo.add_documents(
+        [
+            EvidenceDocument(
+                document_id="manual:WMT:new",
+                ticker="WMT",
+                source_type=EvidenceSourceType.EARNINGS_CALL,
+                source="manual",
+                title="Call",
+                published_at=datetime(2026, 2, 1, tzinfo=UTC),
+                content="Transcript body.",
+                metadata={},
+            )
+        ]
+    )
+
+    assert client.points
+    assert _payload(client.points[0])["embedding_version"] == "static-32-v1"
+
+
+def test_real_qdrant_reads_points_whose_embedding_version_differs(tmp_path) -> None:
+    """Fake 가 아닌 실제 Qdrant 엔진으로 정책을 고정한다.
+
+    적재 시점의 `embedding_version` 과 조회 시점의 설정이 달라도 조회된다.
+    서버에서 트랜스크립트 68청크가 0건이 된 것이 이 상황이었고, Fake 의 필터 구현에
+    기대지 않고 확인해 두려고 둔다.
+    """
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(path=str(tmp_path))
+    try:
+        provider = StaticEmbeddingProvider()
+        writer = QdrantExternalRetriever(
+            client=client,
+            embedding_provider=provider,
+            collection_name="shared_external",
+            embedding_version="gemini-embedding-001-768-v1",  # 적재 당시 버전
+        )
+        writer.upsert_documents(
+            [
+                ExternalDocument(
+                    doc_id="news:WMT:legacy-version",
+                    ticker="WMT",
+                    text="Walmart reported 8,500 rollbacks this quarter.",
+                    title="Walmart rollbacks",
+                    published_at=1_788_748_800,
+                    source_type="news",
+                    url="https://example.test/wmt-legacy",
+                    metadata={"provider": "wire"},
+                )
+            ]
+        )
+
+        repository = QdrantEvidenceRepository(
+            client=client,
+            collection_name="shared_external",
+            store_name="external",
+            embedding_provider=provider,
+            embedding_dimension=32,
+            embedding_version="static-32-v9",  # 적재 당시와 다른 현재 설정
+        )
+        result = repository.search(
+            EvidenceRetrievalRequest(ticker="WMT", query="rollbacks", top_k=3)
+        )
+
+        assert result.missing_evidence is False
+        assert result.evidence[0].document_id == "news:WMT:legacy-version"
+
+        # 외부 retriever 쪽도 같은 정책이다 — 분석 경로가 실제로 쓰는 경로다
+        reader = QdrantExternalRetriever(
+            client=client,
+            embedding_provider=provider,
+            collection_name="shared_external",
+            embedding_version="static-32-v9",
+        )
+        documents = reader.retrieve(
+            query="rollbacks",
+            ticker="WMT",
+            chunk_timestamp=1_788_752_400,
+            preferred_sources=["news"],
+            lookback_days=30,
+        )
+        assert [item.doc_id for item in documents] == ["news:WMT:legacy-version"]
+    finally:
+        client.close()
