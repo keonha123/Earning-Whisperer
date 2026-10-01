@@ -10,8 +10,8 @@ AnalyzeRequest
   -> rolling context
   -> rag_decision
   -> external_retriever.retrieve
-  -> relevance_check
-  -> prompt_builder(EXTERNAL_EVIDENCE)
+  -> evidence_service.merge(request-scoped + external citations)
+  -> prompt_builder(RAG_EVIDENCE)
   -> Gemini primary/review
   -> transcript enhancer
   -> strategy/explanation/trade plan
@@ -26,7 +26,8 @@ The implementation keeps current v9 API contracts additive-only. Existing `/v1/e
 - `src/graph/nodes/rag_decision.py`: RAG routing decision
 - `src/graph/nodes/retrieve.py`: retrieval node
 - `src/graph/nodes/relevance_check.py`: evidence availability check
-- `core/prompt_builder.py`: inserts `EXTERNAL_EVIDENCE` into the analysis prompt
+- `services/evidence_retrieval_service.py`: merges request-scoped and external citations without persisting transient input
+- `core/prompt_builder.py`: inserts one normalized `RAG_EVIDENCE` block into the analysis prompt
 - `core/analysis_service.py`: runs the RAG nodes inside the normal analyze path
 
 ## Earnings Intelligence API
@@ -62,8 +63,10 @@ Output includes:
 - The retriever is memory-first for local compatibility.
 - The public facade matches the `hyeongyu` branch so Qdrant can be restored behind the same API later.
 - RAG decision is heuristic by default to avoid an extra LLM call per chunk.
+- The normal analyze path performs one external retrieval and reuses the same citations for prompt context and confidence policy.
 - External evidence from `canonical_bundle.metadata.external_documents` or `evidence_documents` is automatically upserted.
 - Earnings-call chunks are stored after analysis so later chunks can compare against prior remarks without look-ahead leakage.
+- Qdrant repositories fail fast when the configured embedding dimension differs from the existing collection dimension.
 
 ## Live News Fact Check Service
 
@@ -73,7 +76,7 @@ The first Gemini call extracts at most two atomic, news-verifiable claims per se
 
 The service gates evidence using pure semantic relevance: one strongly relevant article or two moderately relevant articles from independent publishers. Article importance is not used by the fact-check retriever, Qdrant payload, or live fact-check evidence response. Each claim result is `SUPPORTED`, `CONTRADICTED`, or `INSUFFICIENT_EVIDENCE`, with a Korean explanation and exact news citations.
 
-External news vectors can use an embedding configuration separate from the evidence and transcript stores. When changing `EXTERNAL_EMBEDDING_VERSION`, replay the last 30 days of collector news so each external-news point is overwritten with the configured OpenAI embedding. Older points without the active embedding version are intentionally excluded. This service has no HTTP route yet.
+External news vectors use `EXTERNAL_EMBEDDING_*`, while transcript vectors use `EMBEDDING_*`. Both support hash, OpenAI, and Gemini through the same strict provider factory. When changing `EXTERNAL_EMBEDDING_VERSION` or `EMBEDDING_VERSION`, rebuild a versioned collection and replay the applicable source documents. Older points without the active embedding version are intentionally excluded. This service has no HTTP route yet.
 
 ## Backtest Artifact Policy
 

@@ -48,12 +48,32 @@ class AnalysisService:
         self.transcript_enhancer = TranscriptSignalEnhancer()
         self.canonical_bundle_service = CanonicalBundleService()
         self.evidence_service = kwargs.get("evidence_service") or EvidenceRetrievalService()
-        self.external_retriever = external_retriever
+        self.external_retriever = kwargs.get("external_retriever") or external_retriever
         self.route_counts: dict[str, int] = {}
         self.source_health_telemetry = SourceHealthTelemetry()
         self.signal_data_hub = SignalDataHub()
         self.token_budgeter = TokenBudgeter()
         self.enrichment_pipeline = AnalysisEnrichmentPipeline()
+
+    def _external_backend_name(self) -> str | None:
+        """외부 근거를 실제로 가져온 백엔드 이름("qdrant" / "memory" 등).
+
+        근거 결과의 backend 표시에 쓴다. 통계 조회가 실패해도 분석을 멈추지 않는다 —
+        보고용 값이라 없으면 호출 측이 대체값을 쓴다.
+        """
+        try:
+            stats = self.external_retriever.get_stats()
+        except Exception:
+            # 삼키되 조용히 두지는 않는다. 여기서 None 을 돌려주면 호출 측이 요청 단위
+            # 결과의 backend(LOCAL_SPARSE)로 떨어지므로, Qdrant 로 가져온 회차가
+            # LOCAL_SPARSE 로 찍힌다 — 이 메서드가 고치려던 오표기의 거울상이다.
+            logger.warning("외부 retriever 백엔드 이름을 읽지 못했다", exc_info=True)
+            return None
+        if not isinstance(stats, dict):
+            logger.warning("외부 retriever 통계 형식이 예상과 다르다: %s", type(stats).__name__)
+            return None
+        value = stats.get("effective_backend")
+        return str(value) if value else None
 
     @staticmethod
     def _fallback_result(
@@ -118,6 +138,14 @@ class AnalysisService:
             ticker=ticker,
             feature_bundle=feature_bundle,
         )
+        external_documents = self.external_retriever.retrieve(
+            query=f"{ticker} {current_chunk}",
+            ticker=ticker,
+            chunk_timestamp=int((request_metadata or {}).get("timestamp") or 0),
+            preferred_sources=[],
+            lookback_days=int(getattr(settings, "rag_external_default_lookback_days", 30)),
+            limit=int(getattr(settings, "rag_top_k", 5)),
+        )
         evidence_result = self.evidence_service.retrieve_for_analysis(
             ticker=ticker,
             current_chunk=current_chunk,
@@ -127,19 +155,10 @@ class AnalysisService:
             source_health=source_health,
             request_metadata=dict(request_metadata or {}),
             evidence_documents=evidence_documents,
+            external_documents=external_documents,
+            external_backend=self._external_backend_name(),
         )
-        external_documents = self.external_retriever.retrieve(
-            query=f"{ticker} {current_chunk}",
-            ticker=ticker,
-            chunk_timestamp=int((request_metadata or {}).get("timestamp") or 0),
-            preferred_sources=[],
-            lookback_days=int(getattr(settings, "rag_external_default_lookback_days", 30)),
-            limit=int(getattr(settings, "rag_top_k", 5)),
-        )
-        external_context = self._external_evidence_context(external_documents)
         evidence_context = evidence_result.evidence_context
-        if external_context:
-            evidence_context = f"{external_context}\n\n{evidence_context}" if evidence_context else external_context
         phase1 = score_phase1(
             current_chunk=current_chunk,
             market_data=market_data,
@@ -290,19 +309,6 @@ class AnalysisService:
             ),
         )
         return parsed
-
-    @staticmethod
-    def _external_evidence_context(documents: list[object]) -> str:
-        if not documents:
-            return ""
-        lines = ["EXTERNAL_EVIDENCE:"]
-        for item in documents[:5]:
-            lines.append(
-                f"- {getattr(item, 'source_type', 'external')} | {getattr(item, 'title', '')} | "
-                f"score={float(getattr(item, 'score', 0.0) or 0.0):.2f} | {str(getattr(item, 'text', ''))[:420]}"
-            )
-        return "\n".join(lines)
-
 
 async def run_analysis(
     *,

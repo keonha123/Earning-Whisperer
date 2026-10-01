@@ -80,7 +80,11 @@ def _build_repository(settings: Settings) -> EventStoreRepository:
 
 def _build_evidence_repository(settings: Settings, event_repository: EventStoreRepository):
     if str(settings.vector_store_backend).lower().strip() == "qdrant":
-        return QdrantEvidenceRepository.from_settings(settings=settings)
+        return QdrantEvidenceRepository.from_settings(
+            settings=settings,
+            store_name="external",
+            embedding_scope="external",
+        )
     return EvidenceStoreRepository()
 
 
@@ -90,6 +94,7 @@ def _build_transcript_repository(settings: Settings):
             settings=settings,
             collection_name=settings.qdrant_transcript_collection_name,
             store_name="transcript",
+            embedding_scope="transcript",
         )
     return EvidenceStoreRepository()
 

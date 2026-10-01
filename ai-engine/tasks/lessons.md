@@ -1,5 +1,6 @@
 # Lessons
 
+- For LLM-generated JSON, `response_mime_type=application/json` guarantees JSON syntax, not the requested object envelope; validate the contract while accepting semantically equivalent safe shapes such as a top-level item array.
 - For streaming fact-checking, buffer finalized sentences by an explicit product-level stream key and trigger expensive work only on complete batches; when ticker is the key, sequence zero must reset stale state.
 - Fact-check evidence gating must use pure semantic relevance and source independence; do not let article importance or market materiality indirectly decide whether a factual claim is verifiable.
 

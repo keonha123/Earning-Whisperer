@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from core.external_retriever import ExternalDocument, InMemoryExternalRetriever, QdrantExternalRetriever, _bm25_lexical_scores, external_retriever
 
 
@@ -107,7 +109,7 @@ def test_bm25_scores_prioritize_exact_event_terms() -> None:
     assert scores["a"] > scores.get("b", 0.0)
 
 
-def test_qdrant_external_retriever_versions_news_vectors_and_queries() -> None:
+def test_qdrant_external_retriever_records_version_but_does_not_filter_on_it() -> None:
     now = int(time.time())
     client = FakeQdrantClient()
     retriever = QdrantExternalRetriever(
@@ -143,8 +145,26 @@ def test_qdrant_external_retriever_versions_news_vectors_and_queries() -> None:
 
     assert results
     assert results[0].semantic_score == 0.91
-    assert "embedding_version" in str(client.query_filter)
-    assert "openai-test-v1" in str(client.query_filter)
+    # 호환성은 컬렉션 단위로 보장한다 — 조회에 embedding_version 을 걸지 않는다.
+    # 걸면 적재 시점과 설정이 다른 기존 포인트가 통째로 빠진다.
+    assert "embedding_version" not in str(client.query_filter)
+    assert "openai-test-v1" not in str(client.query_filter)
+
+
+def test_qdrant_external_retriever_rejects_collection_dimension_mismatch() -> None:
+    class DimensionMismatchClient(FakeQdrantClient):
+        def get_collection(self, *, collection_name):
+            return SimpleNamespace(
+                config=SimpleNamespace(params=SimpleNamespace(vectors=SimpleNamespace(size=768)))
+            )
+
+    with pytest.raises(RuntimeError, match="collection=768, configured=4"):
+        QdrantExternalRetriever(
+            client=DimensionMismatchClient(),
+            embedding_provider=StaticEmbeddingProvider(),
+            collection_name="existing_external",
+            embedding_version="openai-test-v1",
+        )
 
 
 def test_memory_retriever_excludes_future_and_expired_news() -> None:

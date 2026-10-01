@@ -168,9 +168,7 @@ class TranscriptDiffService:
             },
         )
         parsed = json.loads(usage.text)
-        raw_items = parsed.get("items") if isinstance(parsed, dict) else None
-        if not isinstance(raw_items, list):
-            raise ValueError("LLM transcript diff response must contain items[]")
+        raw_items = _extract_llm_items(parsed)
         return _normalize_llm_items(raw_items, citations)
 
 
@@ -262,7 +260,8 @@ def _build_prompt(*, ticker: str, current_chunk: str, topics: list[str], citatio
     return (
         "You compare a live earnings-call statement against prior earnings-call evidence.\n"
         "Use only the supplied current_chunk and prior_evidence. Do not add outside facts.\n"
-        "Return strict JSON with key items. Each item must include: topic, change_type, summary_ko, "
+        'Return one strict JSON object with this top-level shape: {"items": [...]}. Do not return a bare array. '
+        "Each item must include: topic, change_type, summary_ko, "
         "current_claim, prior_claim, confidence, risk_score, evidence_indices.\n"
         "Allowed change_type values: improved, weakened, unchanged, mixed, new_claim.\n"
         "summary_ko must be concise Korean, one sentence.\n\n"
@@ -271,6 +270,14 @@ def _build_prompt(*, ticker: str, current_chunk: str, topics: list[str], citatio
         f"current_chunk: {current_chunk}\n"
         f"prior_evidence: {json.dumps(evidence, ensure_ascii=False)}"
     )
+
+
+def _extract_llm_items(parsed: Any) -> list[Any]:
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict) and isinstance(parsed.get("items"), list):
+        return parsed["items"]
+    raise ValueError("LLM transcript diff response must be an items[] object or a top-level array")
 
 
 def _normalize_llm_items(raw_items: list[Any], citations: list[EvidenceCitation]) -> list[dict[str, Any]]:

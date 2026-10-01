@@ -126,6 +126,46 @@ async def test_transcript_diff_returns_llm_change_summary_against_prior_call(mon
 
 
 @pytest.mark.asyncio
+async def test_transcript_diff_accepts_top_level_llm_item_array(monkeypatch) -> None:
+    async def _fake_generate_content_with_metadata(**kwargs):
+        return GenerationUsage(
+            text=json.dumps(
+                [
+                    {
+                        "topic": "demand",
+                        "change_type": "improved",
+                        "summary_ko": "AI demand language improved from the prior quarter.",
+                        "current_claim": "AI demand accelerated.",
+                        "prior_claim": "Demand slowed in the prior quarter.",
+                        "confidence": 0.95,
+                        "risk_score": 0.2,
+                        "evidence_indices": [1],
+                    }
+                ]
+            ),
+            prompt_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+        )
+
+    monkeypatch.setattr("services.transcript_diff_service.gemini_client.generate_content_with_metadata", _fake_generate_content_with_metadata)
+    service = TranscriptDiffService(FakeTranscriptRepository())
+
+    result = await service.analyze(
+        ticker="NVDA",
+        current_chunk="Guidance improved as AI demand accelerated and margins expanded.",
+        source_type=SourceType.EARNINGS_CALL,
+        request_metadata={},
+    )
+
+    assert result is not None
+    assert result["warnings"] == []
+    assert result["items"][0]["topic"] == "demand"
+    assert result["items"][0]["confidence"] == 0.95
+    assert result["items"][0]["risk_score"] == 0.2
+
+
+@pytest.mark.asyncio
 async def test_transcript_diff_does_not_call_llm_without_prior_transcript(monkeypatch) -> None:
     async def _fail_if_called(**kwargs):
         raise AssertionError("LLM should not be called")

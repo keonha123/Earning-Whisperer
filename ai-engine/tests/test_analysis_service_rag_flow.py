@@ -63,7 +63,10 @@ async def test_analysis_service_injects_external_rag_evidence(monkeypatch) -> No
         is_final=False,
     )
 
-    assert "EXTERNAL_EVIDENCE" in captured["prompt"]
+    assert "RAG_EVIDENCE" in captured["prompt"]
     assert "NVIDIA raised data center guidance" in captured["prompt"]
+    assert "none retrieved" not in captured["prompt"]
     assert result.metadata["external_rag"]["has_external_evidence"] is True
     assert result.metadata["external_rag"]["evidence_count"] >= 1
+    assert result.metadata["evidence_retrieval"]["missing_evidence"] is False
+    assert "missing_rag_evidence" not in result.risk_flags
