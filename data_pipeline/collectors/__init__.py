@@ -3,3 +3,4 @@ from .base import CollectorChain
 from .stocks import WikipediaStrategy
 from .schedules import YFinanceScheduleStrategy
 from .prices import YFinancePriceStrategy
+from .financial_statements import YFinanceFinancialStatementStrategy

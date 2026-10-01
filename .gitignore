@@ -12,6 +12,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 *$py.class
+.state/
+.artifacts/
+.runtime/
 .venv/
 venv/
 env/
@@ -55,7 +58,7 @@ Thumbs.db
 *.swp
 
 # Personal
-learning/
+/learning/
 **/.scratch/
 
 # Claude

@@ -14,6 +14,13 @@ services:
   db:
     image: mysql:8.0
     container_name: ew-mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: earning_whisperer
@@ -25,6 +32,81 @@ services:
       - ./mysql-init:/docker-entrypoint-initdb.d # 초기 스키마 자동 생성용
     networks:
       - ew-network
+
+  browser-webcast:
+    build:
+      context: ..
+      dockerfile: data_pipeline/Dockerfile.browser
+    profiles:
+      - tools
+    user: "${WEBCAST_CONTAINER_USER:-1000:1000}"
+    working_dir: /app
+    environment:
+      DB_URL: mysql+pymysql://user:password@db:3306/earning_whisperer
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      WEBCAST_ARTIFACTS_DIR: /app/data_pipeline/.runtime/artifacts
+    volumes:
+      - ../:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ew-network
+    shm_size: "1gb"
+    ipc: host
+    init: true
+    command:
+      - python
+      - -m
+      - data_pipeline.collectors.streams.browser_webcast
+      - --help
+
+  pipeline-scheduler:
+    build:
+      context: ..
+      dockerfile: data_pipeline/Dockerfile.browser
+    container_name: ew-pipeline-scheduler
+    hostname: ew-pipeline-scheduler
+    profiles:
+      - ops
+    user: "${WEBCAST_CONTAINER_USER:-1000:1000}"
+    working_dir: /app
+    env_file:
+      - ../data_pipeline/.env
+    environment:
+      DB_URL: mysql+pymysql://user:password@db:3306/earning_whisperer
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      WEBCAST_CAPTURE_RUNNER: container
+      WEBCAST_ARTIFACTS_DIR: /app/data_pipeline/.runtime/artifacts
+    volumes:
+      - ../:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ew-network
+    depends_on:
+      db:
+        condition: service_healthy
+    shm_size: "1gb"
+    ipc: host
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c 'from data_pipeline import database; database.ping_database()'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command:
+      - python
+      - -m
+      - data_pipeline.main
 
 networks:
   ew-network:

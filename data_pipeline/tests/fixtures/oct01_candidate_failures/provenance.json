@@ -1,0 +1,9 @@
+{
+  "source_root": "/home/dheorb/workspace/projects/school/Earning-Whisperer/data_pipeline/.runtime/artifacts",
+  "description": "Unchanged redacted DOM candidate inventories from the actual failed 2026-10-01 captures. They do not contain original HTML or selectors. Tests reconstruct selectors/interactive markup explicitly; labels, URLs and local context remain sourced from these inventories.",
+  "files": [
+    "ACN-20261001T120115Z-afb9238fdd-4d5fa44d.json",
+    "ACN-20261001T120132Z-48ae4049ce-486e63fb.json",
+    "MKC-20261001T120024Z-a0d8f4c9a3-a517af46.json"
+  ]
+}

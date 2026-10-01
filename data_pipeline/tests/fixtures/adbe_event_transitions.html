@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Offline earnings event transition fixture</title>
+<style>section { margin: 16px; padding: 8px; } a { display: inline-block; padding: 8px; }</style>
+<main>
+  <section id="older">
+    <h2>Featured event</h2>
+    <p>April 21, 2026 Adobe Summit Investor Session</p>
+    <a href="https://provider.example.test/starthere.jsp?eventid=older">Watch webcast</a>
+  </section>
+  <section id="upcoming">
+    <h2>Upcoming events</h2>
+    <p>December 9, 2026 Q4 &amp; FY2026 earnings call</p>
+    <p>This event has not started</p>
+    <a href="https://provider.example.test/starthere.jsp?eventid=future">Watch webcast</a>
+  </section>
+  <section id="current">
+    <h2 id="current-heading">Upcoming events</h2>
+    <p>September 10, 2026 Q3 FY2026 earnings call</p>
+    <span id="current-link"></span>
+  </section>
+</main>
+<script>
+  window.setEventState = state => {
+    document.querySelector('#current-heading').textContent =
+      state === 'archived' ? 'Latest quarterly results' : 'Upcoming events';
+    document.querySelector('#current-link').innerHTML = state === 'scheduled' ? '' :
+      '<a id="current-webcast" href="https://provider.example.test/starthere.jsp?eventid=current">Watch webcast</a>';
+    if (state === 'archived') document.querySelector('main').prepend(document.querySelector('#current'));
+  };
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a');
+    if (link) {
+      event.preventDefault();
+      window.clickedEvent = new URL(link.href).searchParams.get('eventid');
+    }
+  });
+  window.setEventState('scheduled');
+</script>

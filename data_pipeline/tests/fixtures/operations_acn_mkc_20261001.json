@@ -1,0 +1,3552 @@
+{
+  "note": "Minimal actual operations-log projection; omitted errors were absent/NONE, not recovered guesses. No URLs, forms or credentials.",
+  "columns": [
+    "timestamp",
+    "event_type",
+    "ticker",
+    "call_id",
+    "status"
+  ],
+  "events": [
+    [
+      "2026-10-01T00:10:26.227774+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T00:10:47.982493+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T02:11:26.200877+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T02:11:47.758832+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T04:12:26.258962+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T04:12:46.926544+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T06:13:26.254677+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T06:13:47.020044+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T08:14:26.227752+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T08:14:46.898061+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T10:15:26.217761+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T10:15:47.884202+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T11:40:02.462409+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T11:40:36.843929+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T11:55:02.379176+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T11:55:02.396860+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T11:55:38.785076+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T11:57:02.541714+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T11:57:36.664961+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T11:59:02.450223+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T11:59:35.895817+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T11:59:56.527826+00:00",
+      "capture_deferred",
+      "MKC",
+      "835",
+      "schedule_updated"
+    ],
+    [
+      "2026-10-01T12:00:02.447733+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:01:02.446974+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:01:36.676412+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:03:02.429030+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:03:35.711820+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:04:58.412254+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:05:02.380641+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:05:35.618536+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:06:02.393920+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:07:02.411731+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:07:35.496629+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:09:02.386294+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:09:35.644929+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:10:56.305119+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:11:02.415921+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:11:35.735625+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:12:02.425568+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:13:02.513137+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:13:35.743936+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:15:02.422660+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:15:36.805294+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:17:02.455375+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:17:03.517017+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:17:35.810574+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:19:02.384216+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:19:02.415146+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:19:38.551382+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:21:02.415933+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:21:35.723756+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:23:02.432995+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:23:35.637700+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:23:54.517292+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:25:02.493579+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:25:02.510170+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:25:35.748350+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:27:02.441819+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:27:35.717926+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:29:02.501551+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:29:36.780316+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:29:54.437935+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:31:02.382689+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:31:02.398684+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:31:34.465437+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:33:02.380960+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:33:35.474028+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:35:02.458528+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:35:35.679660+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:35:56.410599+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:37:02.496350+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:37:02.523296+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:37:35.710332+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:39:02.509696+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:39:35.700034+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:41:02.381791+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:41:36.649036+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:41:54.513730+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:43:02.407362+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:43:02.425214+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:43:35.516811+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:45:02.419334+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:45:35.604640+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:47:02.417418+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:47:35.605450+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:47:55.358585+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:49:02.396786+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:49:02.416873+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:49:35.572269+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:51:02.392654+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:51:35.607199+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:53:02.443245+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:53:34.611309+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:53:53.376359+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:55:02.414748+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T12:55:02.432154+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:55:35.646644+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:57:02.421511+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:57:35.625133+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:59:02.386873+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T12:59:36.844922+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T12:59:54.313951+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:01:02.412655+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:01:02.427446+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:01:29.567768+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:03:02.408364+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:03:27.583472+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:05:02.439765+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:05:27.672865+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:05:55.445522+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:07:02.456539+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:07:02.472852+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:07:28.570481+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:09:02.496142+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:09:28.627738+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:11:02.421275+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:11:28.626560+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:11:53.489688+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:13:02.503604+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:13:02.518773+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:13:31.659013+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:15:02.380346+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:15:30.591959+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:17:02.446500+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:17:28.803735+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:17:53.526924+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:19:02.426334+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:19:02.442630+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:19:28.575490+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:21:02.414649+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:21:29.516770+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:23:02.413875+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:23:31.570353+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:23:55.534707+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:25:02.466309+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:25:02.485230+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:25:28.704821+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:27:02.450938+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:27:28.677987+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:29:02.445573+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:29:28.728813+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:29:55.470054+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:31:02.490694+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:31:02.507362+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:31:35.701855+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:33:02.377431+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:33:29.634386+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:35:02.379576+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:35:27.594183+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:35:53.477670+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:37:02.382091+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:37:02.430548+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:37:28.437000+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:39:02.398675+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:39:28.499071+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:41:02.483209+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:41:28.877524+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:42:16.435353+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:43:02.587221+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:43:29.945457+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:44:02.482426+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:45:02.420578+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:45:38.599977+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:47:02.382831+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:47:37.652841+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:48:55.319285+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:49:02.426404+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:49:38.705703+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:50:02.408979+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:51:02.378196+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:51:38.654206+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:53:02.435064+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:53:37.613334+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:54:54.347277+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:55:02.555903+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:55:38.855723+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:56:02.460376+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T13:57:02.498213+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:57:38.934481+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T13:59:02.404254+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T13:59:37.686403+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:00:55.474454+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:01:02.379609+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:01:36.623816+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:02:02.386527+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:03:02.499465+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:03:36.638823+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:05:02.394117+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:05:37.577159+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:06:54.326079+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:07:02.414500+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:07:36.649919+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:08:02.383597+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:09:02.423698+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:09:39.620654+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:11:02.408748+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:11:38.623143+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:12:55.371382+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:13:02.410783+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:13:38.683515+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:14:02.402902+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:15:02.386135+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:15:38.750369+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:17:02.400522+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:17:37.574805+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:18:55.548936+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:19:02.403876+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:19:37.725452+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:20:02.403768+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:21:02.422083+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:21:44.653053+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:23:02.434663+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:23:37.680187+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:24:56.424994+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:25:02.449263+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:25:38.864300+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:26:02.433106+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:27:02.385381+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:27:37.698789+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:29:02.412477+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:29:37.694988+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:30:53.453900+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:31:02.445645+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:31:49.735609+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:32:02.505253+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:33:02.448998+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:33:46.640215+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:35:02.388369+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:35:46.868689+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:36:54.577752+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:37:02.488062+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:37:44.738708+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:38:02.482965+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:39:02.402152+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:39:41.739530+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:41:02.467395+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:41:38.598662+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:43:02.448331+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:43:08.385708+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:43:38.690094+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:45:02.384358+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:45:02.403363+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:45:40.496359+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:47:02.440408+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:47:36.620862+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:49:02.498692+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:49:38.939496+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:49:53.397968+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:51:02.406280+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:51:02.423055+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:51:40.538354+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:53:02.427880+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:53:38.743917+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:55:02.395258+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:55:37.669218+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:55:54.344639+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:57:02.524564+00:00",
+      "probe_started",
+      "MKC",
+      "835",
+      null
+    ],
+    [
+      "2026-10-01T14:57:02.542798+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:57:37.677351+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T14:59:02.379280+00:00",
+      "probe_started",
+      "ACN",
+      "528",
+      null
+    ],
+    [
+      "2026-10-01T14:59:37.781410+00:00",
+      "capture_skipped",
+      "ACN",
+      "528",
+      "schedule_changed_or_claimed"
+    ],
+    [
+      "2026-10-01T15:01:53.640465+00:00",
+      "capture_skipped",
+      "MKC",
+      "835",
+      "schedule_changed_or_claimed"
+    ]
+  ],
+  "route_results": [
+    {
+      "timestamp": "2026-10-01T13:47:37.556809+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "bea90b5aca3142af83a7cd6cd0e4d5f8",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:05:37.554516+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "d482395b266a408b92b00e390170d8e7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:21:35.583661+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "681a3910c1b2479d96d50634a45a3ebd",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:01:36.596364+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "09c1e84d987c481492ed5f1c586ec831",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:25:35.672304+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "35082a6faa624c4bbd38db857dfd7303",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:21:29.455016+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "418a181641f647908163526d6efb3f05",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:57:37.617805+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ffe2d4c40b0f46e681e583c310625c4a",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:39:28.481930+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "b2967e8a4bde49b685d600a01eb9822c",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:55:35.539215+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "984149f0541043ba9c09a3cc3893ee3d",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:33:35.439457+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "4065c2a46f354643b1d56af0d84433b1",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:07:35.455815+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "bc81784bdfed43dcb5c391a83b1cd0f7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:23:35.609605+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "2bc1c4c2bea548a4b9dec9fc50f7761c",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:29:37.606635+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "2078874ee9ba4a9ca82664cb694fb649",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:31:49.635500+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "af7d9fe1455f42faa715bf534ef45bff",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:15:30.507373+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "3c99084ac4614534819e30ffec2ec773",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:45:35.535455+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "175874eefde54544b9cffbec29c52aec",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:19:37.669802+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ee44d4434a774656abf9f1e4febaf68d",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:53:34.587715+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "39a20a916a084996ace80d0143595e7b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:49:38.674854+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "114ab8787b444c00ba84b5892d0fd743",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:59:36.735337+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "41ea6e40998d43cc8ea155a3fca125bd",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:39:35.642018+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "eb2fe5266309423e9c6da2900cba64a9",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:01:36.590817+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "c3d47b62094e4abbb8d250fe5f2bf475",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:17:28.743458+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "688b6f74d39c455e9be67c4b7ea07b9b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:27:37.648122+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "fa4fc5a0d1f04d5cbb8a3c9303c02c18",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:11:28.543258+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "876466bd4b96430e94a35c6e620e9f71",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:49:38.869322+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "d869f6295f344bc9bc327e299a32f52a",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:05:27.620526+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "4d04a4c83a6347a9a13fd21586e79b95",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:37:28.422993+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "254e014b31ff4cffa20251475751842f",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:13:35.645426+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "1950ffa2742f4c2f800b6f6ca0123a2a",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:29:36.698419+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "5988a5fadc96496785d48c72e06eb541",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:19:38.489410+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "1c56a100056c4a009a4abcdad1c67ebe",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:17:35.716186+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "e1c92634c4824c149089c136a78fa9dc",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:03:36.597778+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ab445128faf44905b867a2df920fa6f1",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:41:38.582260+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "256f022d790842808a27a2f09943dafa",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:49:35.543142+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "22a00fc4802e42a08e508436e1a4cdd7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:11:35.711543+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "14d765746c70492c95454c91e0388359",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:55:37.599133+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "6ad6a2dd73a54352b45daa8a036b1c69",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:29:28.657036+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "a19ac9775b8240ff9fd1f89949e725af",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:45:38.484478+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "59545197be28410a8cd264a922a36274",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:31:34.444693+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "c605dba87200411197b49184b48a6415",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:03:35.672686+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "58544292cc2b439e9356b304abbdd736",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T11:59:35.794140+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "19ee055809104f8c8ff8c07d597f2d12",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:43:35.442365+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "bffbb5eb388b40a691d6799d1775c4c2",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:53:38.642425+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "cafce5728afe4ea4bd562f964fee35f7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:07:36.627682+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "64aafeb0ebad444bb05650abedbde63a",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:35:46.750146+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f6664aac448e4230932f2b7e124913fe",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:19:28.489505+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "4a85ccf138cd40cba71a8629a212fc63",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:27:35.653704+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "d5052dacc0eb48949d79d6b2e107b8e9",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:45:40.478175+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "535a734fae414706a2126dce4d50535f",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:21:44.589565+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "252c0161c6dc490fb9897b8f3dd13a9b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T11:57:36.587707+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "6f415fb550754cf0901096e0802c3d8b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:23:37.632812+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f815f41946e4411388c61c07e9d4e1a2",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:43:38.569351+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "b6a12e5fdd5344439d7cbd3c56802365",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:51:38.575224+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "0d9c101f8d3c410cb7dd8203a9e4133b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T11:55:38.614764+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "c32c609afd664230af7084db8e9d801d",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:15:36.658243+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "873d3dbc49454e9eaed7ebb07841786b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:09:35.584981+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "12edb34f00b04d988160f018a3f9abb4",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:39:41.622301+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "4c85fa3bc7214a529be7e99e8b514f25",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:47:35.540535+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f768468022364b59ba1448a8c43b9af6",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:25:38.764413+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "e7cb2b14a52c4d20a5218af97a36c411",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:53:37.595736+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "893ebb8ca19742c280e6172522569ae7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:33:29.558083+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "99196b75035e45d693b4f8961a2c70dc",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:15:38.643213+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "d8f5b7116ac644cba711ab7e7542dc8e",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:03:27.536455+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "a599ef3fd1c44f3cac15ad350e0441b2",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:11:38.603331+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ff7edd2056a8444ab02134db66cd32cf",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T11:40:36.815661+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "e937cb6a63724a76a3a926b1a959bbc0",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:31:35.621909+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "bcbf71359df44022b7e5d280e685e4b7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:13:38.651130+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "439784843e15415d9946ef341f39d090",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:51:40.493889+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ede76d79ff42492e83e696f95585e680",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:59:37.660972+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "3b2e604668bc4c4796425e514eb71ba4",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:43:29.818619+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "1857c96d35f8417482437a1f38049d16",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:37:35.608288+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ce877623898c4ace8a1a61e2cd0e8fae",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:59:37.717097+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "5e654c45f2ba4e6397c3180c51a16bd1",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:23:31.497850+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "6f5d1741f7f94024b100e0ab71388336",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:35:35.621960+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "3d604b95b86c431c9c345c17d2409299",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:47:36.578048+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "9475f47a53d14f388aa8ce31c7459420",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:17:37.526449+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "0b16fe5993cd43279a9631738807ca5b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:07:28.513510+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "a2f5bd8fc2a74485a390d61c8c64546b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:05:35.584696+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "ad53ffdd77ad4b1eb3bfde8a73a89d0d",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T12:41:36.528483+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "c65861461e2c42a89fdc2b9344778a7b",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:41:28.753884+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "9a4ca7386aa84fe1b06d007ce38ae7a8",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:01:29.460141+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f702d9ea6802404dbe3336a092bf1aed",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:33:46.586891+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "501266f3d6014269ac9f6d5d4f4f7d63",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:51:35.577964+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "65826d12e82f40fd965bb861d6bbdf9d",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T14:37:44.725437+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "b3f0c4a34b9943e49e519e44a25624b6",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:35:27.560724+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "fa296379cd76425da68d6022ebff5c1f",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:57:38.749609+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f99f8e8c44094a829841e20952e524da",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:13:31.556821+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "04af024714bf40368f33d93ee8e91938",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:25:28.620400+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "f6d657b22fab48a297f2c97cbfe20f73",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:55:38.760973+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "bd8065b18c21485abe38f4f40162f531",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:09:39.591954+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "8cdd6280729b4cd79d7d0fd28a602ab7",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T13:27:28.599469+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "a2ee050eb21e4e619574afa62cfe97d9",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T12:57:35.520725+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "39d1f9f017394dd9be8ecc28dfbe1d31",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "NO_CANDIDATE",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "learn_new_candidate"
+    },
+    {
+      "timestamp": "2026-10-01T13:09:28.548462+00:00",
+      "event_type": "probe_result",
+      "call_id": 528,
+      "ticker": "ACN",
+      "attempt_id": "688aef1718ec45b2a1996149e225d3bd",
+      "schedule_revision": 5,
+      "status": "pending",
+      "error_code": "LIVE_TARGET_UNCONFIRMED",
+      "failure_stage": "discovery",
+      "error_category": "no_candidate",
+      "next_action": "retry_candidate_discovery"
+    },
+    {
+      "timestamp": "2026-10-01T14:36:54.447419+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "82ef5f195c3641ef853282729fc08247",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:29:54.408870+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "856377fb00fe47cea74851f45b931ffd",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:24:56.366082+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "9459e351510945459072cd045763d12c",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:53:53.290947+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "a3aff4584d7946d8a9dd52c7c75610c4",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:17:53.455931+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "284678c8bd6e4cf9b3f620e08cc71df4",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:43:08.297940+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "a26098aae2ae4bbb947a5c744eb0b220",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T04:12:46.805011+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "98d5fe6bfbed4b32ab66cb22594a7159",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T12:59:54.274024+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "50b9f8002ac745269a6a1e7f62da2069",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:04:58.367138+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "3b93b281d88e4fbc9b5158164db9b617",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:00:55.444060+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "127baab0f2d4412bad23a9aa6a614435",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T08:14:46.849788+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "1f73ed94fc9b48ce971c9583dfddf7a4",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T13:11:53.399268+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "4200c96671914b62bbda2f997e2e6727",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:41:54.387007+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "f239fe08b72d4c4b854a00c80c636669",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:18:55.493969+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "67e7c565f73a4632829e266c004a4954",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T06:13:46.862955+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "7e0232ccc5a64a58816a92b2c60ab461",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T14:55:54.201842+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "7567da3d5a404df2a8c0a239d0027c07",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T00:10:47.853856+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "71675caad96e4369886fdee1d1d0a1c4",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T12:17:03.478783+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "b93f941a1e81427e95f86b54f62c4769",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:23:54.432544+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "f81aa105347248c3904f6cd44626d16c",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T11:59:56.430429+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "13a6fef0bfac4c359fc0027e99b3d9bf",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:29:55.437310+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "399a4a108c45485ca09a40ab72de59db",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:54:54.246859+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "9c42baaece8c494ca792699207e35f00",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:05:55.388202+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "5143189397c8472c90eaa208f0927b8e",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:12:55.260916+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "7496996cb2b74ecf98e391db3ee7b8c1",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:35:53.445863+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "7be7545ea3b341569dc418db018784b3",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:47:55.286513+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "0cefc064276a4cbabd37b72196181972",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:35:56.336620+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "03371d44357445d5b63b1652ee02bda8",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:06:54.289824+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "ae5f6a898f454df4a6436d04fe3c8089",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T10:15:47.760284+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "949b5b16ade947149c09a3b77d9193ec",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T13:48:55.284132+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "f9faf376ee274822a54cd57bbd51941e",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:42:16.302673+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "7cf1c23b828a48acb44153e9b9872b68",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:49:53.357500+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "b1dadcd6ae2544a6ad0c36c18e7bcac8",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T14:30:53.418335+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "9b7cd6d5b3b843caa9837704623235d2",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T12:10:56.262443+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "8b6411d1e4ca47d99efc20ea195b098a",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T02:11:47.725262+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "2f16e000e60d4094ab71ee9b897f7af3",
+      "schedule_revision": 2,
+      "status": "pending",
+      "error_code": "NOT_LIVE_YET",
+      "failure_stage": "lifecycle",
+      "error_category": "not_live_yet",
+      "next_action": "wait_until_event_window"
+    },
+    {
+      "timestamp": "2026-10-01T15:01:53.531671+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "a9b139fb238244ef92637a20c08ad071",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    },
+    {
+      "timestamp": "2026-10-01T13:23:55.448817+00:00",
+      "event_type": "probe_result",
+      "call_id": 835,
+      "ticker": "MKC",
+      "attempt_id": "e225008d322e45f7b85fb6dc8081c1ab",
+      "schedule_revision": 3,
+      "status": "pending",
+      "error_code": "CANDIDATE_NAVIGATION_FAILED",
+      "failure_stage": "discovery",
+      "error_category": "candidate_navigation",
+      "next_action": "retry_direct_webcast_link"
+    }
+  ],
+  "route_note": "Projection of actual final capture.json route outcomes. Last route failure is not necessarily the root cause of earlier routes. probe_result is the new canonical event type used to replay these outcomes; original type was route_probe_result."
+}

@@ -1,0 +1,18 @@
+# Local three-call profile, verified on the current 8-core / 27 GiB host.
+# Keep exactly one scheduler; its total capture reservations are process-local.
+# docker compose -f docker-compose.yml -f docker-compose.concurrent.yml --profile ops up -d --no-deps pipeline-scheduler
+services:
+  pipeline-scheduler:
+    cpus: 8
+    mem_limit: 10g
+    environment:
+      DATE_STREAM_WATCH_CONCURRENCY: "3"
+      DATE_STREAM_CAPTURE_CONCURRENCY: "3"
+      DATE_STREAM_DISCOVERY_CONCURRENCY: "3"
+      STT_CPU_THREADS: "2"
+      STT_READ_BYTES: "640000"
+      STT_OVERLAP_BYTES: "64000"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+      WEBCAST_VNC_ENABLED: "false"

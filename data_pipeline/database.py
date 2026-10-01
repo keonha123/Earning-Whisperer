@@ -1,122 +1,149 @@
-# database.py
-from sqlalchemy import create_engine, text
-import os
-from dotenv import load_dotenv
-from typing import List, Dict
+"""Stable database API; implementations live in storage by responsibility."""
 
-# 환경 변수 로드
-load_dotenv()
-DB_URL = os.getenv("DB_URL", "mysql+pymysql://root:password@localhost:3306/graduate_project")
-engine = create_engine(DB_URL)
+if not __package__:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# --- 1. 종목 리스트 저장 (stocks 테이블) ---
-def save_stocks(stock_list: List[Dict]):
-    """S&P 500 등 종목 마스터 정보를 저장"""
-    if not stock_list: return
-    
-    query = text("""
-        INSERT INTO stocks (ticker, company_name, sector)
-        VALUES (:ticker, :company_name, :sector)
-        ON DUPLICATE KEY UPDATE 
-            company_name = VALUES(company_name),
-            sector = VALUES(sector)
-    """)
-    
-    with engine.begin() as conn:
-        for stock in stock_list:
-            conn.execute(query, stock)
-    print(f"💾 [Stocks] {len(stock_list)}개 종목 동기화 완료.")
+from data_pipeline.storage.connection import (
+    DB_URL,
+    engine,
+    ping_database,
+)
 
-# --- 2. 어닝 일정 저장 (calls 테이블) ---
-def save_earnings_schedules(schedules: List[Dict]):
-    """yfinance 등으로 수집한 어닝콜 날짜 정보를 저장"""
-    if not schedules: return
+from data_pipeline.storage.health import (
+    get_operational_health_snapshot,
+)
 
-    query = text("""
-        INSERT INTO calls (ticker, earning_at, call_year, quarter, status)
-        VALUES (:ticker, :earning_date, :call_year, :quarter, 'upcoming')
-        ON DUPLICATE KEY UPDATE 
-            earning_at = VALUES(earning_at),
-            status = IF(status = 'completed', 'completed', 'upcoming')
-    """)
+from data_pipeline.storage.learning import (
+    _best_webcast_learning_url,
+    _webcast_learning_target_key,
+    _webcast_replay_target_key,
+    claim_historical_replay_discovery,
+    claim_historical_replay_target,
+    claim_webcast_learning_target,
+    claim_webcast_training_surface_target,
+    get_generalized_webcast_patterns,
+    get_historical_replay_calls,
+    get_historical_replay_coverage_summary,
+    get_historical_replay_discovery_summary,
+    get_historical_replay_discovery_tickers,
+    get_historical_replay_error_records,
+    get_historical_replay_summary,
+    get_historical_replay_targets,
+    get_verified_human_workflows,
+    get_verified_webcast_recipes,
+    get_verified_webcast_recipes_for_benchmark,
+    get_webcast_learning_summary,
+    get_webcast_learning_targets,
+    get_webcast_training_surface_coverage,
+    get_webcast_training_surface_details,
+    get_webcast_training_surface_risks,
+    get_webcast_training_surface_summary,
+    get_webcast_training_surface_targets,
+    prioritize_webcast_learning_targets,
+    record_historical_replay_discovery,
+    record_historical_replay_outcome,
+    record_webcast_learning_target_outcome,
+    record_webcast_recipe_outcome,
+    record_webcast_training_surface_outcome,
+    recover_stale_historical_replay_targets,
+    recover_stale_webcast_training_surface_audits,
+    save_historical_replay_targets,
+    save_webcast_recipe,
+)
 
-    with engine.begin() as conn:
-        for item in schedules:
-            # 캘린더 날짜를 기반으로 연도/분기 계산 로직 추가 가능
-            item['call_year'] = item['earning_date'].year
-            item['quarter'] = f"Q{(item['earning_date'].month-1)//3 + 1}"
-            conn.execute(query, item)
-    print(f"💾 [Schedules] {len(schedules)}개 일정 업데이트 완료.")
+from data_pipeline.storage.live_calls import (
+    _is_dead_local_worker_owner,
+    _linux_process_start_token,
+    _local_worker_owner_details,
+    _pipeline_worker_id,
+    claim_stream_probe,
+    complete_call_capture_from_transcript,
+    complete_recovered_call_captures_from_transcripts,
+    get_date_based_stream_candidates,
+    heartbeat_call_capture,
+    heartbeat_stream_probe,
+    mark_call_running,
+    record_stream_probe,
+    record_verified_call_event_end,
+    recover_stale_stream_operations,
+    requeue_failed_call_capture,
+    update_call_status,
+    update_capture_manifest,
+)
 
-# --- 3. 스트림 링크 업데이트 (calls 테이블) ---
-def update_stream_link(ticker: str, video_url: str):
-    """유튜브 등에서 찾은 실시간 링크를 기존 일정에 업데이트"""
-    query = text("""
-        UPDATE calls 
-        SET video_url = :video_url, status = 'live'
-        WHERE ticker = :ticker AND status = 'upcoming'
-        ORDER BY earning_at ASC LIMIT 1
-    """)
-    
-    with engine.begin() as conn:
-        conn.execute(query, {"ticker": ticker, "video_url": video_url})
+from data_pipeline.storage.market import (
+    get_all_stocks,
+    get_all_tickers,
+    save_financial_statement_items,
+    save_prices,
+    save_stocks,
+    update_static_indicators,
+    update_stock_ir_url,
+)
 
-def get_all_tickers() -> List[str]:
-    """stocks 테이블에서 모든 티커 리스트를 가져옴"""
-    query = text("SELECT ticker FROM stocks")
-    with engine.connect() as conn:
-        result = conn.execute(query)
-        # 리스트 형태로 변환하여 반환
-        return [row[0] for row in result]
+from data_pipeline.storage.policies import (
+    _PROBE_FUTURE_EVENT_DATE_PATTERN,
+    _coerce_schedule_date,
+    _env_int,
+    _nonnegative_env_int,
+    _normalized_schedule_ticker,
+    capture_retry_policy,
+    future_event_date_from_probe_error,
+    future_event_time_from_probe_error,
+    probe_error_date_mismatch,
+    stream_probe_retry_policy,
+)
 
-def get_all_stocks() -> List[Dict]:
-    # 🔍 여기 SELECT 문에 ir_url이 반드시 포함되어야 합니다!
-    query = text("SELECT ticker, company_name, ir_url FROM stocks") 
-    with engine.connect() as conn:
-        result = conn.execute(query)
-        # _mapping을 통해 컬럼명을 키값으로 변환합니다.
-        return [dict(row._mapping) for row in result]
-    
-def update_stock_ir_url(ticker: str, ir_url: str):
-    """발견한 IR 페이지 URL을 stocks 테이블에 저장"""
-    query = text("""
-        UPDATE stocks
-        SET ir_url = :ir_url
-        WHERE ticker = :ticker
-    """)
+from data_pipeline.storage.redaction import (
+    SENSITIVE_URL_QUERY_KEYS,
+    _URL_IN_TEXT_PATTERN,
+    redact_sensitive_text,
+    redact_sensitive_url,
+)
 
-    with engine.begin() as conn:
-        conn.execute(query, {"ticker": ticker, "ir_url": ir_url})
-    
-def save_prices(price_list: List[Dict]):
-    if not price_list: return
+from data_pipeline.storage.schedules import (
+    clear_schedule_enrichment_circuit,
+    confirm_schedule_revalidation_from_official_ir,
+    get_call_schedule_context,
+    get_calls_missing_verified_time,
+    get_imminent_calls,
+    get_schedule_enrichment_circuit,
+    open_schedule_enrichment_circuit,
+    quarantine_schedule_for_official_page_date_mismatch,
+    reconcile_near_term_schedule_sources,
+    record_schedule_enrichment_outcome,
+    record_schedule_refresh_outcome,
+    request_schedule_refresh,
+    save_earnings_schedules,
+    update_call_video_url,
+    update_official_schedule_discovery,
+    update_stream_link,
+    update_verified_schedule_time,
+)
 
-    query = text("""
-        INSERT IGNORE INTO prices 
-        (ticker, price_at, open_price, high_price, low_price, close_price, volume)
-        VALUES (:ticker, :price_at, :open_price, :high_price, :low_price, :close_price, :volume)
-    """)
+from data_pipeline.storage.schema import (
+    SCHEDULE_TIME_COLUMNS,
+    TRANSCRIPT_SESSION_COLUMNS,
+    ensure_financial_statement_items_table,
+    ensure_schedule_time_schema,
+    ensure_transcript_archive_schema,
+    ensure_transcript_outbox_schema,
+    ensure_webcast_learning_target_schema,
+    ensure_webcast_recipe_schema,
+    ensure_webcast_replay_discovery_schema,
+    ensure_webcast_replay_target_schema,
+    ensure_webcast_training_surface_schema,
+)
 
-    try:
-        with engine.begin() as conn:
-            for price in price_list:
-                conn.execute(query, price)
-        print(f"💾 [DB] {price_list[0]['ticker']} 주가 데이터 {len(price_list)}건 저장 완료.")
-    except Exception as e:
-        print(f"❌ [DB] 주가 저장 에러: {e}")
-
-def update_static_indicators(indicator_list: List[Dict]):
-    """stocks 테이블에 52주 고점 및 평균 거래량 정보를 박제(Update)"""
-    if not indicator_list: return
-
-    query = text("""
-        UPDATE stocks 
-        SET high_52w = :high_52w, 
-            avg_volume_20d = :avg_volume_20d 
-        WHERE ticker = :ticker
-    """)
-
-    with engine.begin() as conn:
-        for item in indicator_list:
-            conn.execute(query, item)
-    print(f"💾 [DB] {len(indicator_list)}개 종목의 정적 지표 박제 완료.")
+from data_pipeline.storage.transcripts import (
+    archive_transcript_segment,
+    enqueue_transcript_delivery,
+    get_archived_transcript_segments,
+    get_pending_transcript_deliveries,
+    get_transcript_session_summary,
+    mark_transcript_delivery_result,
+    mark_transcript_session_end,
+    purge_transcript_segments,
+)
