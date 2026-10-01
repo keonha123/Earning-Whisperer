@@ -1,6 +1,6 @@
 # 배포 운영 매뉴얼
 
-시연용 서버의 구성과 운영 방법입니다. 2026년 9월 30일 기준입니다.
+시연용 서버의 구성과 운영 방법입니다. 2026년 10월 1일 기준입니다.
 
 - 대상 독자: 팀원 전원
 - 다루는 범위: AWS 시연 서버의 구성 · 연결 · 재배포 · 검증 · 비용
@@ -709,10 +709,11 @@ sudo systemctl enable --now cloudflared
 - **서버가 켜져 있지 않으면 터널도 없습니다.** Cloudflare 엣지는 살아 있지만 연결할 곳이 없어 `530`(Argo Tunnel error)이 돌아옵니다. 인스턴스가 꺼져 있을 때의 정상 응답으로 보시면 됩니다.
 - **가용성은 터널 하나에 달려 있습니다.** `cloudflared` 가 죽으면 백엔드가 살아 있어도 외부에서 붙을 수 없습니다. `systemctl status cloudflared` 를 상태 확인 목록에 넣어 두었습니다 ([4장](#4-일상-운영)).
 - **백엔드와 ai-engine 은 평문 HTTP 입니다.** 둘 다 루프백만 바인딩해 서버 밖으로 평문이 나가지 않습니다. 같은 서버에 다른 사용자가 있다면 이 전제가 깨집니다.
-- **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
+- **STOMP 는 인증된 연결만 받습니다** ([#136](https://github.com/keonha123/Earning-Whisperer/issues/136), 2026-10-01 배포). CONNECT 에 유효한 JWT 가 없으면 거부하고, 연결을 거친 세션인지는 Principal 로 판별합니다. 클라이언트가 서버로 보내는 SEND 프레임은 받지 않습니다 — Spring 이 목적지의 `{userId}` 를 그대로 믿어, 인증만 하면 남에게 위조 매매 신호를 보낼 수 있었습니다. 구독 권한은 "로그인했는가" 까지이고 토픽별 인가는 없습니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
 - **`DemoReplayService` 가 기동과 함께 `mock-nvda-replay.json` 을 무한 재생합니다.** `/topic/live/demo` 로 브로드캐스트되며 구독자는 미배포 상태인 `frontend` 뿐이라 터미널 시연에는 영향이 없습니다. 현재 시연 경로(`DemoEarningsCallService`)와는 별개입니다.
+- **`frontend` 의 `/demo` 는 데이터가 들어오지 않습니다.** `useDemoWebSocket` 이 CONNECT 헤더에 토큰을 싣지 않아 위 인증에 걸립니다. 웹 개발이 보류 상태라 연결 시도만 막아 두었고, 재개할 때 로그인 흐름과 함께 붙이면 됩니다. 해당 파일에 주석으로 남겼습니다.
 - **data_pipeline 은 이 서버에 올리지 않습니다.** 별도 인스턴스로 분리하는 방향으로 정해졌습니다 ([11장](#11-data_pipeline-배포-계획)). 현재 시연은 과거 콜 재생이라 STT 가 필요하지 않습니다.
 - **Gemini 임베딩 무료 등급은 하루 1,000요청이고 한국시간 16:00 에 리셋됩니다.** 근거 적재가 이 한도를 쓰기 때문에 서버에서 재적재하지 않고 스냅샷으로 옮기는 것을 정책으로 두었습니다 ([6장](#6-근거-데이터-qdrant)).
 - **팩트체크 지연 여유가 크지 않습니다.** 세그먼트 간격 6초, 팩트체크 1배치 실측 5.2초입니다. `[DemoCall] 팩트체크 큐 적체` 경고가 보이면 카드가 스크립트보다 뒤처지고 있다는 뜻입니다.
@@ -751,16 +752,40 @@ sudo systemctl enable --now cloudflared
 
 개발 단계에서는 각자 `npm run dev` 로 실행합니다 ([3장](#3-연결-방법)). **최종 목표는 인스톨러 배포입니다.**
 
-인스톨러가 나오면 GitHub Releases 에서 내려받아 설치하는 방식이 됩니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
+인스톨러는 GitHub Releases 에서 내려받아 설치합니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
+
+```
+https://github.com/keonha123/Earning-Whisperer/releases
+```
+
+**이 저장소는 public 입니다.** 게시한 릴리스는 누구나 받을 수 있고, 설치본에는 시연 서버 주소가 박혀 있습니다. 팀 안에서만 돌릴 것은 draft 로 두면 협업자에게만 보입니다. draft 는 Releases 탭의 목록에 나타나지 않으므로 위 주소로 직접 들어가야 보입니다.
+
+현재 게시본은 `v0.1.0-rc1` 이고 pre-release 로 표시해 두었습니다 ([#115](https://github.com/keonha123/Earning-Whisperer/issues/115) 검증 전).
 
 ### 빌드 방법
 
-**Windows 에서 빌드해야 합니다.** `.exe` 인스톨러(NSIS)를 만드는 단계에서 Windows 도구가 필요합니다. macOS 에서는 `wine` 없이는 이 단계에 이르지 못합니다.
+**macOS 에서도 만들 수 있습니다.** electron-builder 가 자체 `wine` 과 NSIS 를 내려받아 쓰기 때문에 따로 설치할 것이 없습니다. 2026-09-14 에 "wine 이 없어 NSIS 단계에 이르지 못한다" 고 적어 두었는데, 그때는 `--win` 을 지정하지 않아 macOS 대상으로 빌드되고 있었습니다.
+
+**대상 아키텍처를 반드시 지정해야 합니다.** 빼면 빌드하는 기기 기준으로 나옵니다.
+
+```bash
+npx electron-builder --win          # Apple Silicon 에서는 win-arm64 가 나온다
+npx electron-builder --win --x64    # 일반 PC 용
+```
 
 빌드 시점에 환경변수를 넣어야 합니다. 패키징된 앱에는 `.env` 파일이 들어가지 않아서, 값이 없으면 서버에 붙지 못한 채 화면만 뜹니다 (#118).
 
+```bash
+# macOS · Linux — trading-terminal/ 에서
+export BACKEND_URL="https://api.logothea.com"
+export OAUTH_GOOGLE_CLIENT_ID="$(grep '^OAUTH_GOOGLE_CLIENT_ID=' .env.local | cut -d= -f2-)"
+export OAUTH_KAKAO_CLIENT_ID="$(grep '^OAUTH_KAKAO_CLIENT_ID=' .env.local | cut -d= -f2-)"
+npm run build
+npx electron-builder --win --x64
+```
+
 ```powershell
-# 값을 주는 방법 1 — 셸 환경변수
+# Windows
 $env:BACKEND_URL="https://api.logothea.com"
 $env:OAUTH_GOOGLE_CLIENT_ID="<keonha 에게 요청>"
 $env:OAUTH_KAKAO_CLIENT_ID="<keonha 에게 요청>"
@@ -777,16 +802,41 @@ npm run package
 
 산출물은 `trading-terminal/dist/` 에 나옵니다.
 
+**맥에서 Windows 빌드를 돌리면 `npm run dev` 가 깨집니다.** electron-builder 가 `node_modules/keytar` 를 Windows 바이너리로 교체하기 때문입니다. 복구는 아래 한 줄입니다.
+
+```bash
+npm run postinstall     # electron-rebuild — keytar 를 현재 플랫폼용으로 되돌린다
+```
+
+`file node_modules/keytar/build/Release/keytar.node` 로 확인할 수 있습니다. 맥에서는 `Mach-O`, Windows 빌드 뒤에는 `PE32+` 로 나옵니다.
+
+### 릴리스 올리기
+
+```bash
+# 자산 교체
+gh release delete-asset v0.1.0-rc1 "EarningWhisperer.Terminal.Setup.0.1.0.exe" --yes
+gh release upload     v0.1.0-rc1 "trading-terminal/dist/EarningWhisperer Terminal Setup 0.1.0.exe"
+
+# draft 로 두기 / 게시하기
+gh release edit v0.1.0-rc1 --draft=true
+gh release edit v0.1.0-rc1 --draft=false --prerelease
+```
+
+**서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Earning-Whisperer/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.
+
 ### 남은 작업
 
 | 이슈 | 내용 |
 |---|---|
-| #115 | 빌드 검증 — Windows 에서 `.exe` 생성, 설치 후 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시 |
-| #129 | 앱 아이콘 디자인 교체. 현재 아이콘은 임시입니다 |
+| #115 | Windows 기기에서 설치해 실행 — 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시, SmartScreen 경고 확인 |
 
-#118(환경변수 주입)과 #119(아이콘 리소스)는 완료되었습니다. #120(도메인과 HTTPS)은 서버 적용이
-끝났고 시연 완주 리허설만 남아 열려 있습니다. 인스톨러에 박히는 주소가 `https://api.logothea.com`
-이 되어, 서버를 옮기더라도 인스톨러를 다시 만들 필요가 없습니다.
+`.exe` 생성과 설정 주입은 확인이 끝났고, Windows 기기에서 설치해 본 적이 없는 것만 남았습니다.
+
+#118(환경변수 주입) · #119(아이콘 리소스) · #120(도메인과 HTTPS)은 완료되었습니다. #129(아이콘
+디자인)는 UI·UX 전반 개편과 함께 다루기로 하여 인스톨러 마일스톤에서 제외했습니다.
+
+인스톨러에 박히는 주소가 `https://api.logothea.com` 이라, 서버를 옮기더라도 인스톨러를 다시
+만들 필요가 없습니다.
 
 ### 알아두실 점
 
