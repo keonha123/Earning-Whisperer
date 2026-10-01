@@ -41,6 +41,51 @@ function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
 }
 
+/**
+ * 백엔드가 인증 실패로 연결을 거부할 때 ERROR 프레임에 싣는 문구.
+ * `StompJwtChannelInterceptor` 가 던지는 메시지와 같아야 한다.
+ */
+const STOMP_AUTH_ERROR = 'STOMP 인증 실패'
+
+/**
+ * 이번 인증 실패에 대해 토큰을 이미 갱신했는지. 연결에 성공하면 되돌린다.
+ *
+ * 갱신에 성공했다는 것은 refresh token 이 멀쩡하다는 뜻일 뿐, 새 액세스 토큰이 통과한다는
+ * 보장이 아니다. 서버의 JWT 비밀키가 바뀌었거나 시계가 어긋나 있으면 갱신한 토큰도 거부된다.
+ * 그때 다시 갱신하면 지연 없는 재연결이 계속 돌아 자기 백엔드를 두드리게 되고, refresh token
+ * 이 매번 회전하다 재사용 탐지로 강제 로그아웃되는 것 말고는 멈출 방법이 없다.
+ */
+let refreshedForAuthFailure = false
+
+/**
+ * 액세스 토큰을 갱신한 뒤 재연결한다.
+ *
+ * 갱신이 최종 실패하면(refresh token 무효) `BackendClient` 가 세션 정리 절차를 태우고
+ * `mainState.backendToken` 이 비워진다. 그러면 `scheduleReconnect` 의 타이머가 깨어나도
+ * 연결을 시도하지 않으므로 루프가 멈춘다. 일시적 실패라면 다음 주기에 다시 시도한다.
+ */
+function reconnectWithRefreshedToken(): void {
+  BackendClient.refreshSession()
+    .then(() => {
+      // 갱신 도중 사용자가 로그아웃했으면 다시 붙지 않는다
+      if (intentionalDisconnect) return
+      // 갱신에 성공했으니 지연 없이 바로 붙는다. retryCount 는 onConnect 에서 되돌린다
+      StompService.connect()
+    })
+    .catch((e) => {
+      console.error('[StompService] 인증 실패 후 토큰 갱신 실패:', e)
+      /*
+       * 갱신이 최종 실패하면 BackendClient 가 세션을 정리해 backendToken 을 비운다.
+       * 그 상태에서 RECONNECTING 을 띄우면 다시는 붙지 않는데 화면만 재연결 중으로 남는다.
+       */
+      if (!mainState.backendToken) {
+        onStatusChange('DISCONNECTED')
+        return
+      }
+      scheduleReconnect()
+    })
+}
+
 function pushToRenderer(channel: string, payload: unknown) {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
@@ -146,6 +191,7 @@ export const StompService = {
       onConnect: () => {
         if (client !== created) return
         retryCount = 0
+        refreshedForAuthFailure = false
         onStatusChange('CONNECTED')
 
         // Private 채널 구독
@@ -273,9 +319,28 @@ export const StompService = {
       onStompError: (frame) => {
         if (client !== created) return
         // frame 전체를 찍으면 헤더의 인증 토큰이 로그에 남는다 — 메시지만 남긴다
-        console.error('[StompService] STOMP 에러:', frame.headers?.message)
+        const reason = frame.headers?.message
+        console.error('[StompService] STOMP 에러:', reason)
         clearStompCovered()
         onStatusChange('DISCONNECTED')
+
+        /*
+         * 서버가 인증 실패로 끊은 경우, 같은 토큰으로 다시 붙어 봐야 똑같이 거부당한다.
+         * 액세스 토큰 수명이 15분이라 그대로 두면 30초 간격으로 영원히 실패한다.
+         * REST 쪽 401 재시도 경로는 STOMP ERROR 프레임을 보지 못하므로 여기서 직접 갱신한다.
+         */
+        if (reason === STOMP_AUTH_ERROR) {
+          if (refreshedForAuthFailure) {
+            // 갱신한 토큰으로도 거부당했다 — 토큰 문제가 아니므로 갱신을 반복하지 않는다
+            console.error('[StompService] 토큰을 갱신해도 인증이 거부된다 — 백오프로 전환한다')
+            scheduleReconnect()
+            return
+          }
+          refreshedForAuthFailure = true
+          reconnectWithRefreshedToken()
+          return
+        }
+
         scheduleReconnect()
       },
 
