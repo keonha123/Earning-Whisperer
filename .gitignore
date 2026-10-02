@@ -67,6 +67,7 @@ CLAUDE.md
 .claude/settings.local.json
 
 # Local review runtimes and disposable vector stores
+/tasks/validation/*.md
 tasks/runtime/
 tasks/qdrant-*/
 tasks/http-qdrant-*/
