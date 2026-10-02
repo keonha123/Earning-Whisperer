@@ -78,8 +78,10 @@ export default function SidePanel({
 
   return (
     <div
-      className="fixed inset-0 z-[300] animate-fade-in"
+      className="fixed inset-0 z-[300] animate-fade-in [-webkit-app-region:no-drag]"
       // 오버레이는 portal 없이 fixed 로 충분 (App 루트에서 렌더되는 한 stacking context 충돌 없음).
+      // no-drag: macOS 헤더 드래그 영역은 z-order 와 무관하게 잡히므로, 위에 뜬 패널의 닫기
+      // 버튼이 창 드래그로 먹히지 않도록 오버레이 전체를 드래그 영역에서 뺀다.
     >
       <div
         aria-hidden="true"

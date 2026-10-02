@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('terminalApi', {
     ipcRenderer.on(channel, wrapped)
     return () => ipcRenderer.removeListener(channel, wrapped)
   },
+
+  /** 창 드래그 영역처럼 macOS 전용 titleBarStyle:'hidden' 에 기대는 UI 판별용 */
+  platform: process.platform,
 })
 
 declare global {
@@ -33,6 +36,7 @@ declare global {
     terminalApi: {
       invoke: (channel: string, payload?: unknown) => Promise<unknown>
       on: (channel: string, listener: (payload: unknown) => void) => () => void
+      platform: NodeJS.Platform
     }
   }
 }
