@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "terms": [
+    { "term": " comp sales ", "aliases": ["comps "], "ko": "기존점 매출",
+      "definition_ko": "1년 이상 운영된 점포만 집계한 매출 증가율입니다.", "why_ko": "신규 출점 효과를 뺀 영업력을 보여줍니다.",
+      "category": "retail" }
+  ]
+}

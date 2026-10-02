@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "terms": [
+    { "term": "comp sales", "aliases": ["comps"], "ko": "기존점 매출", "definiton_ko": "오타가 난 키", "category": "retail" }
+  ]
+}
