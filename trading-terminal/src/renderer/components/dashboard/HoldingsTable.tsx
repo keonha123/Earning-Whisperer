@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import Tabs from '../common/Tabs'
 import CompanyLogo from '../common/CompanyLogo'
 import StaleDataOverlay from '../common/StaleDataOverlay'
-import type { HoldingMockRow, WatchlistMockRow } from '../../fixtures/holdings.dev-mock'
 import type { IpcError } from '../../../lib/types/ipcError'
 
 export interface HoldingsTableRow {

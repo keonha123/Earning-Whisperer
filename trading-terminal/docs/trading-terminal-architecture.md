@@ -286,14 +286,25 @@ TradeSignalDto { trade_id, action, ticker, target_qty, ema_score }
     - 최종 수량 = min(target_qty, 보유 수량)
     - 최종 수량 <= 0 이면 → FAILED 콜백 전송 (보유 없음)
 
-[Step 4] KIS 주문 API 호출 (Main)
-  POST /uapi/domestic-stock/v1/trading/order-cash
-  headers: { authorization, appkey, appsecret, tr_id: "VTTC0802U"(BUY) | "VTTC0801U"(SELL) }
-  body: { CANO, ACNT_PRDT_CD, PDNO: ticker, ORD_DVSN: "00", ORD_QTY, ORD_UNPR: "0" }
+[Step 4] KIS 주문 API 호출 (Main) — 해외주식
+  POST /uapi/overseas-stock/v1/trading/order
+  headers: { authorization, appkey, appsecret,
+             tr_id: "VTTT1002U"(모의 BUY) | "TTTT1002U"(실전 BUY)
+                    / "VTTT1006U"(모의 SELL) | "TTTT1006U"(실전 SELL) }
+  body: { CANO, ACNT_PRDT_CD, OVRS_EXCG_CD, PDNO: ticker,
+          ORD_DVSN: "00", ORD_QTY, OVRS_ORD_UNPR, ORD_SVR_DVSN_CD: "0" }
 
-[Step 5] 체결 확인 (Main, 폴링 최대 3회)
-  GET /uapi/domestic-stock/v1/trading/inquire-ccnl
-  성공 조건: 체결 수량 > 0
+  ⚠️ 미국 주식 매수에는 시장가 코드가 없다. ORD_DVSN 매수 코드는
+     지정가(00) / LOO(32) / LOC(34) 뿐이고 모의투자는 00 만 허용한다.
+     따라서 OVRS_ORD_UNPR 에 "0" 을 넣으면 0달러 지정가가 되어 영원히 미체결이다.
+     UI 의 "즉시 체결" 은 주문 직전 현재가(HHDFS00000300)를 조회해
+     매수 +1% / 매도 -1% 지정가로 환산해 보낸다 (`src/lib/orderPricing.ts`).
+     현재가를 못 구하면 주문을 보내지 않고 실패시킨다.
+
+[Step 5] 체결 확인 (Main)
+  주문 후 대기 → GET /uapi/overseas-stock/v1/trading/inquire-ccnl 로 ODNO 매칭
+  성공 조건: 체결 수량 > 0. 조회 실패 시 executedQty=qty fallback 후
+  포트폴리오 sync 가 KIS 잔고 재조회로 보정
 
 [Step 6] 백엔드 콜백 전송 (Main → Backend)
   POST /api/v1/trades/{tradeId}/callback

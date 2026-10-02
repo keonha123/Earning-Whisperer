@@ -45,7 +45,7 @@ describe('KisService.getCurrentPrice', () => {
 
     const price = await KisService.getCurrentPrice('TSLA')
 
-    expect(price).toBe(245.1)
+    expect(price.currentPrice).toBe(245.1)
     expect(kisHttpMock.get).toHaveBeenCalledWith(
       '/uapi/overseas-price/v1/quotations/price',
       expect.objectContaining({
@@ -59,21 +59,21 @@ describe('KisService.getCurrentPrice', () => {
     await seedCredentials()
     kisHttpMock.get.mockResolvedValueOnce({ data: currentPriceResponse(0) })
 
-    expect(await KisService.getCurrentPrice('TSLA')).toBe(0)
+    expect((await KisService.getCurrentPrice('TSLA')).currentPrice).toBe(0)
   })
 
   it('last 음수 → 0 반환', async () => {
     await seedCredentials()
     kisHttpMock.get.mockResolvedValueOnce({ data: currentPriceResponse(-1.5) })
 
-    expect(await KisService.getCurrentPrice('TSLA')).toBe(0)
+    expect((await KisService.getCurrentPrice('TSLA')).currentPrice).toBe(0)
   })
 
   it('last undefined → 0 반환', async () => {
     await seedCredentials()
     kisHttpMock.get.mockResolvedValueOnce({ data: currentPriceUndefinedResponse })
 
-    expect(await KisService.getCurrentPrice('TSLA')).toBe(0)
+    expect((await KisService.getCurrentPrice('TSLA')).currentPrice).toBe(0)
   })
 
   it('HTTP 예외 → throw하지 않고 0 반환', async () => {
@@ -82,7 +82,7 @@ describe('KisService.getCurrentPrice', () => {
 
     const price = await KisService.getCurrentPrice('TSLA')
 
-    expect(price).toBe(0) // 호출측이 0 가드로 주문 진입 막음
+    expect(price.currentPrice).toBe(0) // 호출측이 0 가드로 주문 진입 막음
   })
 
   it('토큰 무효 시 ensureToken으로 issueToken 자동 호출', async () => {
@@ -96,7 +96,7 @@ describe('KisService.getCurrentPrice', () => {
     const price = await KisService.getCurrentPrice('TSLA')
 
     expect(kisHttpMock.post).toHaveBeenCalledWith('/oauth2/tokenP', expect.any(Object))
-    expect(price).toBe(100)
+    expect(price.currentPrice).toBe(100)
   })
 
   it("rt_cd='1' → 0 반환 (호출자 0 가드와 호환)", async () => {
@@ -107,7 +107,7 @@ describe('KisService.getCurrentPrice', () => {
 
     const price = await KisService.getCurrentPrice('TSLA')
 
-    expect(price).toBe(0)
+    expect(price.currentPrice).toBe(0)
   })
 
   it("rt_cd='0' + last 정상 → 기존 동작 유지 (회귀 보호)", async () => {
@@ -116,7 +116,7 @@ describe('KisService.getCurrentPrice', () => {
 
     const price = await KisService.getCurrentPrice('AAPL')
 
-    expect(price).toBe(180.5)
+    expect(price.currentPrice).toBe(180.5)
   })
 
   it('HHDFS00000300 호출 직전 acquire(LOW) 1회 호출', async () => {

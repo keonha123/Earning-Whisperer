@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import pytest
+from config import Settings
+from services.runtime_dispatch_service import dispatch_analysis
 
 from models.request_models import AnalyzeRequest, MarketData, SectionType, SourceType
 from models.signal_models import GeminiAnalysisResult
@@ -105,3 +108,42 @@ def test_analysis_node_uses_runtime_schema(monkeypatch):
     result = asyncio.run(analysis_node(state))
     assert result["strategy"] == "PEAD"
     assert result["analysis"]["direction"] == "LONG"
+
+
+def test_required_control_failure_blocks_signal_without_losing_analysis():
+    class UnavailableControls:
+        def apply_runtime_controls(self, **kwargs):
+            raise RuntimeError("database unavailable")
+
+    payload = AnalyzeRequest(ticker="NVDA", current_chunk="guidance raised", market_data=MarketData(ticker="NVDA"),
+                             section_type=SectionType.GUIDANCE, source_type=SourceType.EARNINGS_CALL)
+    result = asyncio.run(dispatch_analysis(payload=payload, settings=Settings(_env_file=None),
+                         analysis_runner=_fake_run_analysis, control_service=UnavailableControls()))
+    assert result["analysis"]["rationale"] == "guidance improved"
+    assert result["analysis"]["execution_allowed"] is False
+    assert result["analysis"]["decision_state"] == "blocked"
+    assert result["signal_brief"]["action"] == "AVOID"
+    assert result["signal_brief"]["summary_ko"].startswith("진입 보류.")
+    assert result["signal_brief"]["execution_badge"]["label"] == "실행 차단"
+    assert result["data"]["signal_brief"] == result["signal_brief"]
+    assert result["metadata"]["runtime_controls"]["status"] == "unavailable"
+    hero = next(c for c in result["data"]["cards"] if c["card_type"] == "hero_decision")
+    assert hero["payload"]["execution_allowed"] is False
+    assert hero["payload"]["decision"] == "AVOID"
+    assert hero["payload"]["summary"] == result["signal_brief"]["summary_ko"]
+    assert hero["payload"]["badge"] == "blocked"
+
+
+def test_explicit_offline_mode_skips_controls_and_is_not_production_valid():
+    class MustNotCall:
+        def apply_runtime_controls(self, **kwargs):
+            raise AssertionError("offline mode must not call controls")
+
+    settings = Settings(_env_file=None, RUNTIME_CONTROLS_MODE="offline")
+    payload = AnalyzeRequest(ticker="NVDA", current_chunk="guidance raised", market_data=MarketData(ticker="NVDA"),
+                             section_type=SectionType.GUIDANCE, source_type=SourceType.EARNINGS_CALL)
+    result = asyncio.run(dispatch_analysis(payload=payload, settings=settings,
+                         analysis_runner=_fake_run_analysis, control_service=MustNotCall()))
+    assert result["metadata"]["runtime_controls"] == {"status": "offline", "verified": False}
+    with pytest.raises(ValueError, match="not permitted in prod"):
+        Settings(_env_file=None, environment="prod", RUNTIME_CONTROLS_MODE="offline")

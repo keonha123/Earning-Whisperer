@@ -1,7 +1,7 @@
 package com.earningwhisperer.presentation.internal;
 
 import com.earningwhisperer.domain.transcript.TranscriptSessionRegistry;
-import com.earningwhisperer.domain.transcript.TranscriptService;
+import com.earningwhisperer.domain.transcript.LiveTranscriptFactCheckService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,7 +31,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TranscriptInternalController {
 
-    private final TranscriptService transcriptService;
+    private final LiveTranscriptFactCheckService transcriptService;
 
     @PostMapping("/transcript-segment")
     public ResponseEntity<?> ingest(@Valid @RequestBody TranscriptSegmentRequest request) {

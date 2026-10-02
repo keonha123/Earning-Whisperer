@@ -16,6 +16,8 @@ interface DrawerState {
    */
   open: (ticker: string) => void
   close: () => void
+  /** 로그아웃 시 초기화 (useUserStore.clear() 가 호출). */
+  reset: () => void
 }
 
 const TICKER_RE = /^[A-Z0-9.\-]{1,10}$/
@@ -39,4 +41,5 @@ export const useDrawerStore = create<DrawerState>((set) => ({
     set({ openTicker: normalized })
   },
   close: () => set({ openTicker: null }),
+  reset: () => set({ openTicker: null }),
 }))

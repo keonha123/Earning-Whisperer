@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class LegacyAnalyzeRequest(BaseModel):
@@ -14,10 +14,16 @@ class LegacyAnalyzeRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     ticker: str = Field(min_length=1)
-    text_chunk: str = Field(min_length=1)
+    text_chunk: str
     sequence: int = Field(default=0, ge=0)
     timestamp: int = Field(default_factory=lambda: int(time()))
     is_final: bool = False
+
+    @model_validator(mode="after")
+    def require_speech_or_end(self):
+        if not self.text_chunk.strip() and not self.is_final:
+            raise ValueError("Non-final chunks must contain speech")
+        return self
 
     # Additive fields let newer callers pass richer context without breaking
     # the original five-field payload.

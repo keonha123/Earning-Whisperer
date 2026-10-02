@@ -13,9 +13,10 @@ try:
     from models.request_models import AnalyzeRequest
     from models.storage_models import PersistEnvelopeResponse
     from repositories.event_store_repository import EventStoreRepository
-    from services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EvidenceIngestionService, LiveEarningsSessionService, RegressionService
+    from services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EvidenceIngestionService, LiveEarningsSessionService, RegressionService, TranscriptDiffService
     from services.equity_report_service import EquityResearchReportService
     from services.evidence_retrieval_service import EvidenceRetrievalService
+    from services.live_news_fact_check_service import LiveNewsFactCheckService
     from services.redis_signal_publisher import RedisSignalPublisher
 except ImportError:  # pragma: no cover
     from ..config import Settings
@@ -23,9 +24,10 @@ except ImportError:  # pragma: no cover
     from ..models.request_models import AnalyzeRequest
     from ..models.storage_models import PersistEnvelopeResponse
     from ..repositories.event_store_repository import EventStoreRepository
-    from ..services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EvidenceIngestionService, LiveEarningsSessionService, RegressionService
+    from ..services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EvidenceIngestionService, LiveEarningsSessionService, RegressionService, TranscriptDiffService
     from ..services.equity_report_service import EquityResearchReportService
     from ..services.evidence_retrieval_service import EvidenceRetrievalService
+    from ..services.live_news_fact_check_service import LiveNewsFactCheckService
     from ..services.redis_signal_publisher import RedisSignalPublisher
 
 
@@ -65,6 +67,10 @@ def get_evidence_service(app: FastAPI) -> EvidenceRetrievalService:
     return app.state.evidence_service
 
 
+def get_live_news_fact_check_service(app: FastAPI) -> LiveNewsFactCheckService:
+    return app.state.live_news_fact_check_service
+
+
 def get_earnings_intelligence_service(app: FastAPI) -> EarningsIntelligenceService:
     return app.state.earnings_intelligence_service
 
@@ -78,6 +84,9 @@ def get_company_intelligence_service(app: FastAPI) -> CompanyIntelligenceService
 
 def get_live_session_service(app: FastAPI) -> LiveEarningsSessionService:
     return app.state.live_session_service
+
+def get_transcript_diff_service(app: FastAPI) -> TranscriptDiffService:
+    return app.state.transcript_diff_service
 
 
 def get_control_service(app: FastAPI) -> ControlPlaneService:
@@ -104,10 +113,12 @@ __all__ = [
     "get_evidence_ingestion_service",
     "get_equity_report_service",
     "get_evidence_service",
+    "get_live_news_fact_check_service",
     "get_persist_envelope",
     "get_live_session_service",
     "get_redis_signal_publisher",
     "get_regression_service",
     "get_repository",
     "get_settings",
+    "get_transcript_diff_service",
 ]

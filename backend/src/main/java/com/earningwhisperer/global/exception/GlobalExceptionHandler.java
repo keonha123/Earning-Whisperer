@@ -20,6 +20,14 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** Return the intended status directly; servlet /error redispatch can otherwise become a misleading 401. */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleResponseStatus(org.springframework.web.server.ResponseStatusException e) {
+        String reason = e.getReason() == null ? "Request could not be completed" : e.getReason();
+        return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", reason));
+    }
+
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

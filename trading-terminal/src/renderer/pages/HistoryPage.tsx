@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { HistoryMode, HistoryRow, HistoryStatus } from '../types/tradeHistory'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import Pagination from '../components/common/Pagination'
@@ -9,13 +10,6 @@ import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
-import {
-  historyRowsDevMock,
-  historySummaryDevMock,
-  type HistoryRowMock,
-  type HistoryMode,
-  type HistoryStatus,
-} from '../fixtures/historyRows.dev-mock'
 
 /**
  * HistoryPage — 체결 내역.
@@ -30,7 +24,7 @@ import {
  * Trade 인터페이스 정책:
  *  - 기존 Trade 타입 (id, ticker, side, executedQty, executedPrice, status, createdAt)
  *    그대로 유지. mode/ai_score 필드는 추가하지 않는다.
- *  - DEV 빌드: dev-mock 의 HistoryRowMock 으로 mode / AI 컬럼 표시.
+ *  - mode / AI 컬럼은 백엔드가 값을 주지 않으므로 "—" 로 표시한다.
  *  - PROD 빌드: 백엔드에서 받은 Trade 만 표시, mode / AI 셀은 "—".
  *
  * 보안 메모:
@@ -44,7 +38,9 @@ interface Trade {
   id: number
   ticker: string
   side: 'BUY' | 'SELL'
-  orderQty: number
+  orderType?: 'MARKET' | 'LIMIT' | null
+  orderQty?: number | null
+  price?: number | null
   executedQty: number
   executedPrice: number | null
   status: string
@@ -71,15 +67,22 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [detailRow, setDetailRow] = useState<HistoryRow | null>(null)
 
   const navigate = useNavigate()
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
   const clearUser = useUserStore((s) => s.clear)
+  /** 체결 동기화 중복 실행 가드. */
+  const reconcilingRef = useRef(false)
+  /** 목록 요청 세대 — 늦게 도착한 옛 응답이 최신 목록을 덮지 않도록. */
+  const loadGenerationRef = useRef(0)
 
   useEffect(() => {
-    loadTrades(0)
+    setPage(0)
+    // 화면 진입/기간 변경 시 미체결 주문을 한 번 확인한 뒤 목록을 읽는다.
+    reconcileThenLoad(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [period])
 
   /**
    * @param p          요청할 페이지 번호 (0-base).
@@ -88,14 +91,63 @@ export default function HistoryPage() {
    *                      같은 tick 의 closure 가 옛 pageSize 를 캡처한다.
    *                      sizeOverride 가 주어지면 우선 적용한다.
    */
-  async function loadTrades(p: number, sizeOverride?: number) {
+  function periodToStartDate(p: PeriodId): string | undefined {
+    if (p === 'all') return undefined
+    const days = p === '7d' ? 7 : p === '30d' ? 30 : 90
+    const d = new Date()
+    d.setDate(d.getDate() - days)
+    // ISO 8601 — 백엔드 @DateTimeFormat(iso = ISO.DATE_TIME) 파싱 형식
+    return d.toISOString().replace('Z', '')
+  }
+
+  /**
+   * 미체결(PENDING) 주문의 체결 여부를 KIS 에 재조회해 백엔드 상태를 맞춘 뒤 목록을 다시 읽는다.
+   *
+   * 주문 직후 1회 조회로 확정하는 구조라 그 순간 체결이 반영되지 않은 주문은 PENDING 으로
+   * 남고 이후 아무도 확인하지 않았다. 주기 폴링을 두는 대신(KIS 초당 호출 제한) 이 화면에
+   * 들어올 때 1회와 새로고침 때만 확인한다. 실패는 조용히 넘긴다 — 목록 조회 자체는 되어야
+   * 하고, 동기화는 부가 작업이다.
+   */
+  async function reconcileThenLoad(p: number) {
+    // 새로고침 연타나 mount effect 와의 중첩을 막는다. 중복 실행은 KIS 조회를 낭비하고,
+    // loadTrades 가 요청 순서와 무관하게 setTrades 하므로 옛 응답이 최신을 덮을 수 있다.
+    if (reconcilingRef.current) return
+    reconcilingRef.current = true
+    setLoading(true)
+    try {
+      await ipc.invoke<{ checked: number; reconciled: number; failed: number }>(
+        IPC_CHANNELS.TRADES_RECONCILE_PENDING,
+      )
+    } catch (e) {
+      // 동기화는 부가 작업이다 — 실패해도 목록 조회는 그대로 진행한다.
+      console.warn('체결 상태 동기화 실패:', e)
+    }
+    try {
+      // setLoading(false) 를 여기서 하지 않는다. 중간에 false 프레임이 렌더되면
+      // 갱신 전 데이터가 "로딩 아님" 으로 잠깐 보인다.
+      await loadTrades(p, undefined, { keepLoading: true })
+    } finally {
+      setLoading(false)
+      reconcilingRef.current = false
+    }
+  }
+
+  async function loadTrades(
+    p: number,
+    sizeOverride?: number,
+    opts?: { keepLoading?: boolean },
+  ) {
+    const generation = ++loadGenerationRef.current
     setLoading(true)
     try {
       const size = sizeOverride ?? Number(pageSize)
+      const startDate = periodToStartDate(period)
       const data = await ipc.invoke<{ content: Trade[]; totalPages: number }>(
         IPC_CHANNELS.TRADES_GET,
-        { page: p, size },
+        { page: p, size, ...(startDate ? { startDate } : {}) },
       )
+      // 더 새로운 요청이 이미 떠 있으면 이 응답은 버린다.
+      if (generation !== loadGenerationRef.current) return
       setTrades(data.content ?? [])
       setTotalPages(data.totalPages ?? 0)
       setLastUpdatedAt(Date.now())
@@ -112,7 +164,9 @@ export default function HistoryPage() {
             : undefined,
       })
     } finally {
-      setLoading(false)
+      // reconcileThenLoad 가 감싸는 경우에는 그쪽에서 내린다 — 중간에 로딩이 풀려
+      // 옛 데이터가 노출되는 프레임을 막기 위해.
+      if (!opts?.keepLoading) setLoading(false)
     }
   }
 
@@ -121,16 +175,45 @@ export default function HistoryPage() {
     loadTrades(p)
   }
 
-  // 표시 행: DEV 에서는 fixture (mode/AI 컬럼 시연용), PROD 에서는 실제 trades.
-  const displayRows: HistoryRowMock[] = useMemo(() => {
-    if (import.meta.env.DEV && trades.length === 0) {
-      return [...historyRowsDevMock]
-    }
+  async function handleCsvExport() {
+    const rows = filtered
+    if (rows.length === 0) return
+    const headers = ['일시', '종목', '방향', '모드', '주문수량', '체결수량', '주문가', '체결가', '체결금액', '상태']
+    const lines = [
+      headers.join(','),
+      ...rows.map((r) =>
+        [
+          r.createdAt,
+          r.ticker,
+          r.side,
+          r.mode,
+          r.orderQty ?? '',
+          r.executedQty,
+          r.price ?? '',
+          r.executedPrice ?? '',
+          r.amount ?? '',
+          r.status,
+        ].join(','),
+      ),
+    ]
+    const csvContent = lines.join('\n')
+    const periodLabel = period === 'all' ? 'all' : period
+    const filename = `trades_${periodLabel}_${new Date().toISOString().slice(0, 10)}`
+    await ipc.invoke(IPC_CHANNELS.SHELL_SAVE_CSV, { filename, csvContent })
+  }
+
+  // 표시 행: 백엔드가 준 체결 내역만 쓴다.
+  // DEV 에서 거래가 없으면 목업 내역을 대신 띄우고 있었는데, 그러면 체결이 없는 것과
+  // 연동이 끊긴 것을 화면에서 구별할 수 없다.
+  const displayRows: HistoryRow[] = useMemo(() => {
     return trades.map((t) => ({
       id: t.id,
       ticker: t.ticker,
       side: t.side,
       mode: 'MANUAL' as HistoryMode, // prod fallback — 실제 mode 정보 없음
+      orderType: t.orderType ?? null,
+      orderQty: t.orderQty ?? null,
+      price: t.price ?? null,
       executedQty: t.executedQty,
       executedPrice: t.executedPrice,
       amount:
@@ -155,17 +238,12 @@ export default function HistoryPage() {
         const q = search.trim().toUpperCase()
         if (!r.ticker.includes(q)) return false
       }
-      // period 필터: dev-mock 은 고정 날짜이므로 UI 만 표시 (실제 필터 효과 없음)
-      // TODO(impl): TRADES_GET 에 period 쿼리 파라미터 추가 후 백엔드 필터링.
       return true
     })
   }, [displayRows, segment, modeFilter, tickerFilter, search])
 
-  // 요약: DEV 에서는 fixture summary, PROD 에서는 페이지 단위 집계.
+  // 요약: 페이지 단위 집계. 거래가 없으면 0 이 맞다.
   const summary = useMemo(() => {
-    if (import.meta.env.DEV && trades.length === 0) {
-      return historySummaryDevMock
-    }
     return {
       todayCount: trades.length,
       buyCount: trades.filter((t) => t.side === 'BUY').length,
@@ -211,12 +289,12 @@ export default function HistoryPage() {
           {lastUpdatedAt && (
             <span>
               마지막 업데이트{' '}
-              <span className="num">{formatAgo(lastUpdatedAt)}</span>
+              <span className="num">{formatDateTime(lastUpdatedAt)}</span>
             </span>
           )}
           <button
             type="button"
-            onClick={() => loadTrades(page)}
+            onClick={() => reconcileThenLoad(page)}
             className="px-2.5 py-1 rounded-md inline-flex items-center gap-1.5
                        text-text-secondary hover:bg-surface-2 hover:text-text-primary
                        text-[11px] font-medium"
@@ -290,15 +368,7 @@ export default function HistoryPage() {
 
         <button
           type="button"
-          onClick={() => {
-            // TODO(impl): SHELL_SAVE_CSV IPC 핸들러 추가 후 연결.
-            //   - main 측에서 path traversal 방지 (다운로드 디렉터리 화이트리스트).
-            //   - 파일명 sanitize ([A-Za-z0-9_-]).
-            //   - 사용자 권한 + KIS 토큰 유효성 검증.
-            //   - CSV 인코딩: UTF-8 + BOM (Excel 한글 호환).
-            //   - 민감 데이터(체결가/금액) 포함 — 사용자 확인 다이얼로그 필요.
-            console.warn('[HistoryPage] CSV 내보내기는 다음 PR 에서 구현됩니다.')
-          }}
+          onClick={handleCsvExport}
           className="h-[30px] px-3 inline-flex items-center gap-1.5 rounded-md
                      border border-accent-500/35 text-accent-400 hover:bg-accent-500/10 hover:text-accent-300
                      text-[11px] font-semibold whitespace-nowrap"
@@ -332,7 +402,7 @@ export default function HistoryPage() {
                 <Th>종목</Th>
                 <Th>방향</Th>
                 <Th>모드</Th>
-                <Th align="right">수량</Th>
+                <Th align="right">체결수량</Th>
                 <Th align="right">체결가 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th align="right">체결금액 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th align="right">AI</Th>
@@ -352,7 +422,7 @@ export default function HistoryPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((r) => <Row key={r.id} row={r} />)
+                filtered.map((r) => <Row key={r.id} row={r} onDetail={() => setDetailRow(r)} />)
               )}
             </tbody>
           </table>
@@ -396,6 +466,9 @@ export default function HistoryPage() {
           />
         </div>
       </div>
+      {detailRow && (
+        <TradeDetailModal row={detailRow} onClose={() => setDetailRow(null)} />
+      )}
     </div>
   )
 }
@@ -448,7 +521,7 @@ function SkeletonRow() {
   )
 }
 
-function Row({ row }: { row: HistoryRowMock }) {
+function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
   const isFailed = row.status === 'FAILED'
   const showAi = import.meta.env.DEV && row.ai_score != null
 
@@ -509,10 +582,7 @@ function Row({ row }: { row: HistoryRowMock }) {
       <td className="px-2 text-center align-middle border-b border-border-subtle">
         <button
           type="button"
-          // TODO(impl): 상세 화면 라우트 도입 후 navigate(`/history/${id}`).
-          onClick={() => {
-            console.warn('[HistoryPage] 상세 화면은 다음 PR 에서 구현됩니다.', row.id)
-          }}
+          onClick={onDetail}
           className="text-[11px] text-text-tertiary hover:text-accent-400
                      inline-flex items-center gap-0.5"
         >
@@ -581,10 +651,64 @@ function StatusBadge({ status, reason }: { status: HistoryStatus; reason?: strin
   )
 }
 
+function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => void }) {
+  const fields: [string, string][] = [
+    ['일시', formatDateTime(row.createdAt)],
+    ['종목', row.ticker],
+    ['방향', row.side],
+    ['모드', row.mode],
+    ['주문유형', row.orderType ?? '—'],
+    ['주문수량', row.orderQty != null ? String(row.orderQty) : '—'],
+    ['주문가', row.price != null ? `$${row.price.toFixed(2)}` : '—'],
+    ['체결수량', String(row.executedQty)],
+    ['체결가', row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'],
+    ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
+    ['상태', row.status],
+    ...(row.failureReason ? [['거부 사유', row.failureReason] as [string, string]] : []),
+    ...(row.ai_score != null ? [['AI 점수', row.ai_score.toFixed(3)] as [string, string]] : []),
+  ]
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[420px] max-w-[90vw] max-h-[80vh] overflow-y-auto p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[14px] font-semibold text-text-primary">거래 상세</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-text-tertiary hover:text-text-primary"
+          >
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
+        </div>
+        <dl className="space-y-2.5">
+          {fields.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-4">
+              <dt className="text-[11px] text-text-tertiary whitespace-nowrap">{label}</dt>
+              <dd className="text-[12px] text-text-primary num font-medium truncate text-right">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  )
+}
+
 /** ISO → "MM-DD HH:mm:ss" (KST 가정 — fixture 의 +09:00 시간대 준수). */
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
+/**
+ * 목록의 일시 컬럼과 헤더의 "마지막 업데이트" 가 같은 형식이어야 하므로 한 함수로 둔다.
+ * ISO 문자열(백엔드 응답)과 timestamp(Date.now()) 를 모두 받는다.
+ */
+function formatDateTime(value: string | number): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   const hh = String(d.getHours()).padStart(2, '0')
@@ -593,9 +717,3 @@ function formatDateTime(iso: string): string {
   return `${mm}-${dd} ${hh}:${mi}:${ss}`
 }
 
-function formatAgo(ts: number): string {
-  const sec = Math.floor((Date.now() - ts) / 1000)
-  if (sec < 60) return `${Math.max(1, sec)}초 전`
-  if (sec < 3600) return `${Math.floor(sec / 60)}분 전`
-  return `${Math.floor(sec / 3600)}시간 전`
-}

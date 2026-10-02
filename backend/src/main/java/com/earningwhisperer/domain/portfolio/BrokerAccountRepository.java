@@ -10,7 +10,7 @@ public interface BrokerAccountRepository extends JpaRepository<BrokerAccount, Lo
 
     List<BrokerAccount> findByUserId(Long userId);
 
-    Optional<BrokerAccount> findByUserIdAndBrokerAndIsPaper(Long userId, Broker broker, Boolean isPaper);
+    Optional<BrokerAccount> findByUserIdAndAccountType(Long userId, AccountType accountType);
 
     @Query("SELECT ba FROM BrokerAccount ba JOIN FETCH ba.user")
     List<BrokerAccount> findAllWithUser();

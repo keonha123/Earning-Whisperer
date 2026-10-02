@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any, Awaitable, Callable
 
 try:
@@ -19,6 +21,25 @@ except ImportError:  # pragma: no cover
 
 
 AnalyzeRunner = Callable[..., Awaitable[Any]]
+logger = logging.getLogger(__name__)
+
+
+def _unavailable_controls() -> dict[str, Any]:
+    reason = "실행 제어 상태를 확인할 수 없어 실행을 차단했습니다. 분석은 참고용으로만 제공됩니다."
+    return {
+        "execution_allowed": False,
+        "blocked_reason_ko": reason,
+        "decision_state": "blocked",
+        "control_overrides": [],
+        "gate_failures": [],
+        "blocked_reasons": {
+            "gate_rejections": [], "risk_overrides": [],
+            "control_blocks": [{"type": "runtime_controls_unavailable", "reason_ko": reason}],
+        },
+        "active_patch_id": None,
+        "rollout_bucket": None,
+        "calibration_segment": None,
+    }
 
 
 def _apply_runtime_overlay(
@@ -95,6 +116,24 @@ def _apply_runtime_overlay(
     if isinstance(data_signal_brief, dict):
         envelope["data"]["signal_brief"] = apply_runtime_to_signal_brief(data_signal_brief, runtime)
 
+    if not runtime["execution_allowed"]:
+        display = apply_runtime_to_signal_brief({}, runtime)
+        signal_explanation["summary_ko"] = display["summary_ko"]
+        signal_view["summary_ko"] = display["summary_ko"]
+        frontend_payload["summary"] = display["summary_ko"]
+        for card in envelope.get("data", {}).get("cards", []):
+            card_payload = card.get("payload")
+            if not isinstance(card_payload, dict):
+                continue
+            if card.get("card_type") == "hero_decision":
+                card_payload.update(decision="AVOID", decision_label_ko="진입 보류",
+                                    badge="blocked", summary=display["summary_ko"])
+            elif card.get("card_type") == "decision_assistant":
+                card_payload["badge"] = "blocked"
+                card_payload["execution_badge"] = apply_runtime_to_signal_brief(
+                    {"execution_badge": card_payload.get("execution_badge")}, runtime
+                )["execution_badge"]
+
 
 async def dispatch_analysis(
     *,
@@ -128,17 +167,26 @@ async def dispatch_analysis(
     analysis.setdefault("review_triggered", bool(payload.needs_review or requested_route == "review"))
 
     envelope = build_engine_event_response(payload=payload, analysis=analysis)
-    if control_service is not None:
+    if settings.runtime_controls_mode == "offline":
+        analysis.setdefault("metadata", {})["runtime_controls"] = {"status": "offline", "verified": False}
+    else:
         try:
-            runtime = control_service.apply_runtime_controls(
+            if control_service is None:
+                raise RuntimeError("Runtime control service is not configured")
+            runtime = await asyncio.to_thread(
+                control_service.apply_runtime_controls,
                 payload=payload,
                 analysis=analysis,
                 event_id=envelope.get("data", {}).get("event", {}).get("event_id"),
             )
+            if not isinstance(runtime, dict):
+                raise RuntimeError("Runtime control service returned no decision")
+            analysis.setdefault("metadata", {})["runtime_controls"] = {"status": "verified", "verified": True}
         except Exception:
-            runtime = None
-        if runtime is not None:
-            _apply_runtime_overlay(analysis=analysis, envelope=envelope, runtime=runtime)
+            logger.warning("Runtime controls unavailable; execution blocked", exc_info=True)
+            runtime = _unavailable_controls()
+            analysis.setdefault("metadata", {})["runtime_controls"] = {"status": "unavailable", "verified": False}
+        _apply_runtime_overlay(analysis=analysis, envelope=envelope, runtime=runtime)
 
     envelope.update(
         {

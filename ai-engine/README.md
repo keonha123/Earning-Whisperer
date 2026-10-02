@@ -483,3 +483,11 @@ Endpoints:
 - `POST /v1/engine/live-sessions/{session_id}/finalize`
 
 Session state is written atomically under `LIVE_SESSION_STORE_PATH` and mirrored to PostgreSQL when evidence persistence is enabled. Final signals use deterministic IDs (`live-session:{session_id}`), allowing Trading Terminal consumers to deduplicate Redis redelivery. `MANUAL`, `SEMI_AUTO`, and `AUTO_PILOT` are execution-policy hints only; the AI engine never calls a broker. Legacy request values `ONE_CLICK` and `AUTO` are accepted and normalized to the Terminal contract.
+
+## Local behavior fixes (2026-09-16)
+
+Translation and selected-statement QA: see `docs/transcript-assistant.md`. Transcript chunking uses dedicated `TRANSCRIPT_CHUNK_*` settings; all turns are indexed. `tools/reindex_transcripts.py` can preview and build a new local collection from original source JSON. Existing vectors from another provider/version must be re-embedded, not relabeled.
+
+Runtime execution controls now fail closed when unavailable. `RUNTIME_CONTROLS_MODE=offline` is an explicit local research mode and is forbidden in prod. Blocked signals are not sent to the legacy order channel. API route registration and offline tests do not prove live Gemini/Redis/PostgreSQL readiness.
+
+Use Python 3.11+ (local verification: `py -3.13 -m pytest -q`; CI: Python 3.12). The compatibility checker runs as `python tools/validate_compatibility.py` from this directory.

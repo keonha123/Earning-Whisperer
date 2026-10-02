@@ -1,0 +1,24 @@
+[Unit]
+Description=EarningWhisperer Backend (Spring Boot)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/earning-whisperer
+EnvironmentFile=/opt/earning-whisperer/backend.env
+# 1GB 서버: 힙 상한 384MB. 메타스페이스·스레드 포함 실사용 약 550MB.
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -Xss512k -jar /opt/earning-whisperer/backend.jar
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ew-backend
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

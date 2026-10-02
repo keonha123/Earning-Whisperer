@@ -56,3 +56,24 @@ async def test_profile_channels_are_published_and_failed_messages_are_replayed(t
     legacy_payload = next(json.loads(encoded) for channel, encoded in healthy.messages if channel == settings.redis_channel)
     assert legacy_payload["raw_score"] == 0.4
     assert legacy_payload["ai_score"] == 0.4
+
+
+@pytest.mark.asyncio
+async def test_blocked_profile_signal_preserves_only_diagnostics_and_drops_stale_retry(tmp_path):
+    settings = Settings(redis_retry_spool_path=str(tmp_path / "spool.jsonl"),
+                        redis_retry_auto_flush_limit=0, redis_profile_publish_enabled=True)
+    publisher = RedisSignalPublisher(settings)
+    publisher._client = FakeRedis()
+    signal = LegacySignalMessage(ticker="NVDA", raw_score=0.8, rationale="blocked",
+        text_chunk="growth", timestamp=1, execution_allowed=False,
+        investment_profile="NASDAQ100_AGGRESSIVE",
+        strategy_recommendation={"redis_channel_hint": "trading-signals:nasdaq100:aggressive"})
+    result = await publisher.publish(legacy_signal=signal, enriched_message={"ticker": "NVDA"})
+    assert not result.legacy_published and not result.profile_published
+    assert len(publisher._client.messages) == 2
+    assert all(channel.endswith(":enriched") or channel == settings.redis_enriched_channel
+               for channel, _ in publisher._client.messages)
+    publisher.retry_spool.append(channel="trading-signals:nasdaq100:aggressive",
+                                 payload=signal.model_dump(mode="json"), error="old failure")
+    replay = await publisher.retry_pending()
+    assert replay.published == 0 and replay.remaining == 0

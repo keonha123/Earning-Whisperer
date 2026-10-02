@@ -5,6 +5,9 @@
   "main": "./out/main/index.js",
   "author": "EarningWhisperer",
   "homepage": ".",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -13,7 +16,8 @@
     "postinstall": "electron-rebuild -f -w keytar",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",
@@ -28,6 +32,9 @@
     "ws": "^8.18.0",
     "zustand": "^4.5.0"
   },
+  "overrides": {
+    "tar": "7.5.22"
+  },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^2.0.0",
     "@electron-toolkit/eslint-config-ts": "^2.0.0",
@@ -38,7 +45,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "@vitest/coverage-v8": "^4.1.5",
     "autoprefixer": "^10.4.0",
-    "electron": "^31.0.0",
+    "electron": "^41.10.7",
     "electron-builder": "^24.13.0",
     "electron-rebuild": "^3.2.9",
     "electron-vite": "^2.3.0",

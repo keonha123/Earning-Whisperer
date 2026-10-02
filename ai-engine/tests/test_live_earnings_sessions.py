@@ -196,6 +196,23 @@ def test_execution_mode_uses_terminal_contract_and_accepts_legacy_aliases() -> N
     assert one_click.model_dump(mode="json")["execution_mode"] == "SEMI_AUTO"
 
 
+def test_final_signal_requires_explicit_execution_permission(tmp_path):
+    import asyncio
+    service, _, _, _ = build_service(tmp_path)
+    state = service.start(LiveSessionStartRequest(ticker="ORCL", requested_quantity=10))
+    for sequence in range(5):
+        state = asyncio.run(service.ingest_chunk(state.session_id, LiveTranscriptChunkRequest(
+            sequence=sequence, text="OCI revenue growth increased 52% and demand remained strong.")))
+    envelope = {"analysis": {"direction": "BULLISH", "magnitude": 1.0, "confidence": 1.0,
+                              "execution_allowed": True}, "signal_brief": {"action": "BUY"}}
+    allowed = service._build_final_signal(state, envelope)
+    assert allowed.execution_allowed is True
+    del envelope["analysis"]["execution_allowed"]
+    blocked = service._build_final_signal(state, envelope)
+    assert blocked.execution_allowed is False
+    assert blocked.order_draft["order_type"] == "NO_ORDER"
+
+
 def test_orcl_live_session_mixed_signal_finalizes_hold_and_recovers(tmp_path) -> None:
     service, publisher, dispatcher, repository = build_service(tmp_path)
     state = service.start(LiveSessionStartRequest(

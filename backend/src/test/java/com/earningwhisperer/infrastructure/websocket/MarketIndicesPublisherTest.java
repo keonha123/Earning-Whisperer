@@ -40,13 +40,13 @@ class MarketIndicesPublisherTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final MarketIndexSnapshot SPX_SNAPSHOT = new MarketIndexSnapshot(
-            "SPX", 5300.25, 0.85, "up", "index", 1745000000L);
+    private static final MarketIndexSnapshot SPY_SNAPSHOT = new MarketIndexSnapshot(
+            "SPY", 5300.25, 0.85, "up", "index", 1745000000L);
 
     @Test
     @DisplayName("publish — 올바른 토픽(/topic/market/indices) 으로 전송된다")
     void publish_올바른_토픽으로_전송됨() {
-        publisher.publish(SPX_SNAPSHOT);
+        publisher.publish(SPY_SNAPSHOT);
 
         ArgumentCaptor<String> destinationCaptor = ArgumentCaptor.forClass(String.class);
         verify(messagingTemplate).convertAndSend(destinationCaptor.capture(), any(Object.class));
@@ -57,14 +57,14 @@ class MarketIndicesPublisherTest {
     @Test
     @DisplayName("publish — 페이로드는 Contract 4.4 의 6필드만 보유 (메타 미포함)")
     void publish_페이로드_6필드만_보유() {
-        publisher.publish(SPX_SNAPSHOT);
+        publisher.publish(SPY_SNAPSHOT);
 
         ArgumentCaptor<MarketIndicesPublisher.Payload> payloadCaptor =
                 ArgumentCaptor.forClass(MarketIndicesPublisher.Payload.class);
         verify(messagingTemplate).convertAndSend(eq("/topic/market/indices"), payloadCaptor.capture());
 
         MarketIndicesPublisher.Payload payload = payloadCaptor.getValue();
-        assertThat(payload.getSymbol()).isEqualTo("SPX");
+        assertThat(payload.getSymbol()).isEqualTo("SPY");
         assertThat(payload.getPrice()).isEqualTo(5300.25);
         assertThat(payload.getChangePercent()).isEqualTo(0.85);
         assertThat(payload.getTrend()).isEqualTo("up");
@@ -75,7 +75,7 @@ class MarketIndicesPublisherTest {
     @Test
     @DisplayName("publish — JSON 직렬화 시 snake_case 보장 + 발행자 메타 누출 없음")
     void publish_JSON_직렬화_시_snake_case_보장() throws Exception {
-        publisher.publish(SPX_SNAPSHOT);
+        publisher.publish(SPY_SNAPSHOT);
 
         ArgumentCaptor<MarketIndicesPublisher.Payload> payloadCaptor =
                 ArgumentCaptor.forClass(MarketIndicesPublisher.Payload.class);
@@ -109,7 +109,7 @@ class MarketIndicesPublisherTest {
                 .when(messagingTemplate).convertAndSend(eq("/topic/market/indices"), any(Object.class));
 
         // 정책: 캐시는 이미 갱신, 브로드캐스트는 best-effort. 예외 재던지지 않음.
-        assertThatCode(() -> publisher.publish(SPX_SNAPSHOT))
+        assertThatCode(() -> publisher.publish(SPY_SNAPSHOT))
                 .doesNotThrowAnyException();
 
         // 호출 자체는 일어났는지 확인

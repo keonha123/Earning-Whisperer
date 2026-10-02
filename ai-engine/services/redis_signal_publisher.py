@@ -72,6 +72,11 @@ class RedisSignalPublisher:
         errors: list[str] = []
         published = 0
         for entry in attempted_entries:
+            channel = str(entry["channel"])
+            payload = dict(entry["payload"])
+            informational = channel == self.settings.redis_enriched_channel or channel.endswith(self.settings.redis_profile_enriched_suffix)
+            if not informational and payload.get("execution_allowed") is False:
+                continue
             try:
                 await self._publish_json(str(entry["channel"]), dict(entry["payload"]))
                 published += 1
@@ -115,7 +120,7 @@ class RedisSignalPublisher:
                 self._queue_failure(channel=channel, payload=payload, error=exc)
                 return False
 
-        if self.settings.legacy_redis_publish_enabled:
+        if self.settings.legacy_redis_publish_enabled and legacy_signal.execution_allowed is not False:
             legacy_published = await publish_channel(self.settings.redis_channel, legacy_payload, "legacy")
 
         if self.settings.redis_enriched_publish_enabled and enriched_message is not None:
@@ -123,7 +128,8 @@ class RedisSignalPublisher:
 
         profile_channel = self._profile_channel(legacy_signal)
         if self.settings.redis_profile_publish_enabled and profile_channel:
-            profile_published = await publish_channel(profile_channel, legacy_payload, "profile")
+            if legacy_signal.execution_allowed is not False:
+                profile_published = await publish_channel(profile_channel, legacy_payload, "profile")
             if self.settings.redis_enriched_publish_enabled and enriched_message is not None:
                 await publish_channel(
                     f"{profile_channel}{self.settings.redis_profile_enriched_suffix}",

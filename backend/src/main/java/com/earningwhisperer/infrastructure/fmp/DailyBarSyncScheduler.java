@@ -5,6 +5,7 @@ import com.earningwhisperer.domain.stock.Stock;
 import com.earningwhisperer.domain.stock.StockRepository;
 import com.earningwhisperer.domain.watchlist.WatchlistRepository;
 import com.earningwhisperer.global.common.SyncPriority;
+import com.earningwhisperer.infrastructure.websocket.StockPriceCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -47,6 +48,7 @@ public class DailyBarSyncScheduler {
     private final WatchlistRepository watchlistRepository;
     private final PositionRepository positionRepository;
     private final StockRepository stockRepository;
+    private final StockPriceCache stockPriceCache;
 
     /** 매일 UTC 22:30 — 관심종목 + 보유종목 30D 일봉 적재. */
     @Scheduled(cron = "0 30 22 * * *", zone = "UTC")
@@ -109,6 +111,13 @@ public class DailyBarSyncScheduler {
         }
 
         logCycleResult(total, success, failed, barsUpserted);
+
+        if (barsUpserted > 0) {
+            // 전일종가는 기동 시 한 번만 채워진다. 여기서 갱신하지 않으면 일봉을 새로
+            // 적재해도 앱을 재시작할 때까지 옛 종가로 변동률이 계산된다 — 실제로 WMT 가
+            // 4개월 전 종가와 비교되어 화면에 -18.5% 로 떴다.
+            stockPriceCache.refreshPreviousCloses();
+        }
     }
 
     private void logCycleResult(int total, int success, int failed, int barsUpserted) {

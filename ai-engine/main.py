@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ try:
     from api.routers import ALL_ROUTERS
     from config import Settings, get_settings
     from core.analysis_service import AnalysisService, run_analysis
-    from core.external_retriever import ExternalRetrieverFacade
+    from core.external_retriever import ExternalRetrieverFacade, QdrantExternalRetriever
     from db.postgres_executor import PsycopgExecutor
     from models.evidence_models import EvidenceBackend
     from models.request_models import AnalyzeRequest
@@ -21,14 +21,15 @@ try:
     from repositories.event_store_repository import EventStoreRepository
     from repositories.evidence_store_repository import EvidenceStoreRepository
     from repositories.live_session_repository import LiveSessionRepository
-    from services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceIngestionScheduler, EvidenceIngestionService, EvidenceRetrievalService, LiveEarningsSessionService, RegressionService
+    from repositories.qdrant_evidence_repository import QdrantEvidenceRepository
+    from services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceIngestionScheduler, EvidenceIngestionService, EvidenceRetrievalService, LiveEarningsSessionService, RegressionService, LiveNewsFactCheckService, NewsIngestionService, TranscriptDiffService, TranscriptIngestionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
 except ImportError:  # pragma: no cover
     from .api.routers import ALL_ROUTERS
     from .config import Settings, get_settings
     from .core.analysis_service import AnalysisService, run_analysis
-    from .core.external_retriever import ExternalRetrieverFacade
+    from .core.external_retriever import ExternalRetrieverFacade, QdrantExternalRetriever
     from .db.postgres_executor import PsycopgExecutor
     from .models.evidence_models import EvidenceBackend
     from .models.request_models import AnalyzeRequest
@@ -37,7 +38,8 @@ except ImportError:  # pragma: no cover
     from .repositories.event_store_repository import EventStoreRepository
     from .repositories.evidence_store_repository import EvidenceStoreRepository
     from .repositories.live_session_repository import LiveSessionRepository
-    from .services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceIngestionScheduler, EvidenceIngestionService, EvidenceRetrievalService, LiveEarningsSessionService, RegressionService
+    from .repositories.qdrant_evidence_repository import QdrantEvidenceRepository
+    from .services import CalibrationService, CompanyIntelligenceService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceIngestionScheduler, EvidenceIngestionService, EvidenceRetrievalService, LiveEarningsSessionService, RegressionService, LiveNewsFactCheckService, NewsIngestionService, TranscriptDiffService, TranscriptIngestionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
 
@@ -93,29 +95,36 @@ def _resolve_ai_engine_path(configured: str) -> Path:
     return Path(__file__).resolve().parent / path
 
 
-def _build_evidence_repository(settings: Settings) -> EvidenceStoreRepository:
-    executor = None
-    if settings.evidence_postgres_enabled:
-        executor = PsycopgExecutor(
-            dsn=settings.database_url,
-            connect_timeout_seconds=settings.database_connect_timeout_seconds,
-            failure_cooldown_seconds=settings.database_failure_cooldown_seconds,
-        )
-    backend = EvidenceBackend.QDRANT if settings.vector_store_backend.lower() == "qdrant" else EvidenceBackend.LOCAL_SPARSE
-    return EvidenceStoreRepository(
-        backend=backend,
-        executor=executor,
-        schema_path=_resolve_ai_engine_path(settings.evidence_schema_path),
-    )
-
-
-def _build_company_repository(settings: Settings, evidence_repository: EvidenceStoreRepository) -> CompanyIntelligenceRepository:
+def _build_company_repository(settings: Settings, executor) -> CompanyIntelligenceRepository:
     return CompanyIntelligenceRepository(
         store_path=_resolve_ai_engine_path(settings.company_intelligence_store_path),
-        executor=evidence_repository.executor,
+        executor=executor,
         schema_path=_resolve_ai_engine_path(settings.evidence_schema_path),
         seed_path=Path(__file__).resolve().parent / "data" / "company_intelligence_seed.json",
     )
+
+
+def _build_evidence_repository(settings: Settings, event_repository: EventStoreRepository):
+    if str(settings.vector_store_backend).lower().strip() == "qdrant":
+        return QdrantEvidenceRepository.from_settings(
+            settings=settings,
+            store_name="external",
+            embedding_scope="external",
+        )
+    return EvidenceStoreRepository()
+
+
+def _build_transcript_repository(settings: Settings, *, client: Any | None = None):
+    if str(settings.vector_store_backend).lower().strip() == "qdrant":
+        return QdrantEvidenceRepository.from_settings(
+            settings=settings,
+            collection_name=settings.qdrant_transcript_collection_name,
+            store_name="transcript",
+            embedding_scope="transcript",
+            client=client,
+        )
+    return EvidenceStoreRepository()
+
 
 def _get_control_service(fastapi_app: FastAPI | None) -> ControlPlaneService | None:
     if fastapi_app is None or not hasattr(fastapi_app.state, "event_store_repository"):
@@ -151,7 +160,21 @@ def _persist_or_raise(repository: EventStoreRepository, envelope: dict[str, Any]
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="EarningWhisperer AI Engine", version=settings.app_version)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            if settings.phase1_warmup_on_startup:
+                await asyncio.to_thread(app.state.analysis_service.phase1_scorer.warmup)
+            await app.state.evidence_ingestion_scheduler.start()
+            yield
+        finally:
+            await app.state.evidence_ingestion_scheduler.stop()
+            client = getattr(app.state.evidence_repository, "client", None)
+            if client is not None:
+                client.close()
+
+    app = FastAPI(title="EarningWhisperer AI Engine", version=settings.app_version, lifespan=lifespan)
 
     app.config = {
         "GEMINI_FAST_MODEL": settings.gemini_primary_model,
@@ -162,13 +185,35 @@ def create_app() -> FastAPI:
     }
 
     app.state.settings = settings
-    app.state.evidence_repository = _build_evidence_repository(settings)
-    app.state.company_intelligence_repository = _build_company_repository(settings, app.state.evidence_repository)
+    app.state.event_store_repository = _build_repository(settings)
+    app.state.evidence_repository = _build_evidence_repository(settings, app.state.event_store_repository)
+    shared_client = getattr(app.state.evidence_repository, "client", None)
+    app.state.transcript_repository = _build_transcript_repository(settings, client=shared_client)
+    persistence_executor = None
+    if settings.evidence_postgres_enabled:
+        persistence_executor = PsycopgExecutor(
+            dsn=settings.database_url,
+            connect_timeout_seconds=settings.database_connect_timeout_seconds,
+            failure_cooldown_seconds=settings.database_failure_cooldown_seconds,
+        )
+    if isinstance(app.state.evidence_repository, EvidenceStoreRepository):
+        app.state.evidence_repository.executor = persistence_executor
+        app.state.evidence_repository.schema_path = _resolve_ai_engine_path(settings.evidence_schema_path)
+    app.state.company_intelligence_repository = _build_company_repository(settings, persistence_executor)
     app.state.evidence_service = EvidenceRetrievalService(
         repository=app.state.evidence_repository,
         company_repository=app.state.company_intelligence_repository,
     )
-    app.state.external_retriever = ExternalRetrieverFacade()
+    app.state.transcript_diff_service = TranscriptDiffService(app.state.transcript_repository)
+    app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
+    app.state.external_retriever = (
+        QdrantExternalRetriever(
+            client=shared_client,
+            collection_name=app.state.evidence_repository.collection_name,
+            embedding_provider=app.state.evidence_repository.embedding_provider,
+            embedding_version=app.state.evidence_repository.embedding_version,
+        ) if shared_client is not None else ExternalRetrieverFacade()
+    )
     app.state.analysis_service = AnalysisService(
         settings=settings,
         evidence_service=app.state.evidence_service,
@@ -185,7 +230,15 @@ def create_app() -> FastAPI:
         service=app.state.evidence_ingestion_service,
         settings=settings,
     )
-    app.state.event_store_repository = _build_repository(settings)
+    app.state.news_ingestion_service = NewsIngestionService(app.state.analysis_service.external_retriever)
+    if shared_client is None:
+        # Memory news lives in the application retriever. Give generic evidence
+        # search/QA the same reader instead of a disconnected empty repository.
+        app.state.evidence_service.external_retriever = app.state.analysis_service.external_retriever
+    app.state.live_news_fact_check_service = LiveNewsFactCheckService(
+        retriever=app.state.analysis_service.external_retriever,
+        settings=settings,
+    )
     app.state.redis_signal_publisher = RedisSignalPublisher(settings=settings)
     app.state.equity_report_service = EquityResearchReportService(
         settings=settings,
@@ -201,7 +254,7 @@ def create_app() -> FastAPI:
     app.state.dispatch_analysis = lambda payload, _app=app: _dispatch_analysis(payload, settings, _app)
     app.state.live_session_repository = LiveSessionRepository(
         store_path=_resolve_ai_engine_path(settings.live_session_store_path),
-        executor=app.state.evidence_repository.executor,
+        executor=persistence_executor,
         retention_hours=settings.live_session_retention_hours,
         max_sessions=settings.live_session_max_sessions,
     )
@@ -219,23 +272,13 @@ def create_app() -> FastAPI:
     app.state.evidence_bootstrap_error = None
     if settings.evidence_auto_bootstrap:
         try:
-            evidence_bootstrapped = app.state.evidence_repository.bootstrap_schema()
+            bootstrap = getattr(app.state.evidence_repository, "bootstrap_schema", None)
+            evidence_bootstrapped = bootstrap() if callable(bootstrap) else False
             app.state.company_intelligence_repository.bootstrap_schema()
             app.state.evidence_bootstrap_status = "ready" if evidence_bootstrapped else "skipped"
         except Exception as exc:
             app.state.evidence_bootstrap_status = "error"
             app.state.evidence_bootstrap_error = f"{type(exc).__name__}: {exc}"
-
-    async def _start_evidence_scheduler() -> None:
-        if settings.phase1_warmup_on_startup:
-            await asyncio.to_thread(app.state.analysis_service.phase1_scorer.warmup)
-        await app.state.evidence_ingestion_scheduler.start()
-
-    async def _stop_evidence_scheduler() -> None:
-        await app.state.evidence_ingestion_scheduler.stop()
-
-    app.router.add_event_handler("startup", _start_evidence_scheduler)
-    app.router.add_event_handler("shutdown", _stop_evidence_scheduler)
 
     for router in ALL_ROUTERS:
         app.include_router(router)
@@ -249,6 +292,8 @@ app = create_app()
 __all__ = [
     "HealthResponse",
     "_build_repository",
+    "_build_evidence_repository",
+    "_build_transcript_repository",
     "_dispatch_analysis",
     "_get_calibration_service",
     "_get_control_service",

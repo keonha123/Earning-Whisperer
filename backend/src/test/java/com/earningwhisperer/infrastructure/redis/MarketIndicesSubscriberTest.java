@@ -46,7 +46,7 @@ class MarketIndicesSubscriberTest {
             {
               "schema_version": "1.0",
               "source": "data-pipeline",
-              "symbol": "SPX",
+              "symbol": "SPY",
               "price": 5300.25,
               "change_percent": 0.85,
               "timestamp": 1745000000,
@@ -59,7 +59,7 @@ class MarketIndicesSubscriberTest {
     void 정상_메시지_처리_순서_검증() {
         // Arrange — cache.put 이 반환할 스냅샷 stub
         MarketIndexSnapshot stubSnapshot = new MarketIndexSnapshot(
-                "SPX", 5300.25, 0.85, "up", "index", 1745000000L);
+                "SPY", 5300.25, 0.85, "up", "index", 1745000000L);
         when(cache.put(any(MarketIndicesMessage.class))).thenReturn(stubSnapshot);
 
         // Act
@@ -73,7 +73,7 @@ class MarketIndicesSubscriberTest {
 
         // 페이로드 필드 검증 (snake_case 매핑 정상 동작)
         MarketIndicesMessage parsed = messageCaptor.getValue();
-        assertThat(parsed.getSymbol()).isEqualTo("SPX");
+        assertThat(parsed.getSymbol()).isEqualTo("SPY");
         assertThat(parsed.getPrice()).isEqualTo(5300.25);
         assertThat(parsed.getChangePercent()).isEqualTo(0.85);
         assertThat(parsed.getTimestamp()).isEqualTo(1745000000L);
@@ -87,14 +87,14 @@ class MarketIndicesSubscriberTest {
                 {
                   "schema_version": "1.0",
                   "source": "data-pipeline",
-                  "symbol": "10Y",
-                  "price": 4.35,
+                  "symbol": "IWM",
+                  "price": 291.2,
                   "change_percent": -0.10,
                   "timestamp": 1745000100
                 }
                 """;
         when(cache.put(any())).thenReturn(new MarketIndexSnapshot(
-                "10Y", 4.35, -0.10, "down", "percent", 1745000100L));
+                "IWM", 291.2, -0.10, "down", "percent", 1745000100L));
 
         subscriber.handleMessage(message);
 
@@ -160,7 +160,7 @@ class MarketIndicesSubscriberTest {
     void publisher_publish_예외_삼킨다_후속_메시지_정상_처리() {
         // Arrange — 첫 메시지 처리 시 publisher 가 예외를 던짐
         MarketIndexSnapshot stubSnapshot = new MarketIndexSnapshot(
-                "SPX", 5300.25, 0.85, "up", "index", 1745000000L);
+                "SPY", 5300.25, 0.85, "up", "index", 1745000000L);
         when(cache.put(any(MarketIndicesMessage.class))).thenReturn(stubSnapshot);
         doThrow(new RuntimeException("STOMP fail"))
                 .when(publisher).publish(any(MarketIndexSnapshot.class));
@@ -176,7 +176,7 @@ class MarketIndicesSubscriberTest {
         // Arrange — 두 번째 메시지 정상 처리 (mock 상태 초기화)
         reset(publisher, cache);
         MarketIndexSnapshot secondSnapshot = new MarketIndexSnapshot(
-                "NDX", 18500.50, 0.15, "up", "index", 1745000100L);
+                "QQQ", 18500.50, 0.15, "up", "index", 1745000100L);
         when(cache.put(any(MarketIndicesMessage.class))).thenReturn(secondSnapshot);
         doNothing().when(publisher).publish(any(MarketIndexSnapshot.class));
 
@@ -184,7 +184,7 @@ class MarketIndicesSubscriberTest {
                 {
                   "schema_version": "1.0",
                   "source": "data-pipeline",
-                  "symbol": "NDX",
+                  "symbol": "QQQ",
                   "price": 18500.50,
                   "change_percent": 0.15,
                   "timestamp": 1745000100

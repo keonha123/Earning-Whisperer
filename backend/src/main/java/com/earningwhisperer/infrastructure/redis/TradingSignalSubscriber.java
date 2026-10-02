@@ -100,7 +100,7 @@ public class TradingSignalSubscriber {
         // Step 3: WebSocket 브로드캐스트 (Frontend 데모용 Public 채널)
         // 공개 채널의 action은 점수 부호 기반 방향성 표시 (개인화 판단 아님)
         double aiScore = signal.getAiScore();
-        String publicAction = aiScore >= 0.6 ? "BUY" : aiScore <= -0.6 ? "SELL" : "HOLD";
+        String publicAction = Boolean.FALSE.equals(signal.getExecutionAllowed()) ? "HOLD" : aiScore >= 0.6 ? "BUY" : aiScore <= -0.6 ? "SELL" : "HOLD";
         LiveSignalMessage liveMessage = LiveSignalMessage.builder()
                 .ticker(signal.getTicker())
                 .textChunk(signal.getTextChunk())

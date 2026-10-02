@@ -10,7 +10,6 @@ import com.earningwhisperer.domain.stock.StockMetaRepository;
 import com.earningwhisperer.domain.stock.StockRepository;
 import com.earningwhisperer.infrastructure.finnhub.EarningsResultSyncService;
 import com.earningwhisperer.infrastructure.finnhub.FinnhubClient;
-import com.earningwhisperer.infrastructure.finnhub.FinnhubEarningsSyncService;
 import com.earningwhisperer.infrastructure.fmp.DailyBarSyncService;
 import com.earningwhisperer.infrastructure.fmp.FmpClient;
 import com.earningwhisperer.infrastructure.fmp.StockMetaSyncService;
@@ -97,11 +96,5 @@ public class SyncServiceTxIsolationTestConfig {
                                                                StockRepository stockRepository,
                                                                EarningsResultRepository earningsResultRepository) {
         return new EarningsResultSyncService(finnhubClient, stockRepository, earningsResultRepository);
-    }
-
-    @Bean
-    public FinnhubEarningsSyncService finnhubEarningsSyncService(StockRepository stockRepository,
-                                                                 EarningsCalendarRepository earningsCalendarRepository) {
-        return new FinnhubEarningsSyncService(stockRepository, earningsCalendarRepository);
     }
 }

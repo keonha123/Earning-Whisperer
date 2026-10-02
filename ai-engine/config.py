@@ -27,15 +27,20 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/earningwhisperer", alias="DATABASE_URL")
     database_connect_timeout_seconds: int = Field(default=2, alias="DATABASE_CONNECT_TIMEOUT_SECONDS")
     database_failure_cooldown_seconds: int = Field(default=15, alias="DATABASE_FAILURE_COOLDOWN_SECONDS")
+    runtime_controls_mode: Literal["required", "offline"] = Field(default="required", alias="RUNTIME_CONTROLS_MODE")
+    rag_retrieval_timeout_seconds: float = Field(default=8.0, gt=0, alias="RAG_RETRIEVAL_TIMEOUT_SECONDS")
     db_schema_path: str = Field(default="sql/ai_engine_event_store_schema.sql", alias="DB_SCHEMA_PATH")
 
     openai_model_fast: str = Field(default="gpt-5-mini", alias="OPENAI_MODEL_FAST")
     gemini_model_fast: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL_FAST")
 
     gemini_primary_model: str | None = Field(default="gemini-3.1-flash-lite", alias="GEMINI_PRIMARY_MODEL")
-    gemini_review_model: str | None = Field(default="gemini-3.1-pro-preview", alias="GEMINI_REVIEW_MODEL")
+    # 무료 등급 키는 pro 계열 할당량이 0 이라 매 호출이 429 로 떨어지고,
+    # 엔진은 예외를 삼킨 뒤 confidence 0.0 의 fallback 응답을 조용히 반환한다.
+    # 기본값을 flash 계열로 두어 키를 새로 발급한 사람도 바로 실제 신호를 받는다.
+    gemini_review_model: str | None = Field(default="gemini-3.6-flash", alias="GEMINI_REVIEW_MODEL")
     gemini_review_model_candidates: str = Field(
-        default="gemini-3.1-pro-preview,gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-2.5-pro",
+        default="gemini-3.6-flash,gemini-3-flash-preview,gemini-3.1-flash-lite",
         alias="GEMINI_REVIEW_MODEL_CANDIDATES",
     )
     enable_review_pass: bool = Field(default=True, alias="ENABLE_REVIEW_PASS")
@@ -56,8 +61,13 @@ class Settings(BaseSettings):
     gemini_response_mime_type: str = "application/json"
     gemini_temperature: float = Field(default=0.15, alias="GEMINI_TEMPERATURE")
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
-    gemini_max_retries: int = Field(default=3, alias="GEMINI_MAX_RETRIES")
-    gemini_base_retry_delay: float = Field(default=1.5, alias="GEMINI_BASE_RETRY_DELAY")
+    gemini_max_retries: int = Field(default=3, ge=0, le=5, alias="GEMINI_MAX_RETRIES")
+    gemini_base_retry_delay: float = Field(default=1.5, ge=0, le=10, alias="GEMINI_BASE_RETRY_DELAY")
+    gemini_request_timeout_seconds: float = Field(default=12.0, gt=0, le=60, alias="GEMINI_REQUEST_TIMEOUT_SECONDS")
+    gemini_attempt_timeout_seconds: float = Field(default=6.0, gt=0, le=30, alias="GEMINI_ATTEMPT_TIMEOUT_SECONDS")
+    # 임베딩 배치의 각 항목이 요청 1건으로 계산된다. 무료 등급 분당 한도를 넘지 않도록
+    # 이 값에서 배치 간격을 역산한다. 유료 키로 올리면 대량 인입이 그만큼 빨라진다.
+    gemini_embed_requests_per_minute: int = Field(default=90, alias="GEMINI_EMBED_REQUESTS_PER_MINUTE")
     gemini_consensus_samples: int = Field(default=3, alias="GEMINI_CONSENSUS_SAMPLES")
     gemini_consensus_min_confidence: float = Field(default=0.78, alias="GEMINI_CONSENSUS_MIN_CONFIDENCE")
     gemini_consensus_disagreement_threshold: float = Field(default=0.35, alias="GEMINI_CONSENSUS_DISAGREEMENT_THRESHOLD")
@@ -156,12 +166,38 @@ class Settings(BaseSettings):
     evidence_sync_enabled: bool = Field(default=False, alias="EVIDENCE_SYNC_ENABLED")
     evidence_sync_interval_seconds: int = Field(default=21600, alias="EVIDENCE_SYNC_INTERVAL_SECONDS")
     evidence_sync_tickers: str = Field(default="", alias="EVIDENCE_SYNC_TICKERS")
+
+    qdrant_transcript_collection_name: str = Field(default="earningwhisperer_transcripts", alias="QDRANT_TRANSCRIPT_COLLECTION_NAME")
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
     embedding_dimension: int = Field(default=256, alias="EMBEDDING_DIMENSION")
+    embedding_version: str = Field(default="", alias="EMBEDDING_VERSION")
+    external_embedding_provider: str = Field(default="", alias="EXTERNAL_EMBEDDING_PROVIDER")
+    external_embedding_model: str = Field(default="", alias="EXTERNAL_EMBEDDING_MODEL")
+    external_embedding_dimension: int = Field(default=0, alias="EXTERNAL_EMBEDDING_DIMENSION")
+    external_embedding_version: str = Field(default="external-v1", alias="EXTERNAL_EMBEDDING_VERSION")
     external_chunk_size_chars: int = Field(default=1200, alias="EXTERNAL_CHUNK_SIZE_CHARS")
     external_chunk_overlap_chars: int = Field(default=160, alias="EXTERNAL_CHUNK_OVERLAP_CHARS")
+    transcript_chunk_size_chars: int = Field(default=600, ge=400, alias="TRANSCRIPT_CHUNK_SIZE_CHARS")
+    transcript_chunk_overlap_chars: int = Field(default=80, ge=0, alias="TRANSCRIPT_CHUNK_OVERLAP_CHARS")
+    transcript_diff_retrieval_timeout_seconds: float = Field(default=8.0, gt=0, alias="TRANSCRIPT_DIFF_RETRIEVAL_TIMEOUT_SECONDS")
+    transcript_diff_llm_timeout_seconds: float = Field(default=8.0, gt=0, alias="TRANSCRIPT_DIFF_LLM_TIMEOUT_SECONDS")
+    transcript_translation_timeout_seconds: float = Field(default=12.0, gt=0, le=60, alias="TRANSCRIPT_TRANSLATION_TIMEOUT_SECONDS")
+    transcript_qa_timeout_seconds: float = Field(default=25.0, gt=0, le=120, alias="TRANSCRIPT_QA_TIMEOUT_SECONDS")
     external_evidence_retention_days: int = Field(default=365, alias="EXTERNAL_EVIDENCE_RETENTION_DAYS")
+    fact_check_news_lookback_days: int = Field(default=30, alias="FACT_CHECK_NEWS_LOOKBACK_DAYS")
+    fact_check_top_k: int = Field(default=8, alias="FACT_CHECK_TOP_K")
+    fact_check_max_evidence: int = Field(default=5, alias="FACT_CHECK_MAX_EVIDENCE")
+    fact_check_strong_relevance_score: float = Field(default=0.42, alias="FACT_CHECK_STRONG_RELEVANCE_SCORE")
+    fact_check_moderate_relevance_score: float = Field(default=0.34, alias="FACT_CHECK_MODERATE_RELEVANCE_SCORE")
+    fact_check_retrieval_timeout_seconds: float = Field(default=3.0, alias="FACT_CHECK_RETRIEVAL_TIMEOUT_SECONDS")
+    fact_check_llm_timeout_seconds: float = Field(default=8.0, alias="FACT_CHECK_LLM_TIMEOUT_SECONDS")
+    fact_check_max_output_tokens: int = Field(default=1024, alias="FACT_CHECK_MAX_OUTPUT_TOKENS")
+    fact_check_extraction_timeout_seconds: float = Field(default=5.0, alias="FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS")
+    fact_check_extraction_max_output_tokens: int = Field(default=768, alias="FACT_CHECK_EXTRACTION_MAX_OUTPUT_TOKENS")
+    fact_check_max_claims_per_sentence: int = Field(default=2, alias="FACT_CHECK_MAX_CLAIMS_PER_SENTENCE")
+    fact_check_max_claims_per_batch: int = Field(default=6, alias="FACT_CHECK_MAX_CLAIMS_PER_BATCH")
+    fact_check_sentence_buffer_ttl_seconds: int = Field(default=900, alias="FACT_CHECK_SENTENCE_BUFFER_TTL_SECONDS")
 
     redis_channel: str = Field(default="trading-signals", alias="REDIS_CHANNEL")
     redis_enriched_channel: str = Field(default="trading-signals-enriched", alias="REDIS_ENRICHED_CHANNEL")
@@ -233,12 +269,28 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> "Settings":
+        if self.environment == "prod" and self.runtime_controls_mode == "offline":
+            raise ValueError("RUNTIME_CONTROLS_MODE=offline is not permitted in prod")
+        if self.transcript_chunk_overlap_chars >= self.transcript_chunk_size_chars:
+            raise ValueError("TRANSCRIPT_CHUNK_OVERLAP_CHARS must be smaller than TRANSCRIPT_CHUNK_SIZE_CHARS")
         if not (0 <= self.composite_threshold <= 1):
             raise ValueError("COMPOSITE_THRESHOLD must be between 0 and 1")
         if not (0 <= self.confidence_threshold <= 1):
             raise ValueError("CONFIDENCE_THRESHOLD must be between 0 and 1")
         if self.llm_router_max_calls_per_chunk < 1:
             raise ValueError("LLM_ROUTER_MAX_CALLS_PER_CHUNK must be >= 1")
+        if not (0 <= self.fact_check_moderate_relevance_score <= self.fact_check_strong_relevance_score <= 1):
+            raise ValueError("Fact-check relevance thresholds must be ordered between 0 and 1")
+        if self.fact_check_top_k < 1 or self.fact_check_max_evidence < 1:
+            raise ValueError("Fact-check retrieval limits must be positive")
+        if self.fact_check_news_lookback_days < 1:
+            raise ValueError("FACT_CHECK_NEWS_LOOKBACK_DAYS must be positive")
+        if not (1 <= self.fact_check_max_claims_per_sentence <= self.fact_check_max_claims_per_batch):
+            raise ValueError("Fact-check claim limits must be positive and ordered")
+        if self.fact_check_sentence_buffer_ttl_seconds < 1:
+            raise ValueError("FACT_CHECK_SENTENCE_BUFFER_TTL_SECONDS must be positive")
+        if self.external_embedding_dimension < 0:
+            raise ValueError("EXTERNAL_EMBEDDING_DIMENSION cannot be negative")
         if not (self.mdd_warning_threshold > self.mdd_pause_threshold > self.mdd_liquidate_threshold):
             raise ValueError("MDD thresholds must be descending in severity")
         return self

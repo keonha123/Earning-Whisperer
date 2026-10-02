@@ -6,7 +6,7 @@ import math
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 try:
     from models.evidence_models import (
@@ -140,12 +140,19 @@ def _best_snippet(content: str, query_tokens: set[str], limit: int = 320) -> str
     return _clip(best, limit)
 
 
-class EvidenceStoreRepository:
-    """pgvector-ready repository contract with deterministic local sparse retrieval.
+def _as_of_time(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("Evidence as_of requires a timezone")
+    return parsed.astimezone(timezone.utc)
 
-    The production backend can persist embeddings in pgvector. The local fallback keeps
-    tests and offline runs deterministic without pulling FAISS/Qdrant dependencies.
-    """
+
+class EvidenceStoreRepository:
+    """Deterministic local sparse evidence repository for tests and offline runs."""
 
     def __init__(
         self,
@@ -182,6 +189,64 @@ class EvidenceStoreRepository:
         self._persist_documents(accepted)
         return added
 
+    def find_latest_transcript(self, *, ticker: str, before: datetime | None = None) -> dict[str, Any] | None:
+        cutoff = _published_at_key(before or datetime.now(timezone.utc))
+        candidates = [
+            document for document in self._documents.values()
+            if (document.ticker or "").upper() == ticker.upper()
+            and document.source_type == EvidenceSourceType.EARNINGS_CALL
+            and (published := _published_at_key(document.published_at)) is not None
+            and published < cutoff
+        ]
+        if not candidates:
+            return None
+        document = max(candidates, key=lambda item: _published_at_key(item.published_at))
+        return {
+            "document_id": document.document_id,
+            "ticker": ticker.upper(),
+            "title": document.title,
+            "source_url": document.source_url,
+            "published_at": _published_at_text(document.published_at),
+            "published_at_epoch": int(_published_at_key(document.published_at).timestamp()),
+            "fiscal_quarter": document.metadata.get("fiscal_quarter"),
+            "metadata_json": {key: value for key, value in document.metadata.items() if key != "speaker_turns"},
+        }
+
+    def search_prior_transcript_chunks(
+        self, *, ticker: str, query: str, document_id: str, top_k: int = 3,
+    ) -> list[EvidenceCitation]:
+        # Reuse the pure chunking routine lazily to avoid an import cycle. No
+        # Qdrant client or embedding provider is constructed for offline search.
+        try:
+            from config import get_settings
+            from repositories.qdrant_evidence_repository import _document_chunk_entries
+        except ImportError:  # pragma: no cover
+            from ..config import get_settings
+            from .qdrant_evidence_repository import _document_chunk_entries
+        document = self._documents.get(document_id)
+        if (document is None or (document.ticker or "").upper() != ticker.upper()
+                or document.source_type != EvidenceSourceType.EARNINGS_CALL):
+            return []
+        settings = get_settings()
+        entries = _document_chunk_entries(
+            document, max_chars=settings.transcript_chunk_size_chars,
+            overlap_chars=settings.transcript_chunk_overlap_chars,
+        )
+        query_tokens = _tokenize(query) - _tokenize(ticker)
+        citations: list[EvidenceCitation] = []
+        for index, entry in enumerate(entries):
+            text = entry["chunk_text"]
+            if not query_tokens.intersection(_tokenize(text)):
+                continue
+            metadata = {key: value for key, value in document.metadata.items() if key != "speaker_turns"}
+            metadata.update({key: value for key, value in entry.items() if key != "chunk_text"})
+            metadata.update({"chunk_index": index, "retrieval_backend": "LOCAL_SPARSE"})
+            chunk = document.model_copy(update={"content": text, "metadata": metadata})
+            score = self._score_document(chunk, query_tokens=query_tokens, ticker=ticker.upper())
+            citations.append(self._to_citation(chunk, score=score, query_tokens=query_tokens))
+        citations.sort(key=lambda item: (-item.relevance_score, item.metadata["chunk_index"]))
+        return citations[:max(0, int(top_k))]
+
     def search(self, request: EvidenceRetrievalRequest) -> EvidenceRetrievalResult:
         scoped_documents = list(self._documents.values())
         seen = {item.document_id for item in scoped_documents}
@@ -200,8 +265,15 @@ class EvidenceStoreRepository:
         source_filter = set(request.source_types or [])
         query_tokens = _tokenize(f"{request.ticker} {request.query}")
         ticker = (request.ticker or "").upper()
+        as_of = _as_of_time(request.metadata.get("as_of"))
         scored: list[tuple[float, EvidenceDocument]] = []
         for document in scoped_documents:
+            if document.ticker and document.ticker.upper() != ticker:
+                continue
+            if as_of is not None:
+                published = _published_at_key(document.published_at)
+                if published is None or published > as_of:
+                    continue
             if source_filter and document.source_type not in source_filter:
                 continue
             score = self._score_document(document, query_tokens=query_tokens, ticker=ticker)
@@ -441,7 +513,10 @@ class EvidenceStoreRepository:
             relevance_score=round(score, 4),
             reliability_score=round(reliability, 4),
             confidence_score=round(confidence, 4),
-            metadata=dict(document.metadata or {}),
+            metadata={**dict(document.metadata or {}), "published_at_epoch": (
+                _published_at_key(document.published_at).timestamp()
+                if isinstance(document.published_at, datetime) else None
+            )},
         )
 
 

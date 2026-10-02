@@ -1,0 +1,9 @@
+# STT audio framing
+
+The worker decodes PCM16 mono audio at16kHz. Its defaults now use160,000bytes per decoder input (5seconds) and2reads per emitted transcript (nominal10seconds of input). Previously64,000bytes were decoded independently (2seconds) and5decoded text fragments were concatenated. Concatenating text cannot repair words already split at decoder input boundaries.
+
+A real Linux CPU int8 `distil-large-v3` probe reproduced the issue on14.726seconds of synthetic earnings speech. Independent2second windows had normalized word error rate0.2105 and took24.392seconds;5second windows produced the exact normalized source text in10.855seconds. Numbers20%,5%,20% survived both configurations. Whole-clip decoding was also exact, but is not a streaming policy. Artifact references: `tasks/live-verification/distil-cpu-quality.json` and `DISTIL-AUDIO-QUALITY.md`.
+
+This fixture deliberately has one-second sentence pauses. It supports a bounded default improvement, not a claim of general financial STT accuracy. Arbitrary sentence boundaries, natural speakers, accents, noise and overlapping speech still require evaluation. The worker still decodes disjoint windows; it does not implement overlapping decoding or sentence-aware VAD buffering. Nominal emission cadence refers to audio duration, not measured wall-clock latency.
+
+`STT_READ_BYTES` / `--read-bytes` and `STT_READS_PER_EMIT` / `--reads-per-emit` continue to override defaults. A controlled three-segment audio-to-UI smoke uses5second reads and1read per emission via `tasks/live-verification/run_linux_audio_distil.py`; this explicit5second emission override is distinct from the10second production default cadence. That runner uses the real model and original decoded text, calls disposable local bridge ports28000/28082, and must only start after the local backend, AI service and listeners are ready. It reads its internal secret from ignored local JSON and never prints it.

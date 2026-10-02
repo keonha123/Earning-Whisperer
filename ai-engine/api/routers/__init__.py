@@ -12,8 +12,13 @@ from .ingestion import router as ingestion_router
 from .legacy_analysis import router as legacy_analysis_router
 from .live_sessions import router as live_sessions_router
 from .operations import router as operations_router
+
+from .integration import router as integration_router
+from .live_fact_check import router as live_fact_check_router
 from .query import router as query_router
 from .regression import router as regression_router
+from .transcript_diff import router as transcript_diff_router
+from .transcript_assistant import router as transcript_assistant_router
 
 ALL_ROUTERS = [
     health_router,
@@ -25,11 +30,15 @@ ALL_ROUTERS = [
     equity_research_router,
     earnings_intelligence_router,
     evidence_router,
+    live_fact_check_router,
+    integration_router,
     analysis_router,
     query_router,
     control_router,
     calibration_router,
     regression_router,
+    transcript_diff_router,
+    transcript_assistant_router,
 ]
 
 __all__ = [
@@ -46,6 +55,11 @@ __all__ = [
     "legacy_analysis_router",
     "live_sessions_router",
     "operations_router",
+
+    "integration_router",
+    "live_fact_check_router",
     "query_router",
     "regression_router",
+    "transcript_diff_router",
+    "transcript_assistant_router",
 ]

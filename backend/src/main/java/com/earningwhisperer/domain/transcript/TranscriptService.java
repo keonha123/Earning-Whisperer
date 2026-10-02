@@ -24,6 +24,7 @@ public class TranscriptService {
 
     private final TranscriptSessionRegistry registry;
     private final TranscriptPublisher publisher;
+    private final TranscriptTranslationWorker translationWorker;
 
     /**
      * 세그먼트 인입을 처리한다.
@@ -34,6 +35,7 @@ public class TranscriptService {
         TranscriptSessionRegistry.Result result = registry.validateAndAccept(segment);
         if (result == TranscriptSessionRegistry.Result.OK) {
             publisher.publish(segment);
+            translationWorker.submit(segment);
         } else {
             log.warn("[Transcript] 인입 거부 - ticker={} call_id={} sequence={} reason={}",
                     segment.ticker(), segment.callId(), segment.sequence(), result);

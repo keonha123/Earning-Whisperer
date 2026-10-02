@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useUserStore } from './useUserStore'
 
 export type TradingMode = 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
 export type SignalStatus = 'PENDING' | 'EXECUTED' | 'FAILED' | 'IGNORED' | 'REJECTED'
@@ -45,12 +46,14 @@ interface TradingState {
   updateSignalStatus: (tradeId: string, status: SignalStatus) => void
   setLastExecutedTrade: (result: TradeResult) => void
   setSession: (active: boolean, ticker?: string) => void
+  /** 로그아웃 시 초기화 (useUserStore.clear() 가 호출). */
+  reset: () => void
 }
 
 const MAX_HISTORY = 50
 
-export const useTradingStore = create<TradingState>((set) => ({
-  mode: 'MANUAL',
+const initialState = {
+  mode: 'MANUAL' as TradingMode,
   isForcedManual: false,
   forcedManualReason: null,
   activeSignal: null,
@@ -59,6 +62,10 @@ export const useTradingStore = create<TradingState>((set) => ({
   signalHistory: [],
   isSessionActive: false,
   sessionTicker: null,
+}
+
+export const useTradingStore = create<TradingState>((set) => ({
+  ...initialState,
 
   setMode: (mode) => set({ mode }),
 
@@ -70,14 +77,20 @@ export const useTradingStore = create<TradingState>((set) => ({
 
   receiveSignal: (signal) =>
     set((state) => {
+      // 매매 모드의 단일 진실 원천은 useUserStore.settings.tradingMode 다.
+      // (로그인 직후 AuthPage 는 setSettings 만 호출하므로 여기서 state.mode 를
+      //  읽으면 사용자가 SEMI_AUTO 여도 신호가 IGNORED 로 떨어진다.)
+      const mode: TradingMode =
+        useUserStore.getState().settings?.tradingMode ?? 'MANUAL'
+
       const item: SignalFeedItem = {
         ...signal,
         receivedAt: Math.floor(Date.now() / 1000),
-        status: state.mode === 'MANUAL' ? 'IGNORED' : 'PENDING',
+        status: mode === 'MANUAL' ? 'IGNORED' : 'PENDING',
       }
       const history = [item, ...state.signalHistory].slice(0, MAX_HISTORY)
 
-      if (state.mode === 'SEMI_AUTO') {
+      if (mode === 'SEMI_AUTO') {
         return { signalHistory: history, pendingConfirm: signal, activeSignal: signal }
       }
       return { signalHistory: history, activeSignal: signal }
@@ -99,4 +112,6 @@ export const useTradingStore = create<TradingState>((set) => ({
       isSessionActive: active,
       sessionTicker: active && ticker ? ticker : null,
     }),
+
+  reset: () => set({ ...initialState }),
 }))

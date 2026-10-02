@@ -1,6 +1,6 @@
 import { useConnectionStore } from '../../store/useConnectionStore'
 import { useUserStore } from '../../store/useUserStore'
-import { ipc, IPC_CHANNELS } from '../../lib/ipc'
+import { ipc, IPC_CHANNELS, isMac } from '../../lib/ipc'
 import type { WsStatus, KisTokenStatus } from '../../store/useConnectionStore'
 
 const PAGE_TITLES: Record<string, string> = {
@@ -40,7 +40,10 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
   const kisLabel = kisTokenStatus === 'VALID' ? 'KIS' : kisTokenStatus === 'EXPIRED' ? 'KIS✕' : 'KIS?'
 
   return (
-    <header className="h-12 bg-surface-0 border-b border-border-strong flex items-center px-4 gap-3">
+    <header
+      // macOS 는 네이티브 타이틀바가 없어 헤더를 창 드래그 영역으로 쓴다.
+      className={`h-12 bg-surface-0 border-b border-border-strong flex items-center px-4 gap-3 ${isMac ? '[-webkit-app-region:drag]' : ''}`}
+    >
       {/*
         좌측: 브레드크럼 + 페이지 타이틀.
         모든 페이지에서 동일하게 워크스페이스 + 페이지 타이틀 + WS/KIS/유저 만 표시한다.
@@ -81,7 +84,7 @@ export default function TopHeader({ currentPath }: { currentPath: string }) {
         </div>
 
         <button
-          className="text-text-tertiary hover:text-sell text-xs transition-colors duration-100 px-2 py-1 rounded hover:bg-sell/10"
+          className="text-text-tertiary hover:text-sell text-xs transition-colors duration-100 px-2 py-1 rounded hover:bg-sell/10 [-webkit-app-region:no-drag]"
           onClick={handleLogout}
         >
           로그아웃

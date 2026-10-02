@@ -31,11 +31,17 @@ interface PricesState {
    *  - 일부만 변경 → 변경된 ticker 만 갱신한 새 prices 반환 (나머지 entry reference 유지)
    */
   upsertBatch: (batch: PriceUpdate[]) => void
+  /** 로그아웃 시 초기화 (useUserStore.clear() 가 호출). */
+  reset: () => void
+}
+
+const initialState = {
+  prices: {},
+  isLoaded: false,
 }
 
 export const usePricesStore = create<PricesState>((set) => ({
-  prices: {},
-  isLoaded: false,
+  ...initialState,
 
   setSnapshot: (snapshot) => set({ prices: { ...snapshot }, isLoaded: true }),
 
@@ -76,4 +82,6 @@ export const usePricesStore = create<PricesState>((set) => ({
       }
       return { prices: working, isLoaded: true }
     }),
+
+  reset: () => set({ ...initialState }),
 }))

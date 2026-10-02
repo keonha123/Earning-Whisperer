@@ -26,6 +26,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("TranscriptSessionRegistry 단위 테스트")
 class TranscriptSessionRegistryTest {
 
+    @Test void boundsTranscriptContentWhileKeepingEndTombstones() {
+        var registry = new TranscriptSessionRegistry();
+        for (int i = 0; i < 70; i++) registry.validateAndAccept(seg("bounded-" + i, 1, true));
+        long retained = java.util.stream.IntStream.range(0, 70)
+                .filter(i -> !registry.completedSegments("NVDA", "bounded-" + i).isEmpty()).count();
+        assertThat(retained).isLessThanOrEqualTo(64);
+        assertThat(registry.validateAndAccept(seg("bounded-0", 2, false))).isEqualTo(TranscriptSessionRegistry.Result.SESSION_ENDED);
+    }
+
     private static TranscriptSegment seg(String callId, int sequence, boolean isSessionEnd) {
         return new TranscriptSegment(
                 "NVDA", callId, sequence, sequence * 1000L, sequence * 1000L + 500,

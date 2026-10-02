@@ -41,7 +41,7 @@ export default function Dropdown<V extends string = string>({
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLUListElement>(null)
+  const listRef = useRef<HTMLUListElement | null>(null)
 
   const selectedIdx = options.findIndex((o) => o.value === value)
   const selectedLabel =

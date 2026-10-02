@@ -66,6 +66,7 @@ let pausedUntil = 0
  */
 let currentCycleEpoch = 0
 const stompCoveredTickers = new Set<string>()
+const kisWsCoveredTickers = new Set<string>()
 
 function pushToRenderer(channel: string, payload: unknown): void {
   BrowserWindow.getAllWindows().forEach((win) => {
@@ -123,7 +124,7 @@ async function tick(): Promise<void> {
     // 매 iteration 직전 epoch / running 재확인 — 사이클이 외부에서 무효화됐으면 즉시 종료.
     // batch push / pause 판정 / schedule 모두 skip → 새 사이클이 깨끗하게 시작되도록 함.
     if (myEpoch !== currentCycleEpoch || !running) return
-    if (stompCoveredTickers.has(ticker)) continue
+    if (stompCoveredTickers.has(ticker) || kisWsCoveredTickers.has(ticker)) continue
     try {
       const result = await KisService.getCurrentPrice(ticker)
       if (result.currentPrice > 0) {
@@ -250,6 +251,17 @@ export function markStompCovered(tickers: string[]): void {
 /** STOMP 끊김 시 호출 — KIS fallback 재개. */
 export function clearStompCovered(): void {
   stompCoveredTickers.clear()
+  if (running) recalcAndRestart()
+}
+
+/** KIS WebSocket으로 수신된 ticker를 covered로 등록 — KIS 폴링 스킵 대상. */
+export function markKisWsCovered(tickers: string[]): void {
+  for (const t of tickers) kisWsCoveredTickers.add(t)
+}
+
+/** KIS WebSocket 끊김 시 호출 — KIS 폴링 fallback 재개. */
+export function clearKisWsCovered(): void {
+  kisWsCoveredTickers.clear()
   if (running) recalcAndRestart()
 }
 

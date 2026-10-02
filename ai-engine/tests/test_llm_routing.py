@@ -19,6 +19,6 @@ def test_health_and_stats_expose_current_models() -> None:
 
     assert health_data['status'] == 'ok'
     assert health_data['primary_model'] == 'gemini-3.1-flash-lite'
-    assert health_data['review_model'] == 'gemini-3.1-pro-preview'
+    assert health_data['review_model'] == 'gemini-3.6-flash'
     assert stats_data['models']['fast'] == 'gemini-3.1-flash-lite'
-    assert stats_data['models']['review'] == 'gemini-3.1-pro-preview'
+    assert stats_data['models']['review'] == 'gemini-3.6-flash'

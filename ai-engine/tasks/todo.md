@@ -1,5 +1,77 @@
 # AI Engine Rebuild Track
 
+## Transcript Diff LLM Response Shape Fix
+
+### Implementation
+- [x] Accept both `{ "items": [...] }` and top-level `[...]` Gemini responses
+- [x] Keep malformed or unsupported responses on the existing deterministic fallback path
+- [x] Clarify the prompt's expected top-level JSON object shape
+- [x] Add a regression test for the top-level array response observed in the live smoke test
+
+### Validation
+- [x] Run transcript ingestion/diff regression tests
+- [x] Re-run the live Gemini + Qdrant transcript diff smoke test without fallback warnings
+
+### Review
+- Targeted transcript ingestion/diff suite: `8 passed`.
+- Full AI Engine regression suite: `206 passed, 1 deselected`; the existing zero-latency Gemini coalescing timing test remains excluded.
+- Live Gemini + Qdrant smoke test returned three LLM-authored diff items with no fallback warnings.
+
+## GitHub Issue #123 Qdrant Evidence Retrieval Fix
+
+### Scope Guard
+- [x] Keep the change inside the AI engine evidence and transcript retrieval paths
+- [x] Preserve existing public HTTP request and response contracts
+- [x] Preserve the user's unrelated `infra/docker-compose.yml` modification
+- [x] Avoid destructive in-place Qdrant collection migration
+
+### Implementation
+- [x] Centralize embedding configuration/provider selection for hash, OpenAI, and Gemini
+- [x] Align external evidence store, payload schema, embedding version, and vector dimensions
+- [x] Keep transcript retrieval on its explicitly selected embedding configuration
+- [x] Merge request-scoped evidence without persisting transient documents
+- [x] Reuse one external retrieval result for prompt context and confidence policy
+
+### Validation
+- [x] Add provider, store/filter, payload compatibility, dimension, and analysis-flow regression tests
+- [x] Run focused pytest and compile validation
+- [x] Run the full AI Engine regression suite when the local runtime is available
+
+### Review
+- Added one strict embedding configuration/provider path shared by external evidence and transcript repositories.
+- Wired the analysis evidence repository to `store=external` with `EXTERNAL_EMBEDDING_*`, while transcripts use `EMBEDDING_*`.
+- Added compatible mapping for external `doc_id/text/url/published_at` payloads, embedding-version filters, and fail-fast Qdrant dimension checks.
+- Reused the single external retrieval result for both prompt citations and confidence policy, and merged transient request evidence without Qdrant upserts.
+- Added `EMBEDDING_VERSION` and documented versioned reindex requirements; no live collection was deleted or migrated.
+- Validation: issue-focused suite `38 passed`; local Qdrant writer-to-reader integration passed; compile and `git diff --check` passed.
+- Regression: `205 passed, 1 deselected` with the existing zero-latency Gemini coalescing timing test excluded. The separate review-model test passes when `GEMINI_REVIEW_MODEL` is pinned to its expected value; local `.env` currently overrides it.
+
+## Live News Fact Check Service Track
+
+### Scope Guard
+- [x] Keep the service separate from the existing analyze flow
+- [x] Limit implementation to AI Engine models, retrieval, service wiring, and tests
+- [x] Exclude HTTP routers, Spring backend integration, and UI work
+
+### Implementation
+- [x] Add one-sentence input and three-sentence buffered batch contracts
+- [x] Add external-news embedding version metadata and filtering
+- [x] Add atomic claim extraction, batch embedding, claim-scoped RAG, and batched verdict generation
+- [x] Add ticker-scoped TTL buffering, sequence guards, sequence-zero reset, and session-end discard
+- [x] Register the service without invoking it from analyze
+
+### Validation
+- [x] Add focused service and retriever tests
+- [x] Run targeted pytest and compile validation
+- [x] Run the full AI Engine regression suite
+
+### Review
+- Added a standalone sentence-ingestion service that buffers three finalized sentences per ticker before any LLM or retrieval work.
+- Added Gemini atomic-claim extraction, one-request batch embeddings, claim-specific timestamped Qdrant searches, and one batched verification call.
+- Kept semantic relevance separate from article importance and isolated invalid citations or missing verdicts to individual claims.
+- Validation: targeted fact-check/RAG suite `28 passed`; app wiring and compile validation succeeded.
+- Full suite: `185 passed`, with the pre-existing Gemini in-flight coalescing timing test failing because its zero-latency fake completes before the second request joins.
+
 ## v9.6.2 Structured Equity Research API Track
 
 ### Scope Guard
@@ -856,7 +928,7 @@
 
 ## Implementation
 - [x] Add explicit evidence/RAG models for documents, citations, fact-checks, claim diffs, omissions, impact chains, and trade exits
-- [x] Add an evidence store repository with a pgvector-ready contract and deterministic local sparse retrieval fallback
+- [x] Add an evidence store repository with a Qdrant-ready contract and deterministic local sparse retrieval fallback
 - [x] Add an evidence retrieval service that builds prompt-safe evidence context with source, date, and confidence
 - [x] Wire retrieved evidence into the LLM prompt and reduce confidence when evidence is absent or weak
 - [x] Add impact-chain endpoints for related stock spillover scoring
@@ -871,7 +943,7 @@
 
 ## Review
 - Added explicit RAG/evidence retrieval contracts in `models/evidence_models.py`.
-- Added `EvidenceStoreRepository` with pgvector-ready backend metadata and deterministic sparse retrieval fallback.
+- Added `EvidenceStoreRepository` with Qdrant-ready backend metadata and deterministic sparse retrieval fallback.
 - Added `EvidenceRetrievalService` for prompt-safe citations, fact-checks, claim diffs, omission/evasion scoring, impact-chain scoring, and standalone trade-exit generation.
 - Wired retrieved evidence into `AnalysisService` and `build_prompt`; unsupported directional judgments are confidence-penalized and risk-flagged.
 - Registered `/v1/engine/evidence/search`, `/v1/engine/fact-check`, `/v1/engine/claim-diff`, `/v1/engine/omission/analyze`, `/v1/engine/impact-chain/{ticker}`, `/v1/engine/impact-chain/analyze`, and `/v1/engine/trade-exits/generate`.

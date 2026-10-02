@@ -3,9 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import main
+from config import Settings
 from models.legacy_contract_models import LegacyPublishResult
 from models.request_models import SectionType, SourceType
 from models.signal_models import GeminiAnalysisResult
+from services.redis_signal_publisher import RedisSignalPublisher
 
 
 async def _fake_analyze(**kwargs):
@@ -41,6 +43,7 @@ class _FakePublisher:
 
 
 def test_legacy_analyze_endpoint_accepts_original_payload_and_publishes(monkeypatch) -> None:
+    monkeypatch.setattr(main.get_settings(), "runtime_controls_mode", "offline")
     publisher = _FakePublisher()
     monkeypatch.setattr(main.app.state.analysis_service, "analyze", _fake_analyze)
     monkeypatch.setattr(main.app.state, "redis_signal_publisher", publisher)
@@ -75,6 +78,7 @@ def test_legacy_analyze_endpoint_accepts_original_payload_and_publishes(monkeypa
 
 
 def test_legacy_analyze_endpoint_degrades_when_redis_publish_fails(monkeypatch) -> None:
+    monkeypatch.setattr(main.get_settings(), "runtime_controls_mode", "offline")
     publisher = _FakePublisher(fail=True)
     monkeypatch.setattr(main.app.state.analysis_service, "analyze", _fake_analyze)
     monkeypatch.setattr(main.app.state, "redis_signal_publisher", publisher)
@@ -97,3 +101,38 @@ def test_legacy_analyze_endpoint_degrades_when_redis_publish_fails(monkeypatch) 
     assert payload["enriched_published"] is False
     assert payload["publish_error"] == "legacy:redis down"
     assert payload["is_session_end"] is True
+
+
+def test_control_failure_cannot_publish_trade_eligible_legacy_signal(monkeypatch):
+    class UnavailableControls:
+        def apply_runtime_controls(self, **kwargs):
+            raise RuntimeError("database unavailable")
+
+    app = main.create_app()
+    monkeypatch.setattr(app.state.analysis_service, "analyze", _fake_analyze)
+    monkeypatch.setattr(main, "_get_control_service", lambda app: UnavailableControls())
+    publisher = RedisSignalPublisher(Settings(_env_file=None))
+    sent = []
+
+    async def capture(channel, payload):
+        sent.append((channel, payload))
+        return True
+
+    monkeypatch.setattr(publisher, "_publish_json", capture)
+    app.state.redis_signal_publisher = publisher
+    response = TestClient(app).post("/api/v1/analyze", json={
+        "ticker": "TSLA", "text_chunk": "Margins compressed and demand was softer than expected.",
+        "sequence": 7, "timestamp": 1778600000, "is_final": True,
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["execution_allowed"] is False
+    assert payload["raw_score"] == 0.0
+    assert payload["action"] == "HOLD"
+    assert payload["is_session_end"] is True
+    assert payload["redis_published"] is False
+    assert payload["enriched_published"] is True
+    assert [channel for channel, _ in sent] == [publisher.settings.redis_enriched_channel]
+    assert sent[0][1]["legacy_signal"]["is_session_end"] is True
+    assert sent[0][1]["engine_envelope"]["analysis"]["magnitude"] == 0.62
+    assert not publisher.backup_queue

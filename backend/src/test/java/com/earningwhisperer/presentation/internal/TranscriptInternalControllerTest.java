@@ -1,7 +1,7 @@
 package com.earningwhisperer.presentation.internal;
 
 import com.earningwhisperer.domain.transcript.TranscriptSessionRegistry;
-import com.earningwhisperer.domain.transcript.TranscriptService;
+import com.earningwhisperer.domain.transcript.LiveTranscriptFactCheckService;
 import com.earningwhisperer.infrastructure.security.InternalSecretFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,12 +45,26 @@ class TranscriptInternalControllerTest {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
 
-    @MockBean TranscriptService transcriptService;
+    @MockBean LiveTranscriptFactCheckService transcriptService;
     @MockBean com.earningwhisperer.infrastructure.security.JwtProvider jwtProvider;
     @MockBean com.earningwhisperer.infrastructure.security.UserDetailsServiceImpl userDetailsService;
 
     private static final String URL = "/api/v1/internal/transcript-segment";
     private static final String SECRET = "test-secret-value";
+
+    @Test
+    void emptyTextAllowedOnlyForEndEvent() throws Exception {
+        when(transcriptService.accept(any())).thenReturn(TranscriptSessionRegistry.Result.OK);
+        ObjectNode body = validBody();
+        body.put("text", "");
+        mockMvc.perform(post(URL).header("X-Internal-Secret", SECRET)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isBadRequest());
+        body.put("is_session_end", true);
+        mockMvc.perform(post(URL).header("X-Internal-Secret", SECRET)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isAccepted());
+    }
 
     /**
      * 9필드 모두 채운 정상 요청 본문을 생성한다.

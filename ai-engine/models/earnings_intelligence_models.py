@@ -98,7 +98,9 @@ class ImpactNode(BaseModel):
     ticker: str
     relationship: str
     direction: ImpactDirection
-    impact_score: float = Field(ge=0.0, le=1.0)
+    # 근거 코퍼스가 비어 있으면 측정 자체가 불가능하다. 0.0 은 "영향 없음" 으로 읽히므로
+    # 그 경우 None 으로 내려보내고, 클라이언트가 미측정으로 구분해 표시한다.
+    impact_score: float | None = Field(default=None, ge=0.0, le=1.0)
     confidence: float = Field(ge=0.0, le=1.0)
     rationale_ko: str
     evidence: list[RetrievedEvidencePayload] = Field(default_factory=list)

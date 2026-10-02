@@ -43,9 +43,11 @@ interface PortfolioState {
   setBalanceFetchError: (err: unknown) => void
   /** F-2: balance fetch error 명시적 clear. 재시도 직전 또는 dismiss 시 호출. */
   clearBalanceFetchError: () => void
+  /** 로그아웃 시 초기화 (useUserStore.clear() 가 호출). */
+  reset: () => void
 }
 
-export const usePortfolioStore = create<PortfolioState>((set) => ({
+const initialState = {
   orderableCash: 0,
   totalCash: 0,
   holdings: [],
@@ -53,6 +55,10 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
   isSyncing: false,
   error: null,
   balanceFetchError: null,
+}
+
+export const usePortfolioStore = create<PortfolioState>((set) => ({
+  ...initialState,
 
   setBalance: (orderableCash, totalCash, holdings) =>
     set({
@@ -83,4 +89,6 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
   },
 
   clearBalanceFetchError: () => set({ balanceFetchError: null }),
+
+  reset: () => set({ ...initialState }),
 }))

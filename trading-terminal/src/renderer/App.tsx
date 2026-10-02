@@ -5,7 +5,7 @@ import { useConnectionStore } from './store/useConnectionStore'
 import { useTradingStore } from './store/useTradingStore'
 import { usePortfolioStore } from './store/usePortfolioStore'
 import { useUserStore } from './store/useUserStore'
-import { isIpcError } from '../lib/types/ipcError'
+import { isIpcError, IpcError } from '../lib/types/ipcError'
 
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
@@ -83,9 +83,33 @@ function AppRoutes() {
       }),
 
       ipc.on(IPC_CHANNELS.TRADE_FAILED, (payload: any) => {
+        // 체결은 성공했으나 백엔드 콜백 전송만 실패한 통보 — 실제 주문은 브로커에 체결돼 있으므로
+        // 시그널 상태를 FAILED 로 뒤집지 않고 경고 토스트로만 알린다.
+        if (payload?.reason === 'CALLBACK_FAILED') {
+          showIpcErrorToast(new IpcError('BUSINESS_RULE', payload.errorMessage))
+          return
+        }
         setLastExecutedTrade(payload)
         updateSignalStatus(payload.tradeId, 'FAILED')
         setPendingConfirm(null)
+      }),
+
+      ipc.on(IPC_CHANNELS.SELF_PAPER_BALANCE_UPDATED, (payload: any) => {
+        const { cash, holdings: newHoldings } = payload as {
+          cash: number
+          holdings: { ticker: string; qty: number }[]
+        }
+        const prev = usePortfolioStore.getState().holdings
+        const merged = newHoldings.map((h) => {
+          const existing = prev.find((p) => p.ticker === h.ticker)
+          return {
+            ticker: h.ticker,
+            qty: h.qty,
+            avgPrice: existing?.avgPrice ?? 0,
+            currentPrice: existing?.currentPrice ?? 0,
+          }
+        })
+        setBalance(cash, cash, merged)
       }),
 
       ipc.on(IPC_CHANNELS.KIS_TOKEN_REFRESHED, (payload: any) => {
@@ -122,6 +146,7 @@ function AppRoutes() {
       {/* 전역 SEMI_AUTO 확인 다이얼로그 */}
       {pendingConfirm && (
         <TradeConfirmDialog
+          key={pendingConfirm.trade_id}
           signal={pendingConfirm}
           timeoutSeconds={30}
           onApprove={async () => {

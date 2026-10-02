@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -35,7 +35,7 @@ try:
     from models.request_models import MarketData, SourceType
     from models.signal_models import GeminiAnalysisResult, StrategyDecision, StrategyName
     from repositories.company_intelligence_repository import CompanyIntelligenceRepository
-    from repositories.evidence_store_repository import EvidenceStoreRepository
+    from repositories.evidence_store_repository import EvidenceStoreRepository, _as_of_time
 except ImportError:  # pragma: no cover
     from ..core.trade_plan import build_trade_exit_plan
     from ..models.canonical_models import CanonicalEventBundle, CanonicalSourceHealth
@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     from ..models.request_models import MarketData, SourceType
     from ..models.signal_models import GeminiAnalysisResult, StrategyDecision, StrategyName
     from ..repositories.company_intelligence_repository import CompanyIntelligenceRepository
-    from ..repositories.evidence_store_repository import EvidenceStoreRepository
+    from ..repositories.evidence_store_repository import EvidenceStoreRepository, _as_of_time
 
 
 _POSITIVE = {
@@ -164,19 +164,85 @@ def _as_date_text(value: datetime | date | None) -> str | None:
     return value.isoformat()
 
 
+def _external_source_type(value: Any) -> EvidenceSourceType:
+    raw = str(value or EvidenceSourceType.OTHER.value).strip().upper()
+    try:
+        return EvidenceSourceType(raw)
+    except ValueError:
+        return EvidenceSourceType.OTHER
+
+
+def _bounded_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(0.0, min(1.0, parsed))
+
+
+def _external_published_at(value: Any) -> str | None:
+    if isinstance(value, (int, float)) and value > 0:
+        return datetime.fromtimestamp(float(value), tz=UTC).date().isoformat()
+    if value:
+        return str(value)
+    return None
+
+
+def _external_backend(name: str | None, *, fallback: EvidenceBackend) -> EvidenceBackend:
+    """실제로 외부 근거를 가져온 retriever 를 EvidenceBackend 로 옮긴다.
+
+    ``self.repository`` 를 기준으로 삼으면 안 된다. 이 경로의 외부 근거는
+    ``ExternalRetriever`` 가 가져오고 ``self.repository`` 는 요청 단위 문서만 다루므로,
+    저장소 설정이 Qdrant 라는 이유로 QDRANT 를 보고하면 실제로 메모리 백엔드를 쓴 회차에도
+    QDRANT 로 찍힌다.
+
+    아는 이름이 아니면 요청 단위 결과의 backend 를 그대로 쓴다. 보고용 값이라
+    모르는 값 때문에 분석을 실패시키지 않는다.
+    """
+    mapping = {
+        "qdrant": EvidenceBackend.QDRANT,
+        "faiss": EvidenceBackend.FAISS,
+        "memory": EvidenceBackend.LOCAL_SPARSE,
+        "memory_fallback": EvidenceBackend.LOCAL_SPARSE,
+    }
+    return mapping.get(str(name or "").strip().lower(), fallback)
+
+
 class EvidenceRetrievalService:
     def __init__(
         self,
         repository: EvidenceStoreRepository | None = None,
         company_repository: CompanyIntelligenceRepository | None = None,
+        *, external_retriever: Any = None,
     ) -> None:
         self.repository = repository or EvidenceStoreRepository(backend=EvidenceBackend.LOCAL_SPARSE)
         self.company_repository = company_repository or CompanyIntelligenceRepository(
             store_path=Path(__file__).resolve().parents[1] / "data" / "company_intelligence_seed.json"
         )
+        self.external_retriever = external_retriever
 
     def retrieve(self, request: EvidenceRetrievalRequest) -> EvidenceRetrievalResult:
-        return self.repository.search(request)
+        result = self.repository.search(request)
+        if self.external_retriever is None:
+            return result
+        as_of = _as_of_time(request.metadata.get("as_of"))
+        timestamp = int(as_of.timestamp()) if as_of is not None else 0
+        limit = request.top_k
+        if as_of is not None:
+            # The sparse retriever admits undated items. Filter them before the
+            # final top-k merge so they cannot crowd out valid dated evidence.
+            limit = max(limit, int(self.external_retriever.get_stats().get("upserted_chunks", 0)))
+        external = self.external_retriever.retrieve(
+            query=request.query, ticker=request.ticker, chunk_timestamp=timestamp,
+            preferred_sources=[item.value.lower() for item in request.source_types],
+            # Generic evidence search has no lookback cutoff: only the as-of
+            # ceiling supplied by its caller. Include all dates since epoch.
+            lookback_days=max(1, timestamp // 86400 + 1), limit=limit,
+        )
+        if as_of is not None:
+            external = [item for item in external if 0 < item.published_at <= timestamp]
+        backend = self.external_retriever.get_stats().get("effective_backend")
+        return self._with_external_evidence(request, result, external, external_backend=backend)
 
     def retrieve_for_analysis(
         self,
@@ -189,6 +255,8 @@ class EvidenceRetrievalService:
         source_health: list[CanonicalSourceHealth] | None,
         request_metadata: dict[str, Any] | None,
         evidence_documents: list[EvidenceDocument] | None,
+        external_documents: Iterable[Any] | None = None,
+        external_backend: str | None = None,
         top_k: int = 5,
     ) -> EvidenceRetrievalResult:
         documents: list[EvidenceDocument] = []
@@ -197,16 +265,128 @@ class EvidenceRetrievalService:
         documents.extend(self._documents_from_company_intelligence(ticker=ticker))
         documents.extend(self._documents_from_metadata(ticker=ticker, metadata=request_metadata or {}))
         query = self._analysis_query(ticker=ticker, current_chunk=current_chunk, source_type=source_type, market_data=market_data)
-        result = self.retrieve(
-            EvidenceRetrievalRequest(
-                ticker=ticker,
-                query=query,
-                top_k=top_k,
-                documents=documents,
-                metadata={"source_health_count": len(source_health or [])},
-            )
+        request = EvidenceRetrievalRequest(
+            ticker=ticker,
+            query=query,
+            top_k=top_k,
+            documents=documents,
+            metadata={"source_health_count": len(source_health or [])},
         )
-        return result
+        if external_documents is None:
+            return self.retrieve(request)
+
+        transient_result = EvidenceStoreRepository().search(request)
+        return self._with_external_evidence(request, transient_result, external_documents, external_backend=external_backend)
+
+    def _with_external_evidence(
+        self, request: EvidenceRetrievalRequest, transient_result: EvidenceRetrievalResult,
+        external_documents: Iterable[Any],
+        *, external_backend: str | None = None,
+    ) -> EvidenceRetrievalResult:
+        external_citations = [
+            citation
+            for item in external_documents
+            if (citation := self._external_citation(item, ticker=request.ticker)) is not None
+        ]
+        citations = self._merge_citations(
+            transient_result.evidence,
+            external_citations,
+            limit=request.top_k,
+        )
+        coverage = EvidenceStoreRepository._coverage_score(citations)
+        confidence_adjustment = EvidenceStoreRepository._confidence_adjustment(coverage, citations)
+        warnings: list[str] = []
+        if not citations:
+            warnings.append("no_retrieved_evidence")
+        elif coverage < 0.35:
+            warnings.append("weak_retrieved_evidence")
+        backend = _external_backend(external_backend, fallback=transient_result.backend)
+        return EvidenceRetrievalResult(
+            ticker=request.ticker.upper(),
+            query=request.query,
+            backend=backend,
+            evidence=citations,
+            coverage_score=coverage,
+            confidence_adjustment=confidence_adjustment,
+            evidence_context=EvidenceStoreRepository.build_prompt_context(citations),
+            missing_evidence=not citations,
+            warnings=warnings,
+        )
+
+    @staticmethod
+    def _external_citation(item: Any, *, ticker: str) -> EvidenceCitation | None:
+        document_id = str(getattr(item, "doc_id", "") or "").strip()
+        snippet = _clip(str(getattr(item, "text", "") or ""))
+        if not document_id or not snippet:
+            return None
+        raw_metadata = getattr(item, "metadata", {}) or {}
+        metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+        semantic_score = _bounded_float(getattr(item, "semantic_score", 0.0))
+        ranking_score = _bounded_float(getattr(item, "score", 0.0))
+        score_kind = getattr(item, "semantic_score_kind", "unknown")
+        # Qdrant's ranking score includes recency and reduced dense weighting.
+        # Confidence thresholds use cosine relevance, as the repository does.
+        # Memory retrieval puts lexical similarity in semantic_score instead;
+        # keep its existing score rather than treating BM25 as dense evidence.
+        relevance = semantic_score if score_kind == "cosine" else ranking_score
+        reliability = _bounded_float(metadata.get("reliability_score"), default=0.6)
+        published_at_epoch = None
+        published_at = getattr(item, "published_at", None)
+        if isinstance(published_at, (int, float)) and not isinstance(published_at, bool) and published_at > 0:
+            try:
+                datetime.fromtimestamp(published_at, tz=UTC)
+                published_at_epoch = int(published_at)
+            except (ValueError, OverflowError, OSError):
+                pass
+        metadata.update(
+            {
+                "semantic_score": semantic_score,
+                "semantic_score_kind": score_kind,
+                "ranking_score": ranking_score,
+                "published_at_epoch": published_at_epoch,
+                "form_type": str(getattr(item, "form_type", "") or ""),
+            }
+        )
+        source_type = _external_source_type(getattr(item, "source_type", None))
+        source = str(
+            metadata.get("provider")
+            or getattr(item, "form_type", "")
+            or getattr(item, "source_type", "")
+            or "external"
+        )
+        return EvidenceCitation(
+            document_id=document_id,
+            ticker=ticker.upper() or None,
+            source_type=source_type,
+            source=source,
+            title=str(getattr(item, "title", "") or "") or None,
+            published_at=_external_published_at(getattr(item, "published_at", None)),
+            source_url=str(getattr(item, "url", "") or "") or None,
+            snippet=snippet,
+            relevance_score=round(relevance, 4),
+            reliability_score=round(reliability, 4),
+            confidence_score=round(_bounded_float(0.70 * relevance + 0.30 * reliability), 4),
+            metadata=metadata,
+        )
+
+    @staticmethod
+    def _merge_citations(
+        request_citations: Iterable[EvidenceCitation],
+        external_citations: Iterable[EvidenceCitation],
+        *,
+        limit: int,
+    ) -> list[EvidenceCitation]:
+        merged: dict[tuple[str, str], EvidenceCitation] = {}
+        for citation in [*request_citations, *external_citations]:
+            key = (citation.document_id, citation.snippet)
+            previous = merged.get(key)
+            if previous is None or citation.confidence_score > previous.confidence_score:
+                merged[key] = citation
+        ranked = sorted(
+            merged.values(),
+            key=lambda item: (-item.relevance_score, -item.confidence_score, item.document_id),
+        )
+        return ranked[: max(1, int(limit))]
 
     @staticmethod
     def apply_confidence_policy(analysis: GeminiAnalysisResult, retrieval: EvidenceRetrievalResult) -> GeminiAnalysisResult:

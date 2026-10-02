@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { kisHttpMock, flushMicrotasks } from '../../../test/setup'
 
 import keytar from 'keytar'
-import { KisService } from '../KisService'
+import { KisService, __resetForTest } from '../KisService'
 import { mainState } from '../../store/mainState'
 import {
   tokenIssueSuccessResponse,
@@ -22,6 +22,7 @@ async function seedApiKeys(): Promise<void> {
 }
 
 beforeEach(() => {
+  __resetForTest()
   mainState.clear()
   // mainState.clear() 는 isPaperTrading 을 유지하므로 leak 방지로 명시 reset
   mainState.setPaperTrading(true)
@@ -359,6 +360,67 @@ describe('KisService.issueToken — 모드 전환 race 가드', () => {
 
     // fallback 이 옛 paper 토큰을 살리지 않았어야 함
     expect(mainState.kisAccessToken).not.toBe('old-paper-token')
+  })
+})
+
+describe('KisService.issueToken — in-flight Promise 소유권', () => {
+  it('invalidateRuntime 후 시작된 새 in-flight 를 옛 흐름의 finally 가 지우지 않는다', async () => {
+    ;(kisHttpMock as any).defaults = { baseURL: '' }
+    await seedApiKeys()
+
+    // 두 번의 발급 요청을 각각 수동 resolve 하기 위한 deferred 2개
+    let resolveFirst!: (v: unknown) => void
+    let resolveSecond!: (v: unknown) => void
+    kisHttpMock.post
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+
+    const first = KisService.issueToken().catch((e) => e)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(1)
+
+    // 옛 흐름을 버리고(in-flight null) 새 발급 시작
+    KisService.invalidateRuntime()
+    const second = KisService.issueToken().catch((e) => e)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(2)
+
+    // 옛(첫 번째) 흐름이 뒤늦게 끝나며 finally 실행 → 새 in-flight 를 지우면 안 된다
+    resolveFirst({ data: tokenIssueSuccessResponse })
+    await first
+    await flushMicrotasks()
+
+    // 세 번째 호출은 두 번째 in-flight 를 재사용해야 한다 (HTTP 3회 발급 = EGW00133 유발)
+    const third = KisService.issueToken().catch((e) => e)
+    await flushMicrotasks()
+    expect(kisHttpMock.post).toHaveBeenCalledTimes(2)
+
+    resolveSecond({ data: tokenIssueSuccessResponse })
+    await Promise.all([second, third])
+  })
+})
+
+describe('KisService.ensureToken — 모드 전환 시 명시 에러', () => {
+  it('토큰 발급 도중 모드가 전환되면 ensureToken 이 reject 한다 (Bearer null 요청 방지)', async () => {
+    await seedApiKeys()
+    mainState.setPaperTrading(true)
+
+    let resolvePost!: (v: unknown) => void
+    kisHttpMock.post.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePost = resolve }),
+    )
+
+    const captured = KisService.ensureToken().then(() => null).catch((e) => e)
+    await flushMicrotasks()
+
+    // 응답 도착 전 모드 전환
+    mainState.setPaperTrading(false)
+    resolvePost({ data: tokenIssueSuccessResponse })
+
+    const err = await captured
+    expect(err).toBeInstanceOf(Error)
+    expect((err as Error).message).toContain('모드가 전환되어')
+    expect(mainState.kisAccessToken).toBeNull()
   })
 })
 

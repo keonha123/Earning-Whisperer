@@ -5,10 +5,12 @@
  */
 
 export type TradingMode = 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
+export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
 
 interface MainState {
   /** EarningWhisperer 백엔드 JWT 액세스 토큰 */
   backendToken: string | null
+  backendRefreshToken: string | null
   /** KIS OAuth access_token */
   kisAccessToken: string | null
   /** KIS 토큰 만료 시각 (Unix ms, UI 표시용) */
@@ -27,6 +29,13 @@ interface MainState {
   isOrderInProgress: boolean
   /** 모의투자(true) / 실전투자(false) 환경 — 토큰/baseURL/rate limit 분기 */
   isPaperTrading: boolean
+  /** 활성 BrokerAccount 의 계정 유형 — 로그인 후 백엔드에서 로드 */
+  accountType: AccountType
+  /** STOMP /topic/prices 에서 수신한 최신 현재가 캐시 (ticker → price) */
+  pricesCache: Record<string, number>
+  /** SELF_PAPER 모드 잔고 — cashBalance + 보유종목. 로그인 시 초기화, 매매 후 갱신. */
+  selfPaperCash: number | null
+  selfPaperHoldings: { ticker: string; qty: number }[]
   /** TradingRoom 세션 활성 여부 — 진입 시 true, 명시적 나가기 시 false */
   isTradeSessionActive: boolean
   /** 현재 세션의 ticker — 이 ticker의 신호만 처리 */
@@ -35,6 +44,7 @@ interface MainState {
 
 const state: MainState = {
   backendToken: null,
+  backendRefreshToken: null,
   kisAccessToken: null,
   kisTokenExpiresAt: null,
   kisTokenIssuedAtMono: null,
@@ -42,6 +52,10 @@ const state: MainState = {
   tradingMode: 'MANUAL',
   isOrderInProgress: false,
   isPaperTrading: true,
+  accountType: 'KIS_PAPER',
+  pricesCache: {},
+  selfPaperCash: null,
+  selfPaperHoldings: [],
   isTradeSessionActive: false,
   activeSessionTicker: null,
 }
@@ -51,6 +65,16 @@ const TOKEN_VALIDITY_MARGIN_SEC = 60
 export const mainState = {
   get backendToken() { return state.backendToken },
   setBackendToken(token: string | null) { state.backendToken = token },
+
+  /**
+   * 백엔드 refresh_token. 백엔드는 이 값을 HttpOnly 쿠키로만 주고받으므로
+   * (보안 검토 결정, `bf62972`), 메인 프로세스가 쿠키 값을 보관했다가 갱신 요청에
+   * 다시 실어 보낸다 — 브라우저가 하는 일을 대신할 뿐 계약을 바꾸지 않는다.
+   *
+   * 메모리에만 둔다. 디스크에 쓰면 앱을 꺼도 7일짜리 자격증명이 남는다.
+   */
+  get backendRefreshToken() { return state.backendRefreshToken },
+  setBackendRefreshToken(token: string | null) { state.backendRefreshToken = token },
 
   get kisAccessToken() { return state.kisAccessToken },
   setKisAccessToken(token: string | null, expiresIn?: number) {
@@ -92,6 +116,23 @@ export const mainState = {
   get isPaperTrading() { return state.isPaperTrading },
   setPaperTrading(value: boolean) { state.isPaperTrading = value },
 
+  get accountType() { return state.accountType },
+  setAccountType(t: AccountType) { state.accountType = t },
+
+  updatePricesCache(updates: Record<string, number>) {
+    Object.assign(state.pricesCache, updates)
+  },
+  getPriceFromCache(ticker: string): number | null {
+    return state.pricesCache[ticker] ?? null
+  },
+
+  get selfPaperCash() { return state.selfPaperCash },
+  get selfPaperHoldings() { return state.selfPaperHoldings },
+  setSelfPaperBalance(cash: number | null, holdings: { ticker: string; qty: number }[]) {
+    state.selfPaperCash = cash
+    state.selfPaperHoldings = holdings
+  },
+
   get isTradeSessionActive() { return state.isTradeSessionActive },
   get activeSessionTicker() { return state.activeSessionTicker },
   setTradeSession(active: boolean, ticker?: string) {
@@ -105,12 +146,17 @@ export const mainState = {
    */
   clear() {
     state.backendToken = null
+    state.backendRefreshToken = null
     state.kisAccessToken = null
     state.kisTokenExpiresAt = null
     state.kisTokenIssuedAtMono = null
     state.kisTokenLifetimeSec = null
     state.tradingMode = 'MANUAL'
     state.isOrderInProgress = false
+    state.accountType = 'KIS_PAPER'
+    state.pricesCache = {}
+    state.selfPaperCash = null
+    state.selfPaperHoldings = []
     state.isTradeSessionActive = false
     state.activeSessionTicker = null
   },

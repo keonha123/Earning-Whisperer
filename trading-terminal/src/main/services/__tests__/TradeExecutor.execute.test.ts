@@ -30,6 +30,7 @@ import { BackendClient } from '../BackendClient'
 import { NotificationService } from '../NotificationService'
 import { mainState } from '../../store/mainState'
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
+import { flushMicrotasks } from '../../../test/setup'
 
 const Kis = vi.mocked(KisService)
 const Backend = vi.mocked(BackendClient)
@@ -75,7 +76,7 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
       totalCash: 1000,
       holdings: [],
     })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({
       orderId: 'ODNO123',
       executedPrice: null,
@@ -108,9 +109,33 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
     expect(Notify.notifyTradeExecuted).toHaveBeenCalledWith('TSLA', 'BUY', 10, null)
   })
 
+  it('EXECUTED 후 포트폴리오 동기화가 백엔드 계약대로 { cash_balance, positions } 로 호출된다', async () => {
+    Kis.getBalance.mockResolvedValue({
+      orderableCash: 1000,
+      totalCash: 1234,
+      holdings: [{ ticker: 'TSLA', qty: 7, avgPrice: 250.5, currentPrice: 260 }],
+    })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
+    Kis.placeOrder.mockResolvedValue({
+      orderId: 'ODNO123',
+      executedPrice: null,
+      executedQty: 10,
+    })
+    Backend.sendCallback.mockResolvedValue(undefined)
+    Backend.syncPortfolio.mockResolvedValue(undefined)
+
+    await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+    await flushMicrotasks()
+
+    expect(Backend.syncPortfolio).toHaveBeenCalledWith({
+      cash_balance: 1234,
+      positions: [{ ticker: 'TSLA', quantity: 7, avg_price: 250.5 }],
+    })
+  })
+
   it('TRADE_EXECUTED IPC 이벤트 발화', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -132,7 +157,7 @@ describe('TradeExecutor.execute — BUY 정상 흐름', () => {
 describe('TradeExecutor.execute — qty=0 결과', () => {
   it('placeOrder 미호출 + FAILED 콜백 + 사유 메시지 포함', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 100, totalCash: 100, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(200) // 100 × 0.05 / 200 = 0.025 → 0주
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 200, previousClose: 200 }) // 100 × 0.05 / 200 = 0.025 → 0주
     Backend.sendCallback.mockResolvedValue(undefined)
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.05 }))
@@ -178,7 +203,7 @@ describe('TradeExecutor.execute — 동시 호출 차단', () => {
 describe('TradeExecutor.execute — 예외 처리', () => {
   it('placeOrder 예외 시 catch에서 FAILED 콜백', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockRejectedValue(new Error('KIS 서버 500'))
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -203,7 +228,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
 
   it('finally 락 해제: 정상 흐름에서도 isOrderInProgress=false', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
     Backend.sendCallback.mockResolvedValue(undefined)
 
@@ -214,7 +239,7 @@ describe('TradeExecutor.execute — 예외 처리', () => {
 
   it('콜백 실패해도 결과 반환 (FAILED 경로)', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 0, totalCash: 0, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Backend.sendCallback.mockRejectedValue(new Error('백엔드 다운'))
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
@@ -224,23 +249,27 @@ describe('TradeExecutor.execute — 예외 처리', () => {
     expect(result.errorMessage).toBe('예수금 부족')
   })
 
-  it('EXECUTED 흐름에서 BackendClient.sendCallback이 실패하면 catch 경로로 빠져 FAILED로 보고된다', async () => {
+  it('체결 후 sendCallback이 1회 실패해도 재시도로 EXECUTED가 전달되고 FAILED로 뒤집지 않는다', async () => {
+    vi.useFakeTimers()
     // KisService mock: 정상 잔고/현재가/주문
-    Kis.getBalance.mockResolvedValueOnce({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
-    // 첫 sendCallback(EXECUTED용)은 throw → catch로 빠짐
-    // 이후 sendFailCallback 내부에서 두 번째 sendCallback(FAILED 보고용) 호출은 성공
+    // 1회차 EXECUTED 콜백은 throw → 1s 뒤 재시도에서 성공
     Backend.sendCallback
-      .mockRejectedValueOnce(new Error('백엔드 다운'))
-      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('백엔드 400'))
+      .mockResolvedValue(undefined)
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
 
-    expect(result.status).toBe('FAILED')
-    expect(result.errorMessage).toContain('백엔드 다운')
-    // EXECUTED 시도 1회 + FAILED 보고 1회 = 2회
+    expect(result.status).toBe('EXECUTED')
+    expect(result.orderId).toBe('X')
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await flushMicrotasks()
+
     expect(Backend.sendCallback).toHaveBeenCalledTimes(2)
+    // 두 번 모두 EXECUTED — FAILED 콜백은 절대 나가면 안 된다
     expect(Backend.sendCallback).toHaveBeenNthCalledWith(
       1,
       'trade-1',
@@ -249,17 +278,154 @@ describe('TradeExecutor.execute — 예외 처리', () => {
     expect(Backend.sendCallback).toHaveBeenNthCalledWith(
       2,
       'trade-1',
-      expect.objectContaining({ status: 'FAILED', error_message: '백엔드 다운' }),
+      expect.objectContaining({ status: 'EXECUTED', broker_order_id: 'X' }),
     )
-    // 주문 자체는 EXECUTED 됐으므로 placeOrder는 호출됐어야 함
+    expect(Backend.sendCallback).not.toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
     expect(Kis.placeOrder).toHaveBeenCalledWith('BUY', 'TSLA', 10)
+  })
+
+  it('체결 후 sendCallback이 계속 실패하면 FAILED 콜백 없이 CALLBACK_FAILED로 통보한다', async () => {
+    vi.useFakeTimers()
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
+    // ODNO 미반환 케이스 — 백엔드가 blank broker_order_id를 400으로 거부하는 상황 재현
+    Kis.placeOrder.mockResolvedValue({ orderId: '', executedPrice: null, executedQty: 10 })
+    Backend.sendCallback.mockRejectedValue(new Error('백엔드 400'))
+
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any)
+
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+
+    expect(result.status).toBe('EXECUTED')
+
+    // 1s + 2s + 4s 백오프 재시도까지 모두 소진
+    await vi.advanceTimersByTimeAsync(7000)
+    await flushMicrotasks()
+
+    // 최초 1회 + 1s·2s·4s 재시도 3회 = 4회 전송 시도
+    expect(Backend.sendCallback).toHaveBeenCalledTimes(4)
+    // FAILED 콜백은 단 한 번도 나가지 않아야 한다
+    expect(Backend.sendCallback).not.toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
+    expect(Notify.notifyTradeFailed).not.toHaveBeenCalled()
+
+    // 렌더러에는 기존 TRADE_FAILED 채널로 CALLBACK_FAILED 사유를 통보
+    expect(sendSpy).toHaveBeenCalledWith(
+      IPC_CHANNELS.TRADE_FAILED,
+      expect.objectContaining({ tradeId: 'trade-1', reason: 'CALLBACK_FAILED' }),
+    )
+  })
+})
+
+describe('TradeExecutor.execute — 주문 락과 EXECUTED 콜백 첫 시도', () => {
+  it('첫 콜백 시도가 pending 인 동안 isOrderInProgress=true, settle 후 false', async () => {
+    Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
+    Kis.placeOrder.mockResolvedValue({ orderId: 'X', executedPrice: null, executedQty: 10 })
+
+    let resolveCallback: (() => void) | null = null
+    Backend.sendCallback.mockImplementation(
+      () => new Promise<void>((resolve) => { resolveCallback = () => resolve() }),
+    )
+
+    const pending = TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+    await flushMicrotasks()
+
+    // 첫 콜백 시도가 아직 끝나지 않았으면 두 번째 주문이 통과해선 안 된다
+    expect(resolveCallback).not.toBeNull()
+    expect(mainState.isOrderInProgress).toBe(true)
+
+    resolveCallback!()
+    const result = await pending
+
+    expect(result.status).toBe('EXECUTED')
+    expect(mainState.isOrderInProgress).toBe(false)
+  })
+})
+
+describe('TradeExecutor.execute — SELF_PAPER 콜백 실패 정책', () => {
+  it('EXECUTED 콜백이 throw 해도 FAILED 콜백을 보내지 않고 로컬 잔고는 갱신한다', async () => {
+    vi.useFakeTimers()
+    mainState.setAccountType('SELF_PAPER')
+    mainState.updatePricesCache({ TSLA: 100 })
+    mainState.setSelfPaperBalance(10_000, [])
+    Backend.sendCallback.mockRejectedValue(new Error('백엔드 500'))
+
+    const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))
+
+    expect(result.status).toBe('EXECUTED')
+    expect(result.executedQty).toBe(10)
+    // 체결이 난 주문이므로 FAILED 로 뒤집지 않는다
+    expect(Backend.sendCallback).not.toHaveBeenCalledWith(
+      'trade-1',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
+    expect(Notify.notifyTradeFailed).not.toHaveBeenCalled()
+    // 로컬 잔고 갱신은 콜백 결과와 무관하게 수행된다
+    expect(mainState.selfPaperCash).toBe(9_000)
+    expect(mainState.selfPaperHoldings).toEqual([{ ticker: 'TSLA', qty: 10 }])
+
+    // 백그라운드 재시도 타이머 소진 (누수 방지)
+    await vi.advanceTimersByTimeAsync(7000)
+    await flushMicrotasks()
+  })
+})
+
+describe('TradeExecutor.execute — 진행 중 신호 통보', () => {
+  it('주문 진행 중 두 번째 신호는 FAILED 콜백 + TRADE_FAILED push로 통보된다', async () => {
+    mainState.setOrderInProgress(true)
+    Backend.sendCallback.mockResolvedValue(undefined)
+
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any)
+
+    const result = await TradeExecutor.execute(buySignal({ trade_id: 'trade-9' }))
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorMessage).toContain('주문이 진행 중')
+    expect(Backend.sendCallback).toHaveBeenCalledWith(
+      'trade-9',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
+    expect(sendSpy).toHaveBeenCalledWith(
+      IPC_CHANNELS.TRADE_FAILED,
+      expect.objectContaining({ tradeId: 'trade-9', status: 'FAILED' }),
+    )
+    // 첫 주문은 영향 없음 — 락 유지 + 주문 API 미호출
+    expect(mainState.isOrderInProgress).toBe(true)
+    expect(Kis.getBalance).not.toHaveBeenCalled()
+    expect(Kis.placeOrder).not.toHaveBeenCalled()
+  })
+
+  it('signal이 undefined면 진행 중이어도 TypeError 없이 검증 실패로 처리된다', async () => {
+    mainState.setOrderInProgress(true)
+    Backend.sendCallback.mockResolvedValue(undefined)
+
+    const result = await TradeExecutor.execute(undefined as unknown as TradeSignal)
+
+    expect(result.status).toBe('FAILED')
+    expect(result.tradeId).toBe('invalid')
+    expect(result.errorMessage).toContain('시그널 페이로드 없음')
+    expect(Kis.placeOrder).not.toHaveBeenCalled()
   })
 })
 
 describe('TradeExecutor.execute — KIS rt_cd 실패 통합', () => {
   it('placeOrder가 KIS rt_cd 실패로 throw하면 FAILED 콜백 + errorMessage에 msg1 포함', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     // KIS가 rt_cd='1'로 거부 → KisService.placeOrder가 throw
     Kis.placeOrder.mockRejectedValue(
       new Error('KIS 주문 거부: 주문가능금액이 부족합니다.'),
@@ -374,7 +540,7 @@ describe('TradeExecutor.execute — 시그널 검증 (validateSignal)', () => {
 
   it('정상 시그널은 검증 통과 — KisService.getBalance 호출됨 (회귀 보호)', async () => {
     Kis.getBalance.mockResolvedValue({ orderableCash: 1000, totalCash: 1000, holdings: [] })
-    Kis.getCurrentPrice.mockResolvedValue(10)
+    Kis.getCurrentPrice.mockResolvedValue({ currentPrice: 10, previousClose: 10 })
     Kis.placeOrder.mockResolvedValue({ orderId: 'OK', executedPrice: null, executedQty: 10 })
 
     const result = await TradeExecutor.execute(buySignal({ order_ratio: 0.1 }))

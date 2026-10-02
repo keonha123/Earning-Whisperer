@@ -45,6 +45,22 @@ class SignalServiceTest {
     private TradingSignalMessage signal;
     private static final long ACTIVE_BROKER_ID = 100L;
 
+    @Test void explicitExecutionBlockSkipsBrokerAndHistoryEvenWithZeroThreshold() throws Exception {
+        var blocked = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                "{\"ticker\":\"NVDA\",\"raw_score\":0,\"execution_allowed\":false}", TradingSignalMessage.class);
+        var settings = org.mockito.Mockito.mock(PortfolioSettings.class);
+        var user = org.mockito.Mockito.mock(User.class);
+        given(settings.getUser()).willReturn(user);
+        given(settings.getTradingMode()).willReturn(TradingMode.AUTO_PILOT);
+        given(settings.getBuyAmountRatio()).willReturn(0.1);
+        given(portfolioSettingsService.getAllSettings()).willReturn(List.of(settings));
+        var results = signalService.processSignalForAllUsers(blocked);
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).action()).isEqualTo(TradeAction.HOLD);
+        assertThat(results.get(0).brokerAccountId()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(brokerAccountService, positionService, signalHistoryRepository);
+    }
+
     @BeforeEach
     void setUp() {
         signal = buildSignal("NVDA", 0.75);
@@ -286,7 +302,7 @@ class SignalServiceTest {
     private TradingSignalMessage buildSignal(String ticker, double aiScore) {
         try {
             String json = """
-                    {"ticker":"%s","ai_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
+                    {"ticker":"%s","raw_score":%s,"rationale":"test","text_chunk":"chunk","timestamp":1710000000}
                     """.formatted(ticker, aiScore);
             return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, TradingSignalMessage.class);
         } catch (Exception e) {

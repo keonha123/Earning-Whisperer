@@ -8,10 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EvidenceBackend(str, Enum):
-    PGVECTOR = "PGVECTOR"
     FAISS = "FAISS"
     QDRANT = "QDRANT"
     LOCAL_SPARSE = "LOCAL_SPARSE"
+    PGVECTOR = "PGVECTOR"
 
 
 class EvidenceSourceType(str, Enum):

@@ -1,17 +1,38 @@
+import asyncio
 import os
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collectors import CollectorChain
-from collectors.stocks import WikipediaStrategy
-from collectors.schedules import YFinanceScheduleStrategy
-from collectors.prices import YFinancePriceStrategy
-from collectors.indicators import YFinanceIndicatorStrategy
-from collectors.financial_statements import (
-    YFinanceFinancialStatementStrategy,
-    get_financial_statement_universe,
-    get_m7_tickers,
-)
-import database
+from typing import Any
+
+try:
+    from .collectors import CollectorChain
+    from .collectors.stocks import WikipediaStrategy
+    from .collectors.schedules import YFinanceScheduleStrategy
+    from .collectors.schedules.enricher import OfficialScheduleEnricher
+    from .collectors.prices import YFinancePriceStrategy
+    from .collectors.indicators import YFinanceIndicatorStrategy
+    from .collectors.financial_statements import (
+        YFinanceFinancialStatementStrategy,
+        get_financial_statement_universe,
+        get_m7_tickers,
+    )
+    from .stt_worker.manager import STTWorkerManager
+    from . import database
+except ImportError:  # Allows `python data_pipeline/orchestrator.py`.
+    from collectors import CollectorChain
+    from collectors.stocks import WikipediaStrategy
+    from collectors.schedules import YFinanceScheduleStrategy
+    from collectors.schedules.enricher import OfficialScheduleEnricher
+    from collectors.prices import YFinancePriceStrategy
+    from collectors.indicators import YFinanceIndicatorStrategy
+    from collectors.financial_statements import (
+        YFinanceFinancialStatementStrategy,
+        get_financial_statement_universe,
+        get_m7_tickers,
+    )
+    from stt_worker.manager import STTWorkerManager
+    import database
 
 load_dotenv()
 
@@ -23,6 +44,55 @@ class EarningsOrchestrator:
         self.price_chain = CollectorChain([YFinancePriceStrategy()])
         self.indicator_chain = CollectorChain([YFinanceIndicatorStrategy()])
         self.financial_statement_chain = CollectorChain([YFinanceFinancialStatementStrategy()])
+        self.worker_manager = STTWorkerManager()
+
+    @staticmethod
+    def _record_operation(event_type: str, **payload: Any) -> None:
+        try:
+            from .operations import record_event
+        except ImportError:
+            from operations import record_event
+        try:
+            record_event(event_type, **payload)
+        except Exception as exc:
+            print(f"[OperationsLog] write skipped: {str(exc)[:160]}")
+
+    @staticmethod
+    def _maintenance_window_active() -> bool:
+        start_text = os.getenv("DATE_STREAM_MAINTENANCE_START", "").strip()
+        end_text = os.getenv("DATE_STREAM_MAINTENANCE_END", "").strip()
+        if not start_text or not end_text:
+            return False
+        try:
+            start = datetime.strptime(start_text, "%H:%M").time()
+            end = datetime.strptime(end_text, "%H:%M").time()
+        except ValueError:
+            return False
+        current = datetime.now().time()
+        if start == end:
+            return True
+        if start < end:
+            return start <= current < end
+        return current >= start or current < end
+
+    @staticmethod
+    def _probe_window(call: dict[str, Any], base_cooldown_minutes: int) -> tuple[str, int]:
+        """Return a watch state and cooldown, tightening probes around verified times."""
+        scheduled = call.get("scheduled_at_utc")
+        if not scheduled:
+            return "date_only", max(1, base_cooldown_minutes)
+        if scheduled.tzinfo is None:
+            scheduled = scheduled.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        before_minutes = max(0, int(os.getenv("DATE_STREAM_NEAR_START_MINUTES", "20")))
+        after_minutes = max(0, int(os.getenv("DATE_STREAM_NEAR_END_MINUTES", "180")))
+        start = scheduled - timedelta(minutes=before_minutes)
+        end = scheduled + timedelta(minutes=after_minutes)
+        if now < start:
+            return "scheduled", max(1, base_cooldown_minutes)
+        if now <= end:
+            return "event_window", max(1, int(os.getenv("DATE_STREAM_NEAR_INTERVAL_MINUTES", "1")))
+        return "post_event", max(1, base_cooldown_minutes)
 
     def sync_stock_master(self):
         """[Phase 1] S&P 500 종목 리스트 동기화"""
@@ -137,6 +207,28 @@ class EarningsOrchestrator:
             database.save_earnings_schedules(all_results)
             print(f"✅ 총 {len(all_results)}개의 일정을 DB에 동기화했습니다.")
 
+    def enrich_schedule_times(self, limit: int = 20):
+        """Verify near-term call times only from issuer-owned evidence."""
+        calls = database.get_calls_missing_verified_time(limit=limit)
+        if not calls:
+            print("[ScheduleTime] No unverified future calls to process.")
+            return
+
+        enricher = OfficialScheduleEnricher()
+        verified_count = 0
+        for call in calls:
+            verified = enricher.verify_call(call)
+            if verified:
+                verified_count += 1
+                print(
+                    f"[ScheduleTime] {call['ticker']} verified "
+                    f"{verified.scheduled_at_utc.isoformat()}"
+                )
+            else:
+                print(f"[ScheduleTime] {call['ticker']} remains unverified")
+
+        print(f"[ScheduleTime] Verified {verified_count}/{len(calls)} calls.")
+
     def sync_stock_prices(self, days_back=5):
         """[Phase 3] 주가 데이터 수집 (어닝콜 분석용 Ground Truth)"""
         from datetime import datetime, timedelta
@@ -159,38 +251,213 @@ class EarningsOrchestrator:
             if price_data:
                 database.save_prices(price_data)
 
+    def maintain_transcript_archive(self):
+        """Keep transcript history bounded while retaining recent recovery data."""
+        try:
+            from .maintenance import purge_webcast_artifacts
+        except ImportError:
+            from maintenance import purge_webcast_artifacts
+
+        retention_days = max(1, int(os.getenv("TRANSCRIPT_RETENTION_DAYS", "180")))
+        deleted = database.purge_transcript_segments(
+            retention_days,
+            batch_size=int(os.getenv("TRANSCRIPT_PURGE_BATCH_SIZE", "10000")),
+            max_batches=int(os.getenv("TRANSCRIPT_PURGE_MAX_BATCHES", "10")),
+        )
+        artifact_deleted = purge_webcast_artifacts(
+            int(os.getenv("WEBCAST_ARTIFACT_RETENTION_DAYS", "14")),
+            max_groups=int(os.getenv("WEBCAST_ARTIFACT_MAX_GROUPS", "2000")),
+        )
+        if deleted:
+            print(
+                f"[TranscriptArchive] purged {deleted} segments "
+                f"older than {retention_days} days"
+            )
+        if artifact_deleted:
+            print(f"[WebcastArtifacts] purged {artifact_deleted} generated files")
+
+    def write_operations_report(self):
+        """Write the current UTC day's machine-readable and human-readable report."""
+        try:
+            from .operations import write_daily_report
+        except ImportError:
+            from operations import write_daily_report
+        json_path, markdown_path = write_daily_report()
+        print(f"[OperationsReport] JSON={json_path} Markdown={markdown_path}")
+
     async def monitor_and_trigger_stt(self):
         """
         [Phase 4] 실시간 어닝콜 감시 및 워커 실행 로직 (뼈대)
         매 분마다 호출되어 DB를 확인하고, 임박한 일정이 있다면 워커를 깨웁니다.
         """
-        from datetime import datetime
         # 시각적인 확인을 위해 현재 감시 중임을 표시합니다. (운영 시에는 선택 사항)
         # print(f"🔍 [Monitor] {datetime.now().strftime('%H:%M:%S')} 어닝콜 일정 스캔 중...")
 
         try:
-            # 1. DB에서 '현재 시간'과 '시작 시간'이 일치하거나 임박한 종목 조회
-            # imminent_calls = database.get_imminent_calls(minutes_ahead=2)
-            imminent_calls = [] # 아직 DB 조회 로직이 없으므로 빈 리스트로 둡니다.
+            imminent_calls = database.get_imminent_calls(minutes_ahead=5, grace_minutes=1)
 
             if not imminent_calls:
                 return
 
             for call in imminent_calls:
+                call_id = call.get('id')
                 ticker = call.get('ticker')
-                ir_url = call.get('ir_url')
                 
                 print(f"🚀 [Orchestrator] {ticker} 어닝콜 임박 감지! 워커 배정을 시작합니다.")
-                
-                # 2. STT 워커 매니저에게 비동기로 작업 전달
-                # (manager.py의 입구 함수를 호출하는 부분 - 추후 연결)
-                # asyncio.create_task(self.worker_manager.start_worker(ticker, ir_url))
-                
-                # 3. 중복 실행 방지를 위해 DB 상태를 'RUNNING' 등으로 업데이트
-                # database.update_call_status(ticker, 'RUNNING')
+
+                if not database.mark_call_running(call_id):
+                    print(f"↪️ [Orchestrator] {ticker}는 이미 다른 워커가 처리 중입니다.")
+                    continue
+
+                try:
+                    await self.worker_manager.launch_mission(call)
+                except Exception as worker_error:
+                    database.update_call_status(call_id, 'failed')
+                    print(f"❌ [Orchestrator] {ticker} 워커 실행 실패: {worker_error}")
 
         except Exception as e:
             print(f"❌ [Monitor Error] 감시 로직 실행 중 오류 발생: {e}")
+
+    async def monitor_date_based_streams(self):
+        """Probe today's/tomorrow's calls, tightening checks around known start times."""
+        if self._maintenance_window_active():
+            self._record_operation("watch_cycle", status="maintenance", candidates=0)
+            print("[DateStreamWatch] maintenance window active; skipping new probes")
+            return
+
+        days_ahead = int(os.getenv("DATE_STREAM_WATCH_DAYS_AHEAD", "2"))
+        max_candidates = int(os.getenv("DATE_STREAM_WATCH_BATCH_SIZE", "10"))
+        cooldown_minutes = int(os.getenv("DATE_STREAM_WATCH_COOLDOWN_MINUTES", "15"))
+        near_start_minutes = int(os.getenv("DATE_STREAM_NEAR_START_MINUTES", "20"))
+        near_end_minutes = int(os.getenv("DATE_STREAM_NEAR_END_MINUTES", "180"))
+        near_cooldown_minutes = int(os.getenv("DATE_STREAM_NEAR_INTERVAL_MINUTES", "1"))
+        concurrency = max(1, int(os.getenv("DATE_STREAM_WATCH_CONCURRENCY", "3")))
+        candidates = database.get_date_based_stream_candidates(
+            days_ahead=days_ahead,
+            limit=max_candidates,
+            cooldown_minutes=cooldown_minutes,
+            near_start_minutes=near_start_minutes,
+            near_end_minutes=near_end_minutes,
+            near_cooldown_minutes=near_cooldown_minutes,
+        )
+        configured_tickers = {
+            ticker.strip().upper()
+            for ticker in os.getenv("DATE_STREAM_WATCH_TICKERS", "").split(",")
+            if ticker.strip()
+        }
+        if configured_tickers:
+            candidates = [
+                call for call in candidates
+                if str(call.get("ticker") or "").upper() in configured_tickers
+            ]
+        self._record_operation(
+            "watch_cycle",
+            status="candidates" if candidates else "idle",
+            candidates=len(candidates),
+            days_ahead=days_ahead,
+            concurrency=concurrency,
+        )
+        if not candidates:
+            return
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def process(call: dict[str, Any]) -> None:
+            async with semaphore:
+                try:
+                    call_id = call["id"]
+                    watch_state, probe_cooldown = self._probe_window(call, cooldown_minutes)
+                    self._record_operation(
+                        "probe_started",
+                        ticker=call.get("ticker"),
+                        call_id=call_id,
+                        watch_state=watch_state,
+                        scheduled_at_utc=call.get("scheduled_at_utc"),
+                        probe_cooldown_minutes=probe_cooldown,
+                    )
+                    if not database.claim_stream_probe(call_id, cooldown_minutes=probe_cooldown):
+                        return
+
+                    capture_settings = {"WEBCAST_LIFECYCLE": "live"}
+                    for key in (
+                        "STT_MODEL_NAME",
+                        "STT_MAX_CHUNKS",
+                        "SEND_TO_AI_ENGINE",
+                        "SEND_TO_BACKEND",
+                        "TRANSCRIPT_ARCHIVE_ENABLED",
+                        "AI_ENGINE_URL",
+                        "BACKEND_URL",
+                        "INTERNAL_SECRET",
+                    ):
+                        if os.getenv(key) is not None:
+                            capture_settings[key] = os.environ[key]
+                    runtime_env = self.worker_manager.build_isolated_capture_environment(
+                        call,
+                        capture_settings,
+                    )
+                    ready, error = await self.worker_manager.probe_date_based_call(
+                        call,
+                        capture_env=runtime_env,
+                    )
+                    database.record_stream_probe(call_id, stream_ready=ready, error=error)
+                    self._record_operation(
+                        "probe_result",
+                        ticker=call.get("ticker"),
+                        call_id=call_id,
+                        status="stream_ready" if ready else "pending",
+                        error=error,
+                        watch_state=watch_state,
+                        probe_cooldown_minutes=probe_cooldown,
+                    )
+                    if not ready:
+                        print(f"[DateStreamWatch] {call['ticker']} pending: {error}")
+                        return
+
+                    print(f"[DateStreamWatch] {call['ticker']} audible stream detected")
+                    if os.getenv("DATE_STREAM_AUTO_CAPTURE_ENABLED", "true").lower() != "true":
+                        return
+                    if not database.mark_call_running(call_id):
+                        self._record_operation(
+                            "capture_skipped",
+                            ticker=call.get("ticker"),
+                            call_id=call_id,
+                            status="already_claimed",
+                        )
+                        print(f"[DateStreamWatch] {call['ticker']} is already assigned to a worker")
+                        return
+                    try:
+                        self._record_operation(
+                            "capture_started",
+                            ticker=call.get("ticker"),
+                            call_id=call_id,
+                            status="running",
+                            watch_state=watch_state,
+                        )
+                        await self.worker_manager.launch_date_based_audio_capture(
+                            call,
+                            capture_env=runtime_env,
+                        )
+                    except Exception as exc:
+                        database.update_call_status(call_id, "failed")
+                        self._record_operation(
+                            "capture_failed",
+                            ticker=call.get("ticker"),
+                            call_id=call_id,
+                            status="failed",
+                            error=str(exc),
+                        )
+                        print(f"[DateStreamWatch] {call['ticker']} capture launch failed: {exc}")
+                except Exception as exc:
+                    self._record_operation(
+                        "probe_result",
+                        ticker=call.get("ticker"),
+                        call_id=call.get("id"),
+                        status="error",
+                        error=str(exc),
+                    )
+                    print(f"[DateStreamWatch] {call['ticker']} probe failed unexpectedly: {exc}")
+
+        await asyncio.gather(*(process(call) for call in candidates))
             
 if __name__ == "__main__":
     orchestrator = EarningsOrchestrator()

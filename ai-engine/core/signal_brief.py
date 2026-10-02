@@ -120,8 +120,16 @@ def apply_runtime_to_signal_brief(signal_brief: dict[str, Any], runtime: dict[st
         blocked_reasons=runtime.get("blocked_reasons") if isinstance(runtime.get("blocked_reasons"), dict) else {},
         review_triggered=updated.get("gate_result") == "review_required",
     )
-    if not execution_allowed and updated.get("action") in {"BUY", "SELL"}:
+    if not execution_allowed:
         updated["action"] = "AVOID"
+        reason = runtime.get("blocked_reason_ko") or "실행 조건을 충족하지 못해 주문 실행을 차단했습니다."
+        updated["summary_ko"] = f"진입 보류. {reason}"
+        updated["action_label_ko"] = "진입 보류"
+        updated["badge"] = "blocked"
+        updated["no_trade_summary_ko"] = reason
+        cost_badge = dict(updated.get("execution_badge") or {})
+        cost_badge.update(label="실행 차단", severity="blocked", reason_ko=reason)
+        updated["execution_badge"] = cost_badge
     return updated
 
 

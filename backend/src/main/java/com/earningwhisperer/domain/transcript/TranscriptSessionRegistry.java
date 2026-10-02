@@ -33,6 +33,27 @@ public class TranscriptSessionRegistry {
      * callId 별 세션 상태. 키 무한 증가 가능성에 대한 운영 대응은 위 TODO 참조.
      */
     private final ConcurrentHashMap<String, SessionState> sessions = new ConcurrentHashMap<>();
+    private final Object retentionLock = new Object();
+    private static final int MAX_RETAINED_CALLS = 64;
+    private static final int MAX_RETAINED_CHARACTERS = 1_000_000;
+    private static final long RETENTION_MILLIS = 24 * 60 * 60 * 1000L;
+
+    /** Keep lightweight sequence/end tombstones, but bound newly retained transcript content. */
+    private void pruneContent() {
+        synchronized (retentionLock) {
+            var newest = sessions.values().stream().sorted(java.util.Comparator.comparingLong(
+                    (SessionState state) -> state.lastTouched).reversed()).toList();
+            long cutoff = System.currentTimeMillis() - RETENTION_MILLIS;
+            for (int i = 0; i < newest.size(); i++) {
+                SessionState state = newest.get(i);
+                if (i >= MAX_RETAINED_CALLS || state.lastTouched < cutoff) {
+                    synchronized (state) {
+                        state.segments.clear(); state.insufficientReasons.clear(); state.retainedCharacters = 0;
+                    }
+                }
+            }
+        }
+    }
 
     /**
      * 세그먼트 인입 검증 및 상태 갱신을 원자적으로 수행한다.
@@ -46,12 +67,24 @@ public class TranscriptSessionRegistry {
      */
     public Result validateAndAccept(TranscriptSegment segment) {
         SessionState state = sessions.computeIfAbsent(segment.callId(), k -> new SessionState());
+        state.lastTouched = System.currentTimeMillis();
+        pruneContent();
         synchronized (state) {
             if (state.ended) {
                 return Result.SESSION_ENDED;
             }
             if (state.lastSequence != null && segment.sequence() <= state.lastSequence) {
                 return Result.SEQ_REGRESS;
+            }
+            if (state.ticker != null && !state.ticker.equals(segment.ticker())) return Result.SEQ_REGRESS;
+            state.ticker = segment.ticker();
+            state.segments.put(segment.sequence(), segment);
+            state.retainedCharacters += segment.text().length();
+            while (state.segments.size() > 5000 || state.retainedCharacters > MAX_RETAINED_CHARACTERS) {
+                var removed = state.segments.pollFirstEntry();
+                if (removed == null) break;
+                state.retainedCharacters -= removed.getValue().text().length();
+                state.insufficientReasons.remove(removed.getKey());
             }
             state.lastSequence = segment.sequence();
             if (segment.isSessionEnd()) {
@@ -64,6 +97,40 @@ public class TranscriptSessionRegistry {
     /**
      * 검증 결과 enum. 컨트롤러는 이 값을 HTTP 상태로 매핑한다.
      */
+    public java.util.List<TranscriptSegment> completedSegments(String ticker, String callId) {
+        pruneContent();
+        SessionState state = sessions.get(callId);
+        if (state == null) return java.util.List.of();
+        synchronized (state) {
+            if (!state.ended || !ticker.equals(state.ticker)) return java.util.List.of();
+            return java.util.List.copyOf(state.segments.values());
+        }
+    }
+
+    public void recordInsufficientReason(String ticker, String callId, Integer start, Integer end,
+                                          String sourceText, String reason) {
+        SessionState state = sessions.get(callId);
+        if (state == null || sourceText == null || sourceText.isBlank() || reason == null || reason.isBlank()) return;
+        synchronized (state) {
+            if (!ticker.equals(state.ticker)) return;
+            for (TranscriptSegment segment : state.segments.values()) {
+                if (start != null && segment.sequence() < start || end != null && segment.sequence() > end) continue;
+                if (segment.text().contains(sourceText)) state.insufficientReasons.put(segment.sequence(), reason);
+            }
+        }
+    }
+
+    public String insufficientReason(String ticker, String callId, java.util.List<Integer> sequences) {
+        SessionState state = sessions.get(callId);
+        if (state == null) return "";
+        synchronized (state) {
+            if (!ticker.equals(state.ticker)) return "";
+            String reasons = sequences.stream().map(state.insufficientReasons::get).filter(java.util.Objects::nonNull)
+                    .distinct().collect(java.util.stream.Collectors.joining("; "));
+            return reasons.length() > 1000 ? reasons.substring(0, 1000) : reasons;
+        }
+    }
+
     public enum Result {
         OK,
         SEQ_REGRESS,
@@ -75,6 +142,11 @@ public class TranscriptSessionRegistry {
      * 본 클래스는 패키지 외부에서 직접 사용하지 않으므로 package-private 으로 둔다.
      */
     static final class SessionState {
+        final java.util.Map<Integer, String> insufficientReasons = new java.util.HashMap<>();
+        String ticker;
+        final java.util.TreeMap<Integer, TranscriptSegment> segments = new java.util.TreeMap<>();
+        volatile long lastTouched = System.currentTimeMillis();
+        int retainedCharacters;
         Integer lastSequence;
         boolean ended;
     }

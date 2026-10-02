@@ -21,6 +21,13 @@ router = APIRouter(tags=["legacy-analysis"])
 
 @router.post("/api/v1/analyze", response_model=LegacyAnalyzeResponse)
 async def analyze_legacy(payload: LegacyAnalyzeRequest, request: Request) -> LegacyAnalyzeResponse:
+    if payload.is_final and not payload.text_chunk.strip():
+        # Transport control event, never a financial claim or order signal.
+        return LegacyAnalyzeResponse(
+            ticker=payload.ticker, raw_score=0, rationale="STT session ended",
+            text_chunk="", timestamp=payload.timestamp, is_session_end=True,
+            action="HOLD", execution_allowed=False,
+        )
     dispatcher = get_dispatch_analysis(request.app)
     adapter = LegacyContractAdapter()
     v9_payload = adapter.to_analyze_request(payload)

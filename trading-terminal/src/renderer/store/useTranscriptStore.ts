@@ -30,6 +30,7 @@ export interface TranscriptSegment {
   endMs: number
   /** STT 인식 결과 본문 (plain string — XSS 방지 위해 innerHTML 미사용). */
   text: string
+  textKo?: string
   /** 화자 라벨 (선택). */
   speaker?: string
   /** Unix Epoch Second UTC — 백엔드에서 push 한 시각. */
@@ -46,6 +47,7 @@ export interface RawTranscriptSegmentPayload {
   start_ms: number
   end_ms: number
   text: string
+  text_ko?: string
   speaker?: string
   timestamp: number
   is_session_end?: boolean
@@ -102,6 +104,7 @@ export function isValidTranscriptPayload(
     typeof o.start_ms === 'number' &&
     typeof o.end_ms === 'number' &&
     typeof o.text === 'string' &&
+    (o.text_ko === undefined || typeof o.text_ko === 'string') &&
     typeof o.timestamp === 'number' &&
     (o.speaker === undefined || typeof o.speaker === 'string') &&
     (o.is_session_end === undefined || typeof o.is_session_end === 'boolean')
@@ -119,6 +122,7 @@ export function toCamelTranscript(
     startMs: p.start_ms,
     endMs: p.end_ms,
     text: p.text,
+    textKo: p.text_ko,
     speaker: p.speaker,
     timestamp: p.timestamp,
     isSessionEnd: p.is_session_end,
@@ -152,6 +156,18 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       const prev =
         state.byTicker.get(seg.ticker) ?? emptyTickerState()
 
+      // Translation is a patch to an existing identity, even after session end.
+      const existing = prev.segments.findIndex(s => s.callId === seg.callId && s.sequence === seg.sequence)
+      if (existing >= 0 && seg.textKo !== undefined) {
+        const original = prev.segments[existing]
+        if (original.text !== seg.text || original.startMs !== seg.startMs || original.endMs !== seg.endMs) return state
+        const segments = [...prev.segments]
+        segments[existing] = { ...original, textKo: seg.textKo }
+        const byTicker = new Map(state.byTicker)
+        byTicker.set(seg.ticker, { ...prev, segments })
+        return { ...state, byTicker }
+      }
+
       // 1) 이미 종료된 callId 의 추가 segment 거부.
       if (prev.endedCallIds.has(seg.callId)) {
         return state
@@ -165,7 +181,8 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
       }
 
       // 3) 새 segment 반영 — 불변성 유지를 위해 새 컨테이너로 교체.
-      const nextSegments = [...prev.segments, seg]
+      // An empty end event closes the call without adding invented speech.
+      const nextSegments = seg.isSessionEnd && !seg.text.trim() ? prev.segments : [...prev.segments, seg]
       const nextLastSeqMap = new Map(prev.lastSequenceByCall)
       nextLastSeqMap.set(seg.callId, seg.sequence)
       const nextEndedCallIds = new Set(prev.endedCallIds)

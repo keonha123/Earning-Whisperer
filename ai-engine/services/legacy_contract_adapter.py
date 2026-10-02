@@ -99,12 +99,18 @@ class LegacyContractAdapter:
         event = data.get("event") if isinstance(data.get("event"), dict) else {}
         signal_brief = envelope.get("signal_brief") if isinstance(envelope.get("signal_brief"), dict) else data.get("signal_brief")
         raw_score = _signed_raw_score(analysis)
+        if analysis.get("execution_allowed") is False:
+            # Original consumers act on raw_score and do not read control flags.
+            # Preserve the original directional analysis in engine_envelope only.
+            raw_score = 0.0
         metadata = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
         profile_meta = metadata.get("investment_profile") if isinstance(metadata.get("investment_profile"), dict) else None
         profile = resolve_investment_profile(payload.investment_profile)
         if profile is None and isinstance(profile_meta, dict):
             profile = resolve_investment_profile(str(profile_meta.get("code") or ""))
         action = profile_action_from_score(raw_score, profile) if profile is not None else _action_from_score(raw_score)
+        if analysis.get("execution_allowed") is False:
+            action = "HOLD"
         strategy_recommendation = (
             build_strategy_recommendation(
                 profile,

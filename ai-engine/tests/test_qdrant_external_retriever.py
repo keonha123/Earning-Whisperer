@@ -2,11 +2,13 @@
 
 from pathlib import Path
 
-from config import Settings
+import pytest
+
 from core.external_retriever import ExternalDocument, QdrantExternalRetriever
 
 
-def test_qdrant_retriever_uses_real_local_backend(monkeypatch, tmp_path: Path) -> None:
+@pytest.fixture
+def local_retriever(monkeypatch, tmp_path: Path):
     from config import get_settings
 
     monkeypatch.setenv("VECTOR_STORE_BACKEND", "qdrant")
@@ -15,7 +17,18 @@ def test_qdrant_retriever_uses_real_local_backend(monkeypatch, tmp_path: Path) -
     monkeypatch.setenv("QDRANT_COLLECTION_NAME", "evidence_test")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "hash")
     get_settings.cache_clear()
-    retriever = QdrantExternalRetriever()
+    retriever = None
+    try:
+        retriever = QdrantExternalRetriever()
+        yield retriever
+    finally:
+        if retriever is not None:
+            retriever.close()
+        get_settings.cache_clear()
+
+
+def test_qdrant_retriever_uses_real_local_backend(local_retriever) -> None:
+    retriever = local_retriever
     retriever.upsert_documents(
         [
             ExternalDocument(
@@ -39,5 +52,3 @@ def test_qdrant_retriever_uses_real_local_backend(monkeypatch, tmp_path: Path) -
 
     assert result and result[0].doc_id == "filing-1"
     assert retriever.get_stats()["effective_backend"] == "qdrant"
-    retriever.close()
-    get_settings.cache_clear()

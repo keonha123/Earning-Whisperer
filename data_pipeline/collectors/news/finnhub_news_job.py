@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from .article_extractor import ArticleTextExtractor
 from .ai_engine_client import AiEngineNewsClient
 from .config import get_news_settings
 from .finnhub import FinnhubCompanyNewsStrategy, FinnhubRateLimitError
@@ -30,6 +31,10 @@ class FinnhubNewsJob:
         self.ai_engine = AiEngineNewsClient(
             self.settings.ai_engine_url,
             timeout_seconds=self.settings.request_timeout_seconds,
+        )
+        self.article_extractor = ArticleTextExtractor(
+            timeout_seconds=self.settings.full_text_timeout_seconds,
+            user_agent=self.settings.full_text_user_agent,
         )
         self.state = NewsStateStore(self.settings.state_path)
 
@@ -60,6 +65,10 @@ class FinnhubNewsJob:
         if not new_items:
             logger.info("No new Finnhub news items found")
             return
+
+        if self.settings.full_text_enabled:
+            stats = self.article_extractor.enrich_items(new_items)
+            logger.info("Full-text extraction completed for %d news items: %s", len(new_items), stats)
 
         try:
             response = self.ai_engine.ingest_news(new_items)

@@ -32,13 +32,13 @@ public class PortfolioSettingsService {
     }
 
     /**
-     * Trading Terminal 전용 — aiScoreThreshold는 기존 값을 유지한다.
+     * Trading Terminal 전용 설정 업데이트.
      */
     @Transactional
     public PortfolioSettings updateFromTerminal(Long userId, Double buyAmountRatio, Double maxPositionRatio,
-                                                Integer cooldownMinutes, TradingMode tradingMode) {
+                                                Integer cooldownMinutes, Double aiScoreThreshold, TradingMode tradingMode) {
         PortfolioSettings settings = getSettings(userId);
-        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, settings.getAiScoreThreshold(), tradingMode);
+        settings.update(buyAmountRatio, maxPositionRatio, cooldownMinutes, aiScoreThreshold, tradingMode);
         return settings;
     }
 

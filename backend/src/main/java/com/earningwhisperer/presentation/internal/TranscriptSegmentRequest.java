@@ -3,6 +3,7 @@ package com.earningwhisperer.presentation.internal;
 import com.earningwhisperer.domain.transcript.TranscriptSegment;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
@@ -43,8 +44,13 @@ public class TranscriptSegmentRequest {
     @JsonProperty("end_ms")
     private Long endMs;
 
-    @NotBlank(message = "text는 필수이며 비공백이어야 합니다.")
+    @NotNull(message = "text는 필수입니다.")
     private String text;
+
+    @AssertTrue(message = "종료 이벤트가 아닌 text는 비공백이어야 합니다.")
+    public boolean isTextValid() {
+        return text != null && (Boolean.TRUE.equals(isSessionEnd) || !text.isBlank());
+    }
 
     /** 발화자 라벨. 선택 필드. */
     private String speaker;

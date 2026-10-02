@@ -34,9 +34,15 @@ public class TranscriptPublisher {
      * 세그먼트를 ticker 별 토픽으로 브로드캐스트한다.
      * 발행 실패는 로깅만 수행하고 예외를 재던지지 않는다.
      */
-    public void publish(TranscriptSegment segment) {
+    public void publishTranslation(TranscriptSegment segment, String textKo) {
+        send(segment, textKo);
+    }
+
+    public void publish(TranscriptSegment segment) { send(segment, null); }
+
+    private void send(TranscriptSegment segment, String textKo) {
         String topic = TOPIC_PREFIX + segment.ticker();
-        Payload payload = Payload.from(segment);
+        Payload payload = Payload.from(segment, textKo);
         try {
             messagingTemplate.convertAndSend(topic, payload);
             log.debug("[WebSocket] 어닝콜 트랜스크립트 fan-out - ticker={} call_id={} sequence={} end={}",
@@ -70,6 +76,9 @@ public class TranscriptPublisher {
         private final long endMs;
 
         private final String text;
+        @JsonProperty("text_ko")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private final String textKo;
 
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private final String speaker;
@@ -84,8 +93,9 @@ public class TranscriptPublisher {
         @JsonProperty("is_session_end")
         private final boolean sessionEnd;
 
-        static Payload from(TranscriptSegment segment) {
-            return Payload.builder()
+        static Payload from(TranscriptSegment segment) { return from(segment, null); }
+        static Payload from(TranscriptSegment segment, String textKo) {
+            return Payload.builder().textKo(textKo)
                     .ticker(segment.ticker())
                     .callId(segment.callId())
                     .sequence(segment.sequence())

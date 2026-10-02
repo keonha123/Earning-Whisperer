@@ -2,6 +2,8 @@ package com.earningwhisperer.global.config;
 
 import com.earningwhisperer.infrastructure.security.InternalSecretFilter;
 import com.earningwhisperer.infrastructure.security.JwtAuthenticationFilter;
+import com.earningwhisperer.infrastructure.security.JsonAccessDeniedHandler;
+import com.earningwhisperer.infrastructure.security.JsonAuthenticationEntryPoint;
 import com.earningwhisperer.infrastructure.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +43,7 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private String allowedOriginsRaw;
 
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -64,6 +67,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/internal/**").permitAll()
                 .requestMatchers("/api/v1/dev/**").permitAll()
                 .anyRequest().authenticated())
+            .exceptionHandling(ex -> ex
+                    // 기본값(Http403ForbiddenEntryPoint)은 인증이 없는 요청에도 403 을 준다.
+                    // 그러면 클라이언트가 "토큰이 만료됐다" 와 "권한이 없다" 를 구분할 수 없고,
+                    // 401 에서 토큰을 갱신하도록 만들어 둔 재시도 로직이 아예 돌지 않는다
+                    // (터미널·웹 프론트 양쪽 모두 401 만 본다). 인증 실패는 401 로 돌려준다.
+                    .authenticationEntryPoint(new JsonAuthenticationEntryPoint())
+                    .accessDeniedHandler(new JsonAccessDeniedHandler()))
             .addFilterBefore(
                 internalSecretFilter,
                 UsernamePasswordAuthenticationFilter.class)

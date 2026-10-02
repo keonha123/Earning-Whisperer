@@ -1,7 +1,18 @@
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 
+/**
+ * preload 의 contextBridge.exposeInMainWorld('terminalApi', ...) 형태.
+ * 전역 Window 선언은 preload 프로젝트(tsconfig.node)에만 포함되므로
+ * renderer 쪽에서는 동일 형태를 로컬 타입으로 둔다.
+ */
+interface TerminalApi {
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
+  on: (channel: string, listener: (payload: unknown) => void) => () => void
+  platform: string
+}
+
 // 브라우저 개발 미리보기용 mock (Electron 컨텍스트 외부)
-const api: typeof window.terminalApi | undefined =
+const api: TerminalApi | undefined =
   typeof window !== 'undefined' ? (window as any).terminalApi : undefined
 
 const mockApi = {
@@ -17,5 +28,11 @@ export const ipc = {
   on: (channel: string, listener: (payload: unknown) => void): (() => void) =>
     (api ?? mockApi).on(channel, listener),
 }
+
+/**
+ * macOS 여부. 창을 titleBarStyle:'hidden' 으로 만드는 것은 macOS 뿐이라(main/index.ts)
+ * 헤더가 타이틀바를 대신해야 하는 것도 macOS 뿐이다. Windows 는 네이티브 타이틀바를 쓴다.
+ */
+export const isMac = api?.platform === 'darwin'
 
 export { IPC_CHANNELS }

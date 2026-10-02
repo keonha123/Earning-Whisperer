@@ -261,7 +261,7 @@ class LiveEarningsSessionService:
             action = FinalSignalAction.HOLD
         confidence = _clamp(0.25 + abs(signed_score) * 0.35 + state.scorecard.evidence_quality / 100.0 * 0.2 + min(len(state.timeline), 5) / 5.0 * 0.12 + state.scorecard.management_confidence / 100.0 * 0.08 - contradicted_ratio * 0.18)
         analysis = _analysis_from_envelope(envelope)
-        execution_allowed = bool(analysis.get("execution_allowed", True)) and action != FinalSignalAction.HOLD and confidence >= 0.55
+        execution_allowed = analysis.get("execution_allowed") is True and action != FinalSignalAction.HOLD and confidence >= 0.55
         direction = "BULLISH" if action == FinalSignalAction.BUY else "BEARISH" if action == FinalSignalAction.SELL else "NEUTRAL"
         return LiveFinalSignal(
             signal_id=f"live-session:{state.session_id}", action=action, direction=direction, signed_score=round(signed_score, 4),

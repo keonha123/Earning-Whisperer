@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import time
+import asyncio
+import threading
 
 import pytest
 
 from core.analysis_service import AnalysisService
 from core.external_retriever import ExternalDocument
 from core.gemini_client import GenerationUsage
+from config import get_settings
 from models.request_models import MarketData, SectionType, SourceType
 
 
@@ -26,7 +29,6 @@ async def test_analysis_service_injects_external_rag_evidence(monkeypatch) -> No
                 text="NVIDIA raised data center guidance because AI accelerator demand remained strong.",
                 published_at=now - 30,
                 source_type="news",
-                importance=0.9,
             )
         ]
     )
@@ -64,7 +66,42 @@ async def test_analysis_service_injects_external_rag_evidence(monkeypatch) -> No
         is_final=False,
     )
 
-    assert "EXTERNAL_EVIDENCE" in captured["prompt"]
+    assert "RAG_EVIDENCE" in captured["prompt"]
     assert "NVIDIA raised data center guidance" in captured["prompt"]
+    assert "none retrieved" not in captured["prompt"]
     assert result.metadata["external_rag"]["has_external_evidence"] is True
     assert result.metadata["external_rag"]["evidence_count"] >= 1
+    assert result.metadata["evidence_retrieval"]["missing_evidence"] is False
+    assert "missing_rag_evidence" not in result.risk_flags
+
+
+@pytest.mark.asyncio
+async def test_external_retrieval_timeout_does_not_block_analysis_event_loop(monkeypatch):
+    release = threading.Event()
+
+    class SlowRetriever:
+        def retrieve(self, **kwargs):
+            release.wait(2.0)
+            return []
+
+    settings = get_settings().model_copy(update={"rag_retrieval_timeout_seconds": 0.02})
+    monkeypatch.setattr("core.analysis_service.get_settings", lambda: settings)
+
+    async def fake_generate(**kwargs):
+        return GenerationUsage(text=json.dumps(dict(direction="NEUTRAL", magnitude=0, confidence=0.2,
+                               rationale="No evidence", catalyst_type="UNCLASSIFIED")),
+                               prompt_tokens=10, output_tokens=10, total_tokens=20)
+
+    monkeypatch.setattr("core.analysis_service.gemini_client.generate_content_with_metadata", fake_generate)
+    service = AnalysisService(external_retriever=SlowRetriever())
+    try:
+        result = await asyncio.wait_for(service.analyze(
+            ticker="WMT", current_chunk="Revenue guidance", market_data=MarketData(current_price=100),
+            section_type=SectionType.Q_AND_A, source_type=SourceType.EARNINGS_CALL,
+            chunk_sequence=1, request_priority=1, is_final=False,
+        ), timeout=0.8)
+        assert "external_retrieval_timeout" in result.metadata["evidence_retrieval"]["warnings"]
+        assert result.metadata["evidence_retrieval"]["missing_evidence"] is True
+        assert not release.is_set()
+    finally:
+        release.set()

@@ -50,6 +50,15 @@ export const IPC_CHANNELS = {
   WS_DISCONNECT: 'terminal:ws:disconnect',
 
   TRADES_GET: 'terminal:trades:get',
+  /** 미체결(PENDING) 주문의 체결 여부를 KIS 에 재조회해 백엔드 상태를 맞춘다. */
+  TRADES_RECONCILE_PENDING: 'terminal:trades:reconcile-pending',
+  /**
+   * CSV 파일 저장 (Renderer → Main, invoke).
+   * payload: { filename: string; csvContent: string }
+   * Main 이 dialog.showSaveDialog 후 fs.writeFile (UTF-8 BOM).
+   * 응답: { saved: boolean; filePath?: string }
+   */
+  SHELL_SAVE_CSV: 'terminal:shell:save-csv',
   TRADE_CANCEL: 'terminal:trade:cancel',
   /** TradingRoom 진입 시 세션 시작. payload: { ticker: string } */
   TRADE_SESSION_START: 'terminal:trade-session:start',
@@ -143,6 +152,8 @@ export const IPC_CHANNELS = {
    * Renderer → Main: 사용자가 보는 어닝콜 ticker 변경 시 SUBSCRIBE/UNSUBSCRIBE 호출.
    * payload: { ticker } (Renderer→Main)
    */
+  TRANSCRIPT_ASK: 'terminal:transcript:ask',
+  TRANSCRIPT_GLOSSARY: 'terminal:transcript:glossary',
   TRANSCRIPT_SUBSCRIBE: 'terminal:transcript:subscribe',
   TRANSCRIPT_UNSUBSCRIBE: 'terminal:transcript:unsubscribe',
 
@@ -155,6 +166,93 @@ export const IPC_CHANNELS = {
    * snake_case → camelCase 변환은 store 의 upsertSegment 에서 수행.
    */
   TRANSCRIPT_SEGMENT_RECEIVED: 'terminal:transcript:segment-received',
+
+  /**
+   * 실시간 어닝콜 팩트체크 동적 구독.
+   * Backend Contract 4.6: STOMP /topic/factcheck/{ticker}, 기존 STOMP 세션 JWT 사용.
+   * TRANSCRIPT_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  FACTCHECK_SUBSCRIBE: 'terminal:factcheck:subscribe',
+  FACTCHECK_UNSUBSCRIBE: 'terminal:factcheck:unsubscribe',
+
+  /**
+   * STOMP 팩트체크 배치 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, batch_start_sequence, batch_end_sequence,
+   *   claims: [{ claim_id, claim, verdict, confidence, explanation_ko,
+   *              reason_code, evidence: [{ doc_id, title, snippet, url, source }] }]
+   * }
+   * 백엔드는 판정이 1건 이상일 때만 발행한다 — 빈 배치는 도착하지 않는다.
+   * snake_case → camelCase 변환과 검증은 store 의 upsertBatch 에서 수행.
+   */
+  FACTCHECK_BATCH_RECEIVED: 'terminal:factcheck:batch-received',
+
+  /**
+   * 직전 콜 발언 대조 동적 구독.
+   * Backend: STOMP /topic/transcript-diff/{ticker}.
+   * FACTCHECK_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  TRANSCRIPT_DIFF_SUBSCRIBE: 'terminal:transcript-diff:subscribe',
+  TRANSCRIPT_DIFF_UNSUBSCRIBE: 'terminal:transcript-diff:unsubscribe',
+
+  /**
+   * STOMP 직전 콜 대조 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, sequence,
+   *   previous_document: { document_id, title, published_at, fiscal_quarter, source_url },
+   *   items: [{ topic, change_type, summary_ko, current_claim, prior_claim,
+   *             confidence, risk_score,
+   *             evidence: [{ document_id, source, title, published_at, source_url,
+   *                          snippet, relevance_score, confidence_score }] }]
+   * }
+   * 백엔드는 items 가 1건 이상일 때만 발행한다 — 주제와 무관한 발언은 도착하지 않는다.
+   * 그래서 도착 건수는 세그먼트 수보다 훨씬 적다.
+   * 변환·검증은 store 의 upsertDiff 에서 수행.
+   */
+  TRANSCRIPT_DIFF_RECEIVED: 'terminal:transcript-diff:received',
+
+  /**
+   * 어닝콜 종료 후 종합 판단 동적 구독.
+   * Backend Contract 4.7: STOMP /topic/evaluation/{ticker}.
+   * FACTCHECK_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  EVALUATION_SUBSCRIBE: 'terminal:evaluation:subscribe',
+  EVALUATION_UNSUBSCRIBE: 'terminal:evaluation:unsubscribe',
+
+  /**
+   * STOMP 종합 판단 push (Main → Renderer).
+   * payload (snake_case): {
+   *   ticker, call_id, generated_at,
+   *   judgment: { direction, magnitude, confidence, catalyst_type, rationale,
+   *               risk_flags, hold_days, model_version },
+   *   gate: { action, gate_result, institutional_grade, institutional_grade_score,
+   *           position_intent_ko, no_trade_summary_ko, risk_flags_ko, counter_thesis_ko },
+   *   evasion: { evasion_score, directness, pivot_detected, missing_topics, rationale_ko },
+   *   impact_chain: [{ ticker, relationship, direction, impact_score, confidence, rationale_ko }],
+   *   risk_plan: { available, direction, reference_price, stop_loss, take_profit_1, ... },
+   *   warnings: string[]
+   * }
+   * 어닝콜 회차당 1건만 도착한다. 변환·검증은 store 의 setSummary 에서 수행.
+   */
+  EVALUATION_RECEIVED: 'terminal:evaluation:received',
+
+  /**
+   * 어닝콜 시연 재생 제어 (Renderer → Main, invoke).
+   * Backend Contract 7.8. payload: { ticker }
+   * DEMO_START 응답: { ok: true, callId, segmentCount, intervalMs }
+   *                | { ok: false, reason: 'ALREADY_RUNNING' | 'FAILED', message }
+   */
+  DEMO_EARNINGS_START: 'terminal:demo:earnings-start',
+  DEMO_EARNINGS_STOP: 'terminal:demo:earnings-stop',
+
+  /**
+   * 콜 참가자 명부 조회 (Renderer → Main, invoke).
+   * 응답: SpeakerProfile[] — 명부가 없으면 빈 배열.
+   */
+  DEMO_EARNINGS_SPEAKERS: 'terminal:demo:earnings-speakers',
 
   /**
    * 어닝콜 타임라인 조회 (Renderer → Main, invoke).
@@ -183,6 +281,20 @@ export const IPC_CHANNELS = {
    * 응답: StockPriceEntry[] (ticker, currentPrice, previousClose, changePercent, updatedAt)
    */
   STOCK_PRICES_SNAPSHOT_GET: 'terminal:stocks:prices-snapshot-get',
+
+  /**
+   * SELF_PAPER 체결 후 잔고/보유종목 즉시 반영 (Main → Renderer push).
+   * executeSelfPaper() 성공 시 mainState 갱신과 동시에 발신.
+   * payload: { cash: number; holdings: { ticker: string; qty: number }[] }
+   */
+  SELF_PAPER_BALANCE_UPDATED: 'terminal:self-paper:balance-updated',
+
+  /**
+   * 로그인 완료 후 활성 계정 종류 통보 (Main → Renderer push).
+   * Renderer 가 KIS API 호출 여부를 분기하는 데 사용.
+   * payload: { accountType: 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER' }
+   */
+  ACCOUNT_TYPE_CHANGED: 'terminal:account-type:changed',
 } as const
 
 /**
@@ -196,6 +308,7 @@ export const IPC_CHANNELS = {
  * Renderer 는 이 응답을 렌더 후 보존하지 말고 (예: zustand 에 박지 말고) drawer/카드 닫힐 때 폐기.
  */
 export interface MaskedCredentialsResponse {
-  paper: { appKeyMasked: string; accountNoMasked: string } | null
-  real: { appKeyMasked: string; accountNoMasked: string } | null
+  /** htsId 는 비밀값이 아니라 로그인 아이디라 원문으로 내려온다 (수정 폼 프리필용). */
+  paper: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
+  real: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
 }

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useConnectionStore } from '../../store/useConnectionStore'
 import { useTradingStore } from '../../store/useTradingStore'
 import type { WsStatus, KisTokenStatus } from '../../store/useConnectionStore'
@@ -26,19 +25,11 @@ const MODE_CONFIG: Record<TradingMode, { label: string; toneClass: string }> = {
 export default function StatusBar() {
   const { wsStatus, kisTokenStatus } = useConnectionStore()
   const { mode, signalHistory } = useTradingStore()
-  const [now, setNow] = useState(new Date())
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
 
   const ws = WS_CONFIG[wsStatus] ?? WS_CONFIG.DISCONNECTED
   const kis = KIS_CONFIG[kisTokenStatus] ?? KIS_CONFIG.UNKNOWN
   const modeConf = MODE_CONFIG[mode] ?? MODE_CONFIG.MANUAL
   const lastSignal = signalHistory[0]
-
-  const kstString = formatKst(now)
 
   return (
     <footer className="h-8 bg-surface-0 border-t border-border-strong flex items-center px-3.5 gap-4 text-text-tertiary">
@@ -91,15 +82,6 @@ export default function StatusBar() {
         </>
       )}
 
-      {/* 오른쪽 정렬 — KST 시간 */}
-      <div className="ml-auto inline-flex items-center gap-1.5">
-        <span className="text-text-tertiary text-[10px] uppercase tracking-[0.12em]">
-          KST
-        </span>
-        <span className="num text-[10px] text-text-secondary tabular-nums tracking-[0.04em]">
-          {kstString}
-        </span>
-      </div>
     </footer>
   )
 }
@@ -128,8 +110,3 @@ function Separator() {
   return <span className="w-px h-3 bg-border-subtle" />
 }
 
-function formatKst(d: Date): string {
-  // 2026-04-20 14:32:48
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}

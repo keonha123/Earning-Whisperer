@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { ChartPoint } from '../../fixtures/companyDetail.dev-mock'
+import type { ChartPoint } from '../../types/companyDetail'
 
 interface MiniLineChartProps {
   points: ChartPoint[]

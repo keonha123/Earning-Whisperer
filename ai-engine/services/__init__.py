@@ -9,9 +9,13 @@ from .earnings_intelligence_service import EarningsIntelligenceService
 from .evidence_ingestion_service import EvidenceIngestionScheduler, EvidenceIngestionService
 from .evidence_retrieval_service import EvidenceRetrievalService
 from .live_earnings_session_service import LiveEarningsSessionService
+from .live_news_fact_check_service import LiveNewsFactCheckService
+from .news_ingestion_service import NewsIngestionService
 from .regression_service import RegressionService
 from .research_backtest_service import ResearchBacktestService
 from .redis_signal_publisher import RedisSignalPublisher
+from .transcript_diff_service import TranscriptDiffService
+from .transcript_ingestion_service import TranscriptIngestionService
 
 __all__ = [
     "CalibrationService",
@@ -24,8 +28,12 @@ __all__ = [
     "EvidenceIngestionService",
     "EvidenceRetrievalService",
     "LiveEarningsSessionService",
+    "LiveNewsFactCheckService",
+    "NewsIngestionService",
     "RegressionService",
     "ResearchBacktestService",
     "RedisSignalPublisher",
     "SourceHealthTelemetry",
+    "TranscriptDiffService",
+    "TranscriptIngestionService",
 ]

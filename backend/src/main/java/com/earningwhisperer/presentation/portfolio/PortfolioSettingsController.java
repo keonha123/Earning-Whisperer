@@ -1,9 +1,10 @@
 package com.earningwhisperer.presentation.portfolio;
 
+import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.AssetSnapshotService;
-import com.earningwhisperer.domain.portfolio.Broker;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
+import com.earningwhisperer.domain.portfolio.Position;
 import com.earningwhisperer.domain.portfolio.PortfolioSettings;
 import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
 import com.earningwhisperer.domain.portfolio.PositionService;
@@ -100,7 +101,7 @@ public class PortfolioSettingsController {
         Long activeId = brokerAccountService.getActive(userId)
                 .map(BrokerAccount::getId)
                 .orElseGet(() -> brokerAccountService
-                        .ensure(userId, Broker.KIS, true).getId()); // 신규 사용자 디폴트
+                        .ensure(userId, AccountType.KIS_PAPER).getId()); // 신규 사용자 디폴트
 
         Long brokerAccountId = request.getBrokerAccountId();
         if (brokerAccountId != null && !brokerAccountId.equals(activeId)) {
@@ -149,6 +150,23 @@ public class PortfolioSettingsController {
     }
 
     /**
+     * 활성 BrokerAccount 의 보유종목 목록 조회.
+     * SELF_PAPER 모드 Terminal 의 잔고 초기화에 사용.
+     */
+    @GetMapping("/positions")
+    public ResponseEntity<List<PositionResponse>> getPositions(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        Long activeId = brokerAccountService.getActive(userId).map(BrokerAccount::getId).orElse(null);
+        if (activeId == null) return ResponseEntity.ok(List.of());
+        List<PositionResponse> body = positionService.getPositions(activeId).stream()
+                .map(p -> new PositionResponse(p.getTicker(), p.getQuantity(), p.getAvgPrice()))
+                .toList();
+        return ResponseEntity.ok(body);
+    }
+
+    public record PositionResponse(String ticker, int quantity, double avgPrice) {}
+
+    /**
      * 활성 BrokerAccount 전환.
      */
     @PutMapping("/broker-accounts/{brokerAccountId}/activate")
@@ -161,11 +179,11 @@ public class PortfolioSettingsController {
     }
 
     public record BrokerAccountResponse(
-            Long id, String broker, Boolean isPaper, String alias, Double cashBalance, boolean active
+            Long id, String accountType, String alias, Double cashBalance, boolean active
     ) {
         static BrokerAccountResponse of(BrokerAccount a, boolean active) {
             return new BrokerAccountResponse(
-                    a.getId(), a.getBroker().name(), a.getIsPaper(),
+                    a.getId(), a.getAccountType().name(),
                     a.getAlias(), a.getCashBalance(), active);
         }
     }

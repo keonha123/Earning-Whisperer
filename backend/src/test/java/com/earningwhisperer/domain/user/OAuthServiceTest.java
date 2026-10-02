@@ -17,7 +17,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -92,7 +91,7 @@ class OAuthServiceTest {
                 .willReturn(new TokenPair("at", "rt"));
         BrokerAccount brokerAccount = mock(BrokerAccount.class);
         given(brokerAccount.getId()).willReturn(100L);
-        given(brokerAccountService.ensure(any(), any(), anyBoolean())).willReturn(brokerAccount);
+        given(brokerAccountService.ensure(any(), any())).willReturn(brokerAccount);
 
         TokenPair result = oAuthService.socialLogin(kakaoProfile);
 
@@ -123,7 +122,7 @@ class OAuthServiceTest {
                 .willReturn(new TokenPair("at", "rt"));
         BrokerAccount brokerAccount = mock(BrokerAccount.class);
         given(brokerAccount.getId()).willReturn(100L);
-        given(brokerAccountService.ensure(any(), any(), anyBoolean())).willReturn(brokerAccount);
+        given(brokerAccountService.ensure(any(), any())).willReturn(brokerAccount);
 
         oAuthService.socialLogin(googleProfile);
 

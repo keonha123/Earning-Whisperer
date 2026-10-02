@@ -11,7 +11,6 @@ import lombok.NoArgsConstructor;
 
 /**
  * PUT /api/v1/users/settings — Trading Terminal 전용 설정 업데이트 요청 DTO.
- * aiScoreThreshold는 포함하지 않으며, 기존 값을 유지한다.
  */
 @Getter
 @NoArgsConstructor
@@ -35,4 +34,9 @@ public class UserSettingsUpdateRequest {
     @Min(1)
     @JsonProperty("cooldown_minutes")
     private Integer cooldownMinutes;
+
+    @NotNull
+    @DecimalMin("0.0") @DecimalMax("1.0")
+    @JsonProperty("ai_score_threshold")
+    private Double aiScoreThreshold;
 }

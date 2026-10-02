@@ -33,6 +33,16 @@ beforeEach(() => {
 })
 
 describe('useTranscriptStore', () => {
+  it('empty end closes the call without adding an empty speech row', () => {
+    const store = useTranscriptStore.getState()
+    store.upsertSegment(makeRaw())
+    store.upsertSegment(makeRaw({ sequence: 2, text: '', is_session_end: true }))
+    const state = useTranscriptStore.getState().byTicker.get('NVDA')!
+    expect(state.segments).toHaveLength(1)
+    expect(state.endedCallIds.has('NVDA-2025-Q3')).toBe(true)
+    store.upsertSegment(makeRaw({ sequence: 3 }))
+    expect(useTranscriptStore.getState().byTicker.get('NVDA')!.segments).toHaveLength(1)
+  })
   describe('isValidTranscriptPayload', () => {
     it('필수 6필드 모두 정상이면 true', () => {
       expect(isValidTranscriptPayload(makeRaw())).toBe(true)
@@ -273,5 +283,26 @@ describe('useTranscriptStore', () => {
       const after = useTranscriptStore.getState()
       expect(after.byTicker).toBe(before.byTicker)
     })
+  })
+})
+
+
+describe('late Korean translation', () => {
+  it('patches the original identity after session end without appending or changing sequence', () => {
+    const store = useTranscriptStore.getState()
+    store.upsertSegment(makeRaw())
+    store.upsertSegment(makeRaw({ sequence: 2, is_session_end: true }))
+    store.upsertSegment(makeRaw({ text_ko: '한국어 번역' }))
+    const state = useTranscriptStore.getState().byTicker.get('NVDA')!
+    expect(state.segments).toHaveLength(2)
+    expect(state.segments[0].textKo).toBe('한국어 번역')
+    expect(state.lastSequenceByCall.get('NVDA-2025-Q3')).toBe(2)
+    expect(state.endedCallIds.has('NVDA-2025-Q3')).toBe(true)
+  })
+  it('rejects translation patches that change the English original', () => {
+    const store = useTranscriptStore.getState()
+    store.upsertSegment(makeRaw())
+    store.upsertSegment(makeRaw({ text: 'changed', text_ko: '변경' }))
+    expect(useTranscriptStore.getState().byTicker.get('NVDA')!.segments[0].textKo).toBeUndefined()
   })
 })

@@ -202,6 +202,7 @@ def _build_analysis_object(analysis: dict[str, Any], market_data: MarketData) ->
     signal_data_hub = metadata.get("signal_data_hub") if isinstance(metadata, dict) and isinstance(metadata.get("signal_data_hub"), dict) else {}
     institutional_edge = metadata.get("institutional_edge") if isinstance(metadata, dict) and isinstance(metadata.get("institutional_edge"), dict) else {}
     decision_assistant = metadata.get("decision_assistant") if isinstance(metadata, dict) and isinstance(metadata.get("decision_assistant"), dict) else {}
+    historical_transcript_diff = metadata.get("historical_transcript_diff") if isinstance(metadata, dict) and isinstance(metadata.get("historical_transcript_diff"), dict) else {}
     if not decision_assistant and isinstance(metadata.get("product_surface"), dict):
         product_decision_assistant = metadata["product_surface"].get("decision_assistant")
         if isinstance(product_decision_assistant, dict):
@@ -244,6 +245,7 @@ def _build_analysis_object(analysis: dict[str, Any], market_data: MarketData) ->
         "signal_data_hub": signal_data_hub,
         "institutional_edge": institutional_edge,
         "decision_assistant": decision_assistant,
+        "historical_transcript_diff": historical_transcript_diff,
     }
 
 

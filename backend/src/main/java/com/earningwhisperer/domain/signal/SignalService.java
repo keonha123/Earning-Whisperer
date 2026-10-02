@@ -50,6 +50,11 @@ public class SignalService {
         for (PortfolioSettings settings : allSettings) {
             try {
                 User user = settings.getUser();
+                if (Boolean.FALSE.equals(signal.getExecutionAllowed())) {
+                    results.add(new UserProcessedSignal(user, null, TradeAction.HOLD, aiScore,
+                            settings.getTradingMode(), settings.getBuyAmountRatio()));
+                    continue;
+                }
 
                 boolean inCooldown = isInCooldown(
                         user.getId(), signal.getTicker(), settings.getCooldownMinutes());
