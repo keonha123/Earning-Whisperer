@@ -3,32 +3,32 @@
   "terms": [
     { "term": "comp sales", "aliases": ["comparable sales", "comparable store sales", "same-store sales", "comps"], "ko": "기존점 매출", "category": "retail" },
     { "term": "transactions", "aliases": [], "ko": "거래 건수", "category": "retail" },
-    { "term": "rollbacks", "aliases": ["rollback"], "ko": "한시 가격 인하(롤백)", "category": "retail" },
+    { "term": "rollbacks", "aliases": ["rollback"], "ko": "롤백(가격 인하)", "category": "retail" },
     { "term": "price investment", "aliases": [], "ko": "가격 인하 투자", "category": "retail" },
-    { "term": "marketplace", "aliases": [], "ko": "마켓플레이스(입점 판매)", "category": "retail" },
-    { "term": "fulfillment", "aliases": [], "ko": "주문 처리(풀필먼트)", "category": "retail" },
+    { "term": "marketplace", "aliases": [], "ko": "마켓플레이스", "category": "retail" },
+    { "term": "fulfillment", "aliases": [], "ko": "풀필먼트", "category": "retail" },
     { "term": "membership fee revenue", "aliases": ["membership income"], "ko": "멤버십 회비 수익", "category": "retail" },
     { "term": "eCommerce", "aliases": ["e-commerce"], "ko": "이커머스", "category": "retail" },
     { "term": "shrink", "aliases": [], "ko": "재고 손실", "category": "retail" },
 
-    { "term": "guidance", "aliases": [], "ko": "가이던스(실적 전망치)", "category": "guidance" },
+    { "term": "guidance", "aliases": [], "ko": "가이던스", "category": "guidance" },
     { "term": "top end of guidance", "aliases": ["top end of our guidance", "high end of our guidance", "high end of guidance"], "ko": "가이던스 상단", "category": "guidance" },
     { "term": "low end of guidance", "aliases": ["low end of our guidance", "bottom end of our guidance"], "ko": "가이던스 하단", "category": "guidance" },
-    { "term": "consensus", "aliases": ["consensus estimates"], "ko": "시장 컨센서스(예상치)", "category": "guidance" },
+    { "term": "consensus", "aliases": ["consensus estimates"], "ko": "시장 컨센서스", "category": "guidance" },
     { "term": "run rate", "aliases": ["run-rate"], "ko": "연환산 기준", "category": "guidance" },
 
     { "term": "constant currency", "aliases": ["in constant currency", "on a constant currency basis"], "ko": "환율 영향 제외 기준", "category": "metric" },
-    { "term": "basis points", "aliases": ["basis point", "bps"], "ko": "bp(0.01%p)", "category": "metric" },
+    { "term": "basis points", "aliases": ["basis point", "bps"], "ko": "bp", "category": "metric" },
     { "term": "year-over-year", "aliases": ["year over year", "YoY"], "ko": "전년 대비", "category": "metric" },
     { "term": "sequentially", "aliases": ["quarter-over-quarter", "QoQ"], "ko": "전분기 대비", "category": "metric" },
-    { "term": "organic growth", "aliases": [], "ko": "유기적 성장(인수 효과 제외)", "category": "metric" },
+    { "term": "organic growth", "aliases": [], "ko": "유기적 성장", "category": "metric" },
     { "term": "market share", "aliases": [], "ko": "시장 점유율", "category": "metric" },
     { "term": "headwind", "aliases": ["headwinds"], "ko": "악재 요인", "category": "metric" },
     { "term": "tailwind", "aliases": ["tailwinds"], "ko": "호재 요인", "category": "metric" },
 
     { "term": "net sales", "aliases": [], "ko": "순매출", "category": "accounting" },
-    { "term": "top line", "aliases": ["top-line"], "ko": "매출(톱라인)", "category": "accounting" },
-    { "term": "bottom line", "aliases": ["bottom-line"], "ko": "순이익(보텀라인)", "category": "accounting" },
+    { "term": "top line", "aliases": ["top-line"], "ko": "매출", "category": "accounting" },
+    { "term": "bottom line", "aliases": ["bottom-line"], "ko": "순이익", "category": "accounting" },
     { "term": "operating income", "aliases": [], "ko": "영업이익", "category": "accounting" },
     { "term": "adjusted operating income", "aliases": [], "ko": "조정 영업이익", "category": "accounting" },
     { "term": "EPS", "aliases": ["earnings per share"], "ko": "주당순이익(EPS)", "category": "accounting" },
@@ -46,6 +46,6 @@
     { "term": "share repurchases", "aliases": ["share repurchase", "buyback", "buybacks"], "ko": "자사주 매입", "category": "capital" },
 
     { "term": "tariff refunds", "aliases": ["tariff refund"], "ko": "관세 환급", "category": "regulation" },
-    { "term": "maximum fair price", "aliases": ["maximum fair pricing"], "ko": "약가 상한(최대 공정가격)", "category": "regulation" }
+    { "term": "maximum fair price", "aliases": ["maximum fair pricing"], "ko": "약가 상한", "category": "regulation" }
   ]
 }

@@ -37,7 +37,7 @@ class GlossaryControllerTest {
         when(service.glossary()).thenReturn(new Glossary(1, List.of(
                 new Glossary.Term("comp sales", List.of("comps"), "기존점 매출",
                         "1년 이상 운영된 점포만 집계한 매출 증가율입니다.", "소매업의 핵심 지표입니다.", "retail"),
-                new Glossary.Term("guidance", List.of(), "가이던스(실적 전망치)", null, null, "guidance"))));
+                new Glossary.Term("guidance", List.of(), "가이던스", null, null, "guidance"))));
 
         mockMvc.perform(get("/api/v1/glossary"))
                 .andExpect(status().isOk())
