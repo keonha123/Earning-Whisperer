@@ -19,6 +19,7 @@ try:
     from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
+    from services.transcript_translation_service import TranscriptTranslationService
 except ImportError:  # pragma: no cover
     from .api.routers import ALL_ROUTERS
     from .config import Settings, get_settings
@@ -32,6 +33,7 @@ except ImportError:  # pragma: no cover
     from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
+    from .services.transcript_translation_service import TranscriptTranslationService
 
 
 class HealthResponse(BaseModel):
@@ -150,6 +152,7 @@ def create_app() -> FastAPI:
     app.state.evidence_service = EvidenceRetrievalService(repository=app.state.evidence_repository)
     app.state.transcript_diff_service = TranscriptDiffService(app.state.transcript_repository)
     app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
+    app.state.transcript_translation_service = TranscriptTranslationService(settings=settings)
     app.state.analysis_service = AnalysisService(
         settings=settings,
         evidence_service=app.state.evidence_service,

@@ -743,3 +743,41 @@ start 응답 예시:
 OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-embedding-001`이 동작하는 것을 실측했다(3072차원, `outputDimensionality`로 768 축소, 배치 상한 20건 — 100건은 429).
 
 **관련도 임계값은 임베딩 모델에 종속된다.** Gemini 임베딩은 기준선 유사도가 높아서 무관한 문서도 0.48 수준이 나온다. 해시 임베딩 기준으로 잡힌 0.42/0.34를 그대로 쓰면 아무 기사나 근거로 통과한다. 모델을 바꾸면 `FACT_CHECK_STRONG_RELEVANCE_SCORE` / `FACT_CHECK_MODERATE_RELEVANCE_SCORE`를 실제 코퍼스로 재보정해야 한다.
+
+### 9.10. 세그먼트 한국어 번역 (`POST /v1/engine/transcript/translate`)
+
+어닝콜 세그먼트 1개를 한국어로 번역한다(#110). 용어 사전은 백엔드(§7.9)에 있고, 엔진은 **요청에 실려 온 용어만** 번역어로 고정한다. 백엔드는 세그먼트 원문에서 찾은 용어만 `terms`에 담는다 — 사전 전체를 보내지 않으므로 사전이 커져도 프롬프트 크기와 지연이 늘지 않는다.
+
+| 필드       | 필수 | 설명                                                        |
+| :--------- | :--: | :---------------------------------------------------------- |
+| `ticker`   |  Y   | 종목 심볼                                                   |
+| `call_id`  |  N   | 어닝콜 세션 식별자 (로그용)                                 |
+| `sequence` |  Y   | 세그먼트 시퀀스. 응답에 그대로 돌려준다                     |
+| `text`     |  Y   | 세그먼트 원문 (앞뒤 공백 제거 후 1~4000자)                  |
+| `terms`    |  N   | 고정할 용어 `[{ "term", "ko" }]`, 최대 50개. 비면 일반 번역 |
+
+    POST /v1/engine/transcript/translate
+    { "ticker": "WMT", "call_id": "demo-wmt-q2fy27-1", "sequence": 3,
+      "text": "Comp sales for Walmart U.S. were 2.6%, led by transactions.",
+      "terms": [ { "term": "comp sales", "ko": "기존점 매출" }, { "term": "transactions", "ko": "거래 건수" } ] }
+
+    200 OK
+    { "available": true, "sequence": 3,
+      "text_ko": "Walmart U.S.의 기존점 매출은 거래 건수 증가에 힘입어 2.6%를 기록했습니다.",
+      "terms_used": ["comp sales", "transactions"], "warnings": [] }
+
+- **번역 실패도 HTTP 200이다.** 실패는 `available=false`와 `warnings`로 알린다. 요청 형식이 틀리면(빈 `text`, 공백뿐인 `term`·`ko` 등) 422다. **실패 시 `text_ko`는 null이며, 원문을 대신 넣지 않는다.** 호출자는 `available`을 분기해야 한다.
+
+| `warnings` 값                   | `available` | 의미                                                                           |
+| :------------------------------ | :---------: | :----------------------------------------------------------------------------- |
+| `translation_llm_timeout`       |    false    | 6초 안에 끝나지 않음                                                           |
+| `translation_llm_failed`        |    false    | LLM 호출 실패. 429 할당량 초과 · 503 과부하 · API 키 누락이 모두 여기로 온다   |
+| `translation_invalid_response`  |    false    | 응답에 `text_ko`가 없거나 형식이 틀림                                          |
+| `translation_not_korean`        |    false    | 번역문 글자 중 한글 비율이 30% 미만 — 원문을 그대로 또는 일부만 옮긴 경우      |
+| `translation_internal_error`    |    false    | 엔진 내부 오류. 엔진 로그에 스택이 남는다                                      |
+| `translation_terms_not_applied` |    true     | 번역은 되었지만 `terms` 중 일부의 번역어가 번역문에 없음. 번역문은 그대로 쓴다 |
+
+- **`terms_used`는 코드가 판정한다.** `terms` 중 `ko`가 번역문에 실제로 들어간 용어만 담는다. LLM의 자기 보고를 쓰지 않는다. 긴 번역어부터 찾으므로 "기존점 매출"만 쓰인 번역문에서 "매출"이 함께 잡히지 않는다.
+- **실패한 세그먼트는 재시도하면 다시 호출된다.** 엔진의 Gemini 응답 캐시는 호출 실패 시의 폴백 응답도 저장하는데, 번역 경로는 그 항목을 지운다. 성공한 번역은 캐시에 남아 같은 세그먼트를 다시 재생하면 할당량을 쓰지 않는다.
+- **타임아웃 뒤에도 Gemini 호출은 끝까지 진행된다.** 응답을 기다리지 않을 뿐 호출 자체는 취소되지 않으므로 할당량을 쓴다.
+- **할당량 주의.** 무료 등급 Gemini는 모델별로 **분당 15요청**이다(`gemini-3.1-flash-lite` 실측, 429 `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`). 번역은 팩트체크(§9.1)와 같은 모델을 쓰므로 할당량을 함께 쓴다. 세그먼트마다 번역을 부르면 시연(6초 간격 24세그먼트) 기준 분당 약 10회가 더해져, 팩트체크와 합쳐 한도를 넘는다.
