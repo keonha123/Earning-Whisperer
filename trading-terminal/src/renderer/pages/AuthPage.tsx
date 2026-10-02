@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ipc, IPC_CHANNELS } from '../lib/ipc'
+import { ipc, IPC_CHANNELS, isMac } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
 import { useTradingStore } from '../store/useTradingStore'
@@ -73,6 +73,14 @@ export default function AuthPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-bg-base text-text-secondary">
+      {/*
+        macOS 창 드래그 영역. 이 화면에는 TopHeader 가 없어 창을 잡을 곳이 없다.
+        상단 40px 는 비어 있어 겹치는 컨트롤이 없다.
+      */}
+      {isMac && (
+        <div className="absolute top-0 left-0 right-0 h-10 z-[5] [-webkit-app-region:drag]" aria-hidden />
+      )}
+
       {/* 배경: radial glow + grid overlay */}
       <div
         className="absolute inset-0 pointer-events-none"
