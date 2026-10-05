@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useTradingStore } from "../store/useTradingStore";
-import { useUserStore } from "../store/useUserStore";
 import { usePortfolioStore } from "../store/usePortfolioStore";
 import { ipc, IPC_CHANNELS } from "../lib/ipc";
-import ModeSelector from "../components/common/ModeSelector";
 import PositionOrderPanel, {
   type SessionOrder,
 } from "../components/trading/PositionOrderPanel";
@@ -37,9 +35,7 @@ type Timeframe = (typeof TIMEFRAMES)[number];
 const EMPTY_PRICES: readonly PricePoint[] = [];
 
 export default function TradingRoomPage() {
-  const { mode, setMode, activeSignal, setSession } =
-    useTradingStore();
-  const { plan, settings, setSettings } = useUserStore();
+  const { setSession } = useTradingStore();
   const orderableCash = usePortfolioStore((s) => s.orderableCash);
   const holdings = usePortfolioStore((s) => s.holdings);
   // 잔고를 한 번이라도 불러왔는지. 0주 보유와 "아직 안 불러왔다" 를 구분해야 한다.
@@ -47,20 +43,8 @@ export default function TradingRoomPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // ticker 우선순위:
-  //  1) ?ticker= 쿼리 파라미터 (사용자가 명시적으로 고른 종목 — 항상 우선)
-  //  2) activeSignal (실시간 어닝콜 신호)
-  //  3) null → /market 리다이렉트
-  // 신호로 진입하는 경로도 모두 ?ticker= 를 붙이므로, param 우선이 안전하다.
-  const paramTicker = searchParams.get("ticker") || null;
-  const ticker =
-    paramTicker ?? activeSignal?.ticker ?? null;
-
-  // 현재 보고 있는 종목에 종속된 표시(헤더 AI 점수/액션, LIVE 배지)는 이 값만 쓴다.
-  // ?ticker= 가 우선하므로 activeSignal 의 종목과 화면 종목이 다를 수 있고,
-  // 그때 NVDA 신호의 점수가 AAPL 페이지에 뜨면 안 된다.
-  const signalForTicker =
-    activeSignal && activeSignal.ticker === ticker ? activeSignal : null;
+  // ticker 는 ?ticker= 쿼리 파라미터로만 정한다. 없으면 /market 으로 리다이렉트.
+  const ticker = searchParams.get("ticker") || null;
 
   // ── 실시간 트랜스크립트 (Contract 4.5 STOMP /topic/transcript/{ticker}) ──────
   // ticker 변경 시 자동 SUBSCRIBE/UNSUBSCRIBE. segment 는 store 에 누적된다.
@@ -156,12 +140,7 @@ export default function TradingRoomPage() {
   // LIVE 판정 (Contract 4.5 반영):
   //  - 활성 트랜스크립트 세션이 있고 (activeCallId 존재),
   //  - 그 callId 가 endedCallIds 에 포함되지 않을 때 LIVE.
-  //  - fallback: 트랜스크립트 세션이 없으면 신호 기반 판정. 단 현재 종목의 신호일 때만 —
-  //    다른 종목 신호로 LIVE 를 오표시하지 않는다.
-  const isLive =
-    activeCallId != null
-      ? !endedCallIds.has(activeCallId)
-      : signalForTicker != null;
+  const isLive = activeCallId != null && !endedCallIds.has(activeCallId);
 
   // 지금 발언 중인 사람 — 마지막 세그먼트의 화자. 콜이 끝났으면 아무도 발언 중이 아니다.
   const currentSpeakerKey = useMemo(() => {
@@ -288,24 +267,6 @@ export default function TradingRoomPage() {
     navigate("/market");
   }
 
-  async function handleModeChange(newMode: typeof mode) {
-    try {
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-        tradingMode: newMode,
-        maxBuyRatio: settings.maxBuyRatio,
-        maxHoldingRatio: settings.maxHoldingRatio,
-        cooldownMinutes: settings.cooldownMinutes,
-        // 누락 시 백엔드가 임계치를 기본값으로 덮어쓴다 — 현재 설정값을 그대로 보낸다.
-        aiScoreThreshold: settings.aiScoreThreshold,
-      });
-      setMode(newMode);
-      setSettings({ tradingMode: newMode });
-    } catch (e) {
-      console.error("모드 변경 실패:", e);
-      showIpcErrorToast(e);
-    }
-  }
-
   const [isOrderLoading, setIsOrderLoading] = useState(false);
 
   async function handleOrderSubmit(payload: OrderBarSubmitPayload) {
@@ -364,7 +325,7 @@ export default function TradingRoomPage() {
 
   return (
     <div className="flex flex-col h-[calc(100%+3rem)] -m-6">
-      {/* ── 페이지 내부 상단 헤더 행 (LIVE + ticker + 종목정보 + 메타 + ModeSelector) */}
+      {/* ── 페이지 내부 상단 헤더 행 (LIVE + ticker + 종목정보 + 메타) */}
       <div className="px-4 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-0">
         <TradingRoomHeader
           ticker={ticker}
@@ -380,14 +341,6 @@ export default function TradingRoomPage() {
           }
           speakerCount={speakerProfiles.length}
         />
-        <div className="w-72 shrink-0">
-          <ModeSelector
-            currentMode={mode}
-            userPlan={plan}
-            onChange={handleModeChange}
-            size="compact"
-          />
-        </div>
       </div>
 
       {/* ── 3-column body ───────────────────────────────────────────────────────── */}
@@ -532,7 +485,6 @@ export default function TradingRoomPage() {
         currentPrice={currentPrice}
         changePercent={changePercent}
         orderableCash={orderableCash}
-        mode={mode}
         onSubmit={handleOrderSubmit}
         isLoading={isOrderLoading}
       />
@@ -831,7 +783,7 @@ function ChartPane({
  *  - id: `${callId}-${sequence}` — 동일 어닝콜 내 sequence 단조 증가가 보장하는 unique key.
  *  - timestamp: startMs 를 "mm:ss" 로 포맷 (어닝콜 시작 기준 경과 시간).
  *  - speaker: 누락 시 빈 문자열 ("[mm:ss] · ·" 가 되지 않도록 fallback).
- *  - ai_score: 별도 시그널 채널 (/user/queue/signals) 에서 매핑되므로 어댑터에서는 undefined.
+ *  - ai_score: 트랜스크립트 세그먼트에는 점수가 없어 undefined.
  */
 function toTranscriptLine(seg: TranscriptSegment): TranscriptLine {
   return {

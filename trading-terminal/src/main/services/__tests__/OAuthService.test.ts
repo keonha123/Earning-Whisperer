@@ -18,7 +18,6 @@ import { completeLogin } from '../../ipc/authHandlers'
 
 const FAKE_RESULT = {
   user: { id: 1, email: 'a@b.c', nickname: 'tester', role: 'USER' },
-  settings: null,
   accountType: 'SELF_PAPER',
 }
 

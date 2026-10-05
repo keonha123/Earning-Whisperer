@@ -20,15 +20,12 @@ export const IPC_CHANNELS = {
   VAULT_GET_MASKED: 'terminal:vault:get-masked-credentials',
 
   KIS_GET_BALANCE: 'terminal:kis:get-balance',
-  KIS_PLACE_ORDER: 'terminal:kis:place-order',
   /** 사용자가 OrderBar 에서 직접 입력한 수동 주문. payload: ManualOrderRequest */
   KIS_PLACE_MANUAL_ORDER: 'terminal:kis:place-manual-order',
   KIS_GET_TOKEN_STATUS: 'terminal:kis:get-token-status',
   KIS_ISSUE_TOKEN: 'terminal:kis:issue-token',
   /** invoke({ days: 7|30|90 }) → AssetHistoryPoint[] — 백엔드 GET /api/v1/portfolio/asset-history */
   KIS_GET_ASSET_TIMESERIES: 'terminal:portfolio:get-asset-timeseries',
-
-  SETTINGS_UPDATE: 'terminal:settings:update',
 
   /**
    * 모의/실전 환경 토글 — Renderer 마운트 시 현재 값 조회.
@@ -59,7 +56,6 @@ export const IPC_CHANNELS = {
    * 응답: { saved: boolean; filePath?: string }
    */
   SHELL_SAVE_CSV: 'terminal:shell:save-csv',
-  TRADE_CANCEL: 'terminal:trade:cancel',
   /** TradingRoom 진입 시 세션 시작. payload: { ticker: string } */
   TRADE_SESSION_START: 'terminal:trade-session:start',
   /** TradingRoom 명시적 나가기 시 세션 종료. */
@@ -114,11 +110,9 @@ export const IPC_CHANNELS = {
   HOLDINGS_TICKERS_UPDATE: 'terminal:holdings:tickers-update',
 
   // Main → Renderer (send)
-  SIGNAL_RECEIVED: 'terminal:signal:received',
   TRADE_EXECUTED: 'terminal:trade:executed',
   TRADE_FAILED: 'terminal:trade:failed',
   WS_STATUS_CHANGED: 'terminal:ws:status-changed',
-  MODE_FORCED_MANUAL: 'terminal:mode:forced-manual',
   KIS_TOKEN_REFRESHED: 'terminal:kis:token-refreshed',
   /**
    * KIS 토큰 자동 갱신이 최대 재시도까지 실패한 경우 발신.

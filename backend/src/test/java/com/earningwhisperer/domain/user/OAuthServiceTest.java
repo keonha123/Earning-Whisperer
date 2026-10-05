@@ -2,8 +2,6 @@ package com.earningwhisperer.domain.user;
 
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,7 +24,6 @@ import static org.mockito.Mockito.*;
 class OAuthServiceTest {
 
     @Mock private UserRepository userRepository;
-    @Mock private PortfolioSettingsRepository portfolioSettingsRepository;
     @Mock private BrokerAccountService brokerAccountService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
@@ -108,7 +105,7 @@ class OAuthServiceTest {
     }
 
     @Test
-    @DisplayName("신규 사용자 → 자동 생성 + 기본 PortfolioSettings + KIS 모의 BrokerAccount")
+    @DisplayName("신규 사용자 → 자동 생성 + KIS 모의 BrokerAccount")
     void 신규_소셜_사용자_생성() {
         given(userRepository.findByProviderAndProviderId(any(), anyString()))
                 .willReturn(Optional.empty());
@@ -132,7 +129,6 @@ class OAuthServiceTest {
         assertThat(created.getProvider()).isEqualTo(OAuthProvider.GOOGLE);
         assertThat(created.getProviderId()).isEqualTo("google-sub-123");
 
-        verify(portfolioSettingsRepository).save(any(PortfolioSettings.class));
         verify(brokerAccountService).activateIfFirst(60L, 100L);
     }
 }

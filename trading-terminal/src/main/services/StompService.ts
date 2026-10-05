@@ -3,7 +3,6 @@ import WebSocket from 'ws'
 import { BrowserWindow } from 'electron'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
-import { TradeExecutor, type TradeSignal } from './TradeExecutor'
 import { BackendClient } from './BackendClient'
 import { NotificationService } from './NotificationService'
 import { markStompCovered, clearStompCovered } from './PricePoller'
@@ -92,54 +91,10 @@ function pushToRenderer(channel: string, payload: unknown) {
   })
 }
 
-/**
- * STOMP /user/queue/signals 단건 처리. Renderer 통보 + AUTO_PILOT 자동 실행을 한 곳에서 관리.
- * 콜백 멱등성(PR1)에 의해 STOMP+fetch 중복 도착도 안전.
- */
-function dispatchTradeSignal(signal: TradeSignal) {
-  if (!mainState.isTradeSessionActive) return
-  if (signal.ticker !== mainState.activeSessionTicker) return
-  pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
-  if (mainState.tradingMode === 'AUTO_PILOT') {
-    TradeExecutor.execute(signal).catch((e) => {
-      console.error('[StompService] AUTO_PILOT 실행 실패:', e)
-    })
-  }
-}
-
-/**
- * fetch 로 복원된 N 개 명령을 직렬로 실행.
- * TradeExecutor 가 mainState.isOrderInProgress 락을 즉시 set 하므로 await 없이 병렬 호출하면
- * 첫 명령만 실행되고 나머지는 silent FAILED 가 된다. 직렬 실행으로 모든 명령을 처리한다.
- */
-async function dispatchPendingBatch(signals: TradeSignal[]): Promise<void> {
-  for (const signal of signals) {
-    if (!mainState.isTradeSessionActive) continue
-    if (signal.ticker !== mainState.activeSessionTicker) continue
-    pushToRenderer(IPC_CHANNELS.SIGNAL_RECEIVED, signal)
-    if (mainState.tradingMode === 'AUTO_PILOT') {
-      try {
-        await TradeExecutor.execute(signal)
-      } catch (e) {
-        console.error('[StompService] AUTO_PILOT 실행 실패 (PENDING 복구):', e)
-      }
-    }
-  }
-}
-
 function onStatusChange(status: WsStatus) {
   pushToRenderer(IPC_CHANNELS.WS_STATUS_CHANGED, { status })
 
-  if (status === 'DISCONNECTED' || status === 'RECONNECTING') {
-    // Fallback: 강제 MANUAL 전환
-    if (mainState.tradingMode !== 'MANUAL') {
-      mainState.setTradingMode('MANUAL')
-      pushToRenderer(IPC_CHANNELS.MODE_FORCED_MANUAL, {
-        reason: '백엔드 WebSocket 연결이 끊겼습니다.',
-      })
-      NotificationService.notifyWsDisconnected()
-    }
-  } else if (status === 'CONNECTED') {
+  if (status === 'CONNECTED') {
     if (hasConnectedOnce) NotificationService.notifyWsReconnected()
     hasConnectedOnce = true
   }
@@ -193,35 +148,6 @@ export const StompService = {
         retryCount = 0
         refreshedForAuthFailure = false
         onStatusChange('CONNECTED')
-
-        // Private 채널 구독
-        client!.subscribe(
-          `/user/queue/signals`,
-          (message: IMessage) => {
-            try {
-              const signal = JSON.parse(message.body) as TradeSignal
-              dispatchTradeSignal(signal)
-            } catch (e) {
-              console.error('[StompService] 신호 파싱 실패:', e)
-            }
-          },
-        )
-
-        /*
-         * 미접속 중에 STOMP convertAndSendToUser 가 silent drop 한 명령을 REST 로 복구한다.
-         * 첫 connect / 재연결 양쪽 모두에서 실행. 백엔드 TTL(기본 30초) 내 PENDING 만 반환되며,
-         * STOMP 와 중복 도착해도 PR1 콜백 멱등성으로 안전.
-         */
-        BackendClient.fetchPendingTrades()
-          .then(async (pending) => {
-            if (pending.length > 0) {
-              console.log(`[StompService] PENDING ${pending.length}건 복구 fetch`)
-            }
-            await dispatchPendingBatch(pending)
-          })
-          .catch((e) => {
-            console.error('[StompService] PENDING fetch 실패:', e)
-          })
 
         /*
          * Public 시장 지수 채널 구독 (Contract 4.4).
@@ -354,7 +280,7 @@ export const StompService = {
       /*
        * 서버가 소켓을 닫은 경우(백엔드 재배포, heartbeat timeout 등)는 onDisconnect 가
        * 아니라 onWebSocketClose 로만 통보된다. 이를 처리하지 않으면 UI 가 CONNECTED 로
-       * 남고 AUTO_PILOT 이 유지된 채 재연결도 되지 않는다.
+       * 남은 채 재연결도 되지 않는다.
        */
       onWebSocketClose: (event) => {
         if (client !== created) return

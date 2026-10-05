@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import Stepper from '../common/Stepper'
-import type { TradingMode } from '../../store/useTradingStore'
 import { IMMEDIATE_FILL_BUFFER, immediateFillPrice } from '../../../lib/orderPricing'
 
 export type OrderSide = 'BUY' | 'SELL'
@@ -23,14 +22,12 @@ interface OrderBarProps {
   changePercent?: number
   /** 외화 예수금 (USD). */
   orderableCash: number
-  /** 트레이딩 모드. AUTO_PILOT 일 때는 입력 비활성. */
-  mode: TradingMode
   /** 주문 제출 콜백. 페이지가 IPC 호출. */
   onSubmit: (payload: OrderBarSubmitPayload) => void
   /** 처리 중 표시. */
   isLoading?: boolean
   /**
-   * 명시적 비활성. AUTO_PILOT 외 사유 (e.g. prod 빌드에서 manual order IPC 미구현)
+   * 명시적 비활성. 외부 사유 (e.g. prod 빌드에서 manual order IPC 미구현)
    * 로 인해 입력 자체를 막고 안내 라벨을 표시해야 할 때 true.
    */
   disabled?: boolean
@@ -61,12 +58,8 @@ const MAX_LIMIT_PRICE = 1_000_000
  *  4. ord-calc       예상 체결액 + 예수금
  *  5. ord-actions    즉시 체결/지정가 토글 + 주문 버튼
  *
- * AUTO_PILOT 가드:
- *  - 모든 입력 비활성, 주문 버튼 자리에 안내 라벨.
- *  - 신호 도착 → main 측 TradeExecutor 가 자동 실행하므로 수동 입력 불필요.
- *
  * 데이터 출처:
- *  - currentPrice / changePercent: 활성 신호 또는 fixture (TradingRoomPage 가 결정).
+ *  - currentPrice / changePercent: 실시간 시세 또는 fixture (TradingRoomPage 가 결정).
  *  - orderableCash: usePortfolioStore.
  *  - 주문 IPC 호출은 페이지 책임 — 본 컴포넌트는 onSubmit 콜백만.
  */
@@ -75,7 +68,6 @@ export default function OrderBar({
   currentPrice,
   changePercent,
   orderableCash,
-  mode,
   onSubmit,
   isLoading,
   disabled,
@@ -86,9 +78,7 @@ export default function OrderBar({
   const [isMarket, setIsMarket] = useState<boolean>(true)
   const [limitPrice, setLimitPrice] = useState<string>('')
 
-  const isAuto = mode === 'AUTO_PILOT'
-  // 입력 비활성 통합 플래그 — AUTO_PILOT (자동 실행) 또는 외부에서 명시 disabled.
-  const inputsLocked = isAuto || disabled === true
+  const inputsLocked = disabled === true
   const hasPrice = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
 
   // 예상 체결액 (즉시 체결은 현재가+버퍼 기준, 지정가는 입력가 기준).
@@ -286,15 +276,9 @@ export default function OrderBar({
           />
         )}
 
-        {isAuto ? (
-          <span className="h-9 px-4 rounded-md bg-surface-2 border border-border-subtle
-                           text-text-tertiary text-xs font-semibold inline-flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
-            AUTO 모드 — 자동 실행
-          </span>
-        ) : disabled ? (
+        {disabled ? (
           // 외부 disabled (e.g. prod 빌드에서 manual order IPC 미구현) — silent noop 대신
-          // 명시적 비활성 안내. AUTO_PILOT 분기와 동일 패턴 (시각적 disabled + 라벨).
+          // 명시적 비활성 안내 (시각적 disabled + 라벨).
           <span
             className="h-9 px-4 rounded-md bg-surface-2 border border-border-subtle
                        text-text-tertiary text-xs font-semibold inline-flex items-center gap-2"

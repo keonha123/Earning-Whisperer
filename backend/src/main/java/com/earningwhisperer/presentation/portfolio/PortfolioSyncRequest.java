@@ -11,7 +11,6 @@ import java.util.List;
  * Contract 4b — Trading Terminal → 백엔드 실계좌 잔고 동기화 요청 DTO.
  *
  * Terminal이 KIS API에서 조회한 실계좌 데이터를 POST /api/v1/portfolio/sync 로 전송.
- * cashBalance는 룰 엔진의 매수 수량 계산(buyAmountRatio * cashBalance)에 활용된다.
  */
 @Getter
 @NoArgsConstructor

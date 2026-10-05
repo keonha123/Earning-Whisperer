@@ -5,10 +5,7 @@ import com.earningwhisperer.domain.portfolio.AssetSnapshotService;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
 import com.earningwhisperer.domain.portfolio.Position;
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsService;
 import com.earningwhisperer.domain.portfolio.PositionService;
-import com.earningwhisperer.domain.portfolio.TradingMode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,65 +21,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/portfolio")
 @RequiredArgsConstructor
-public class PortfolioSettingsController {
+public class PortfolioController {
 
-    private final PortfolioSettingsService portfolioSettingsService;
     private final PositionService positionService;
     private final BrokerAccountService brokerAccountService;
     private final AssetSnapshotService assetSnapshotService;
-
-    @GetMapping("/settings")
-    public ResponseEntity<PortfolioSettingsResponse> getSettings(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
-        Double activeCash = brokerAccountService.getActive(userId)
-                .map(BrokerAccount::getCashBalance)
-                .orElse(null);
-        return ResponseEntity.ok(PortfolioSettingsResponse.from(
-                portfolioSettingsService.getSettings(userId), activeCash));
-    }
-
-    @PutMapping("/settings")
-    public ResponseEntity<PortfolioSettingsResponse> updateSettings(
-            Authentication auth,
-            @Valid @RequestBody PortfolioSettingsUpdateRequest request) {
-        Long userId = (Long) auth.getPrincipal();
-        PortfolioSettings updated = portfolioSettingsService.updateSettings(
-                userId,
-                request.getBuyAmountRatio(),
-                request.getMaxPositionRatio(),
-                request.getCooldownMinutes(),
-                request.getAiScoreThreshold(),
-                request.getTradingMode()
-        );
-        Double activeCash = brokerAccountService.getActive(userId)
-                .map(BrokerAccount::getCashBalance)
-                .orElse(null);
-        return ResponseEntity.ok(PortfolioSettingsResponse.from(updated, activeCash));
-    }
-
-    /**
-     * 응답 DTO — entity 의 user 가 LAZY proxy 라 Jackson 직렬화 실패하던 문제 회피.
-     * cashBalance 는 활성 BrokerAccount 의 값을 노출 (사용자 단위 룰 설정 + 활성 계정 잔고 합쳐서 표시).
-     */
-    public record PortfolioSettingsResponse(
-            Double buyAmountRatio,
-            Double maxPositionRatio,
-            Integer cooldownMinutes,
-            Double aiScoreThreshold,
-            TradingMode tradingMode,
-            Double cashBalance
-    ) {
-        static PortfolioSettingsResponse from(PortfolioSettings s, Double activeCashBalance) {
-            return new PortfolioSettingsResponse(
-                    s.getBuyAmountRatio(),
-                    s.getMaxPositionRatio(),
-                    s.getCooldownMinutes(),
-                    s.getAiScoreThreshold(),
-                    s.getTradingMode(),
-                    activeCashBalance
-            );
-        }
-    }
 
     /**
      * Contract 4b — Trading Terminal 실계좌 잔고 동기화.

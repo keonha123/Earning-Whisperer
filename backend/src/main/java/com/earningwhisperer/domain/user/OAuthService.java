@@ -3,9 +3,6 @@ package com.earningwhisperer.domain.user;
 import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
-import com.earningwhisperer.domain.portfolio.TradingMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,7 +25,6 @@ import java.util.UUID;
 public class OAuthService {
 
     private final UserRepository userRepository;
-    private final PortfolioSettingsRepository portfolioSettingsRepository;
     private final BrokerAccountService brokerAccountService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
@@ -63,17 +59,7 @@ public class OAuthService {
                 sentinelPassword);
         User saved = userRepository.save(newUser);
 
-        PortfolioSettings defaultSettings = PortfolioSettings.builder()
-                .user(saved)
-                .buyAmountRatio(0.1)
-                .maxPositionRatio(0.3)
-                .cooldownMinutes(5)
-                .aiScoreThreshold(0.6)
-                .tradingMode(TradingMode.MANUAL)
-                .build();
-        portfolioSettingsRepository.save(defaultSettings);
-
-        // 신규 가입 시 KIS 모의 BrokerAccount 자동 생성 + 활성화 — fail-safe HOLD 방지
+        // 신규 가입 시 KIS 모의 BrokerAccount 자동 생성 + 활성화
         BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), AccountType.KIS_PAPER);
         brokerAccountService.activateIfFirst(saved.getId(), defaultAccount.getId());
 

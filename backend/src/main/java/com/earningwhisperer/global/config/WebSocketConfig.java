@@ -18,7 +18,6 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  *
  * 구독 예시:
  *   Public  → stompClient.subscribe('/topic/live/NVDA', handler)
- *   Private → stompClient.subscribe('/user/queue/signals', handler)  [Trading Terminal 전용]
  */
 @Configuration
 @EnableWebSocketMessageBroker

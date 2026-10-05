@@ -26,7 +26,7 @@ const PLANS = [
     features: [
       "Free 플랜 전체 포함",
       "EMA 기반 BUY/SELL 매매 신호",
-      "AUTO_PILOT 자동매매 모드",
+      "분석 화면에서 직접 주문",
       "포트폴리오 연동 신호 최적화",
     ],
     cta: "Pro 시작하기",

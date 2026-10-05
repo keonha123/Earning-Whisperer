@@ -98,32 +98,6 @@ class TradeRepositoryTest {
     }
 
     @Test
-    @DisplayName("findByBrokerAccountIdAndStatusAndCreatedAtAfter - threshold 이후 PENDING 만 반환")
-    void findByBrokerAccountIdAndStatusAndCreatedAtAfter_미만료_PENDING_반환() {
-        // Arrange — PENDING 2건 저장 (현재 시각 기준)
-        long brokerAccountId = 100L;
-        tradeRepository.save(buildTrade(user, brokerAccountId, "NVDA", TradeAction.BUY));
-        tradeRepository.save(buildTrade(user, brokerAccountId, "TSLA", TradeAction.SELL));
-
-        LocalDateTime threshold = LocalDateTime.now().minusSeconds(30);
-
-        // Act
-        List<Trade> result = tradeRepository
-                .findByBrokerAccountIdAndStatusAndCreatedAtAfter(brokerAccountId, TradeStatus.PENDING, threshold);
-
-        // Assert — threshold 이후에 만들어졌으므로 모두 반환
-        assertThat(result).hasSize(2);
-
-        // Act2 — threshold 가 미래이면 결과 없음
-        List<Trade> empty = tradeRepository
-                .findByBrokerAccountIdAndStatusAndCreatedAtAfter(brokerAccountId, TradeStatus.PENDING,
-                        LocalDateTime.now().plusMinutes(1));
-
-        // Assert
-        assertThat(empty).isEmpty();
-    }
-
-    @Test
     @DisplayName("findByIdForUpdate - 정상 row 반환 / 없는 id 면 empty")
     void findByIdForUpdate_정상_row_반환_없는_id면_empty() {
         // Arrange
@@ -164,16 +138,13 @@ class TradeRepositoryTest {
     }
 
     @Test
-    @DisplayName("expirePendingBefore - 수동 주문은 자동 TTL 로는 만료되지 않는다")
-    void expirePendingBefore_수동주문은_자동TTL_대상아님() {
-        // 수동 주문(orderRatio null)은 이미 증권사에 접수돼 체결을 기다리는 주문이다.
-        // 자동 명령의 짧은 TTL(30초) 로 만료시키면 살아 있는 지정가 주문이 "실패" 로 뜬다.
+    @DisplayName("expirePendingBefore - threshold 이후에 생성된 PENDING 은 만료되지 않는다")
+    void expirePendingBefore_threshold_이후_PENDING_은_유지() {
+        // 체결을 기다리는 수동 주문은 TTL(기본 24시간) 안에서는 PENDING 으로 남아야 한다.
         Trade manual = tradeRepository.save(buildTrade(user, 100L, "WMT", TradeAction.BUY));
         Long manualId = manual.getId();
 
-        // autoThreshold 는 미래(= 만료 대상), manualThreshold 는 과거(= 대상 아님)
-        int affected = tradeRepository.expirePendingBefore(
-                LocalDateTime.now().plusMinutes(1), LocalDateTime.now().minusDays(1));
+        int affected = tradeRepository.expirePendingBefore(LocalDateTime.now().minusDays(1));
 
         assertThat(affected).isZero();
         assertThat(tradeRepository.findById(manualId).orElseThrow().getStatus())
@@ -181,30 +152,14 @@ class TradeRepositoryTest {
     }
 
     @Test
-    @DisplayName("expirePendingBefore - 수동 주문도 긴 TTL 이 지나면 만료된다 (고아 row 방지)")
-    void expirePendingBefore_수동주문도_긴TTL로_만료() {
-        // 만료 대상에서 아예 빼면 영구 PENDING 고아가 된다 — 수동 주문에는 콜백 경로가
-        // 사실상 없어 아무도 종결시킬 수 없었다. 긴 TTL 로 결국 정리되어야 한다.
-        Trade manual = tradeRepository.save(buildTrade(user, 100L, "WMT", TradeAction.BUY));
-        Long manualId = manual.getId();
-
-        int affected = tradeRepository.expirePendingBefore(
-                LocalDateTime.now().plusMinutes(1), LocalDateTime.now().plusMinutes(1));
-
-        assertThat(affected).isEqualTo(1);
-        assertThat(tradeRepository.findById(manualId).orElseThrow().getStatus())
-                .isEqualTo(TradeStatus.EXPIRED);
-    }
-
-    @Test
-    @DisplayName("expirePendingBefore - threshold 이전 PENDING 만 EXPIRED 로 일괄 update")
+    @DisplayName("expirePendingBefore - threshold 이전 PENDING 만 EXPIRED 로 일괄 update (고아 row 방지)")
     void expirePendingBefore_PENDING_만_EXPIRED로_전환() {
-        // Arrange — 자동매매 명령은 orderRatio 를 갖는다 (createPendingTrade 가 채운다).
-        Trade pending = tradeRepository.save(buildAutoTrade(user, 100L, "NVDA", TradeAction.BUY));
+        // Arrange
+        Trade pending = tradeRepository.save(buildTrade(user, 100L, "NVDA", TradeAction.BUY));
         Long pendingId = pending.getId();
 
         // Act — 미래 threshold 면 모두 만료 대상
-        int affected = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1), LocalDateTime.now().plusMinutes(1));
+        int affected = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1));
 
         // Assert — UPDATE row 수 + DB 상태 검증
         assertThat(affected).isEqualTo(1);
@@ -212,24 +167,9 @@ class TradeRepositoryTest {
         assertThat(reloaded.getStatus()).isEqualTo(TradeStatus.EXPIRED);
 
         // Act2 — 이미 EXPIRED 면 두 번째 호출은 0 (멱등)
-        int second = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1), LocalDateTime.now().plusMinutes(1));
+        int second = tradeRepository.expirePendingBefore(LocalDateTime.now().plusMinutes(1));
 
         assertThat(second).isZero();
-    }
-
-    /** 자동매매 명령 — orderRatio/aiScore 를 갖는다. TTL 만료 대상. */
-    private Trade buildAutoTrade(User owner, long brokerAccountId, String ticker, TradeAction side) {
-        return Trade.builder()
-                .user(owner)
-                .brokerAccountId(brokerAccountId)
-                .ticker(ticker)
-                .side(side)
-                .orderType(OrderType.MARKET)
-                .orderQty(10)
-                .price(0.0)
-                .orderRatio(0.1)
-                .aiScore(0.8)
-                .build();
     }
 
     private Trade buildTrade(User owner, String ticker, TradeAction side) {

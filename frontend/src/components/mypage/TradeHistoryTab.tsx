@@ -47,7 +47,7 @@ export default function TradeHistoryTab({ trades }: TradeHistoryTabProps) {
           </svg>
         </div>
         <p className="text-sm font-medium text-gray-500">아직 거래 내역이 없습니다</p>
-        <p className="mt-1 text-xs text-gray-600">AUTO_PILOT 모드로 매매 신호를 실행하면 여기에 기록됩니다</p>
+        <p className="mt-1 text-xs text-gray-600">Trading Terminal에서 주문하면 여기에 기록됩니다</p>
       </m.div>
     );
   }

@@ -243,25 +243,6 @@ class TradeTest {
     }
 
     @Test
-    @DisplayName("orderRatio/aiScore 가 builder 로 보존된다")
-    void builder_orderRatio_aiScore_보존() {
-        Trade trade = Trade.builder()
-                .user(user)
-                .brokerAccountId(100L)
-                .ticker("NVDA")
-                .side(TradeAction.BUY)
-                .orderType(OrderType.MARKET)
-                .orderQty(0)
-                .price(0.0)
-                .orderRatio(0.1)
-                .aiScore(0.85)
-                .build();
-
-        assertThat(trade.getOrderRatio()).isEqualTo(0.1);
-        assertThat(trade.getAiScore()).isEqualTo(0.85);
-    }
-
-    @Test
     @DisplayName("Builder 로 넘긴 brokerOrderId 는 PENDING 상태에서도 보존된다")
     void builder_brokerOrderId_보존() {
         // 미체결 주문의 증권사 주문번호를 버리면 체결 확인/취소를 위해 주문을 다시

@@ -10,7 +10,7 @@ import { useMarketIndicesStore } from '../useMarketIndicesStore'
 
 /**
  * 로그아웃(useUserStore.clear()) 시 사용자 데이터가 남아있는 store 가 없어야 한다.
- * 재로그인 시 이전 계정의 잔여 상태(보유종목/신호/시세/트랜스크립트 등)가 노출되는 것을 막는다.
+ * 재로그인 시 이전 계정의 잔여 상태(보유종목/시세/트랜스크립트 등)가 노출되는 것을 막는다.
  */
 describe('useUserStore.clear() — 로그아웃 전체 store 리셋', () => {
   beforeEach(() => {
@@ -19,7 +19,6 @@ describe('useUserStore.clear() — 로그아웃 전체 store 리셋', () => {
 
   it('user 상태를 초기화한다', () => {
     useUserStore.getState().setUser({ id: 1, email: 'a@b.c', nickname: 'nick', role: 'PRO' })
-    useUserStore.getState().setSettings({ tradingMode: 'AUTO_PILOT', aiScoreThreshold: 0.9 })
     useUserStore.getState().setAccountType('KIS_REAL')
 
     useUserStore.getState().clear()
@@ -30,47 +29,14 @@ describe('useUserStore.clear() — 로그아웃 전체 store 리셋', () => {
     expect(s.nickname).toBeNull()
     expect(s.plan).toBe('FREE')
     expect(s.accountType).toBeNull()
-    expect(s.settings.tradingMode).toBe('MANUAL')
-    expect(s.settings.aiScoreThreshold).toBe(0.6)
   })
 
   it('useTradingStore 를 초기화한다', () => {
-    useTradingStore.getState().setMode('AUTO_PILOT')
-    useTradingStore.getState().forceManual('연결 끊김')
-    useTradingStore.getState().receiveSignal({
-      trade_id: 't-1',
-      action: 'BUY',
-      order_ratio: 0.1,
-      ticker: 'NVDA',
-      ai_score: 0.9,
-    })
-    useTradingStore.getState().setPendingConfirm({
-      trade_id: 't-1',
-      action: 'BUY',
-      order_ratio: 0.1,
-      ticker: 'NVDA',
-      ai_score: 0.9,
-    })
-    useTradingStore.getState().setLastExecutedTrade({
-      tradeId: 't-1',
-      status: 'EXECUTED',
-      orderId: 'o-1',
-      executedPrice: 100,
-      executedQty: 1,
-      errorMessage: null,
-    })
     useTradingStore.getState().setSession(true, 'NVDA')
 
     useUserStore.getState().clear()
 
     const s = useTradingStore.getState()
-    expect(s.mode).toBe('MANUAL')
-    expect(s.isForcedManual).toBe(false)
-    expect(s.forcedManualReason).toBeNull()
-    expect(s.activeSignal).toBeNull()
-    expect(s.pendingConfirm).toBeNull()
-    expect(s.lastExecutedTrade).toBeNull()
-    expect(s.signalHistory).toEqual([])
     expect(s.isSessionActive).toBe(false)
     expect(s.sessionTicker).toBeNull()
   })

@@ -164,7 +164,6 @@ void testFindByEmail()
 ```
 UserRepositoryTest.java
 TradeTest.java
-PortfolioSettingsTest.java
 ```
 
 ---
@@ -191,7 +190,6 @@ PortfolioSettingsTest.java
 | `TradeTest` | Builder 초기값 | `status=PENDING`, `executedQty=0` |
 | `TradeTest` | `executed()` | `status=EXECUTED`, `executedQty`, `brokerOrderId` 설정 |
 | `TradeTest` | `failed()` | `status=FAILED` |
-| `PortfolioSettingsTest` | `update()` | 모든 설정 필드 변경 반영 |
 
 ### Repository 슬라이스 테스트 (`@DataJpaTest`)
 
@@ -199,8 +197,5 @@ PortfolioSettingsTest.java
 |--------|--------|---------|
 | `UserRepositoryTest` | `findByEmail` | 존재/미존재 케이스 |
 | `UserRepositoryTest` | `existsByEmail` | true/false 케이스 |
-| `PortfolioSettingsRepositoryTest` | `findByUserId` | User 저장 후 설정 조회 |
-| `SignalHistoryRepositoryTest` | `findByUserIdAndTickerOrderByCreatedAtDesc` | ticker 필터링 + 정렬 |
-| `SignalHistoryRepositoryTest` | `findByUserIdOrderByCreatedAtDesc` | 전체 조회 + 정렬 |
 | `TradeRepositoryTest` | `findByUserIdOrderByCreatedAtDesc` | 정렬 검증 |
 | `TradeRepositoryTest` | `findByUserIdAndTickerOrderByCreatedAtDesc` | ticker 필터링 |

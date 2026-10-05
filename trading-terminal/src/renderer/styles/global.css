@@ -111,21 +111,6 @@
   .badge-buy     { @apply badge-base bg-buy/20 text-buy text-sm px-3 py-1; }
   .badge-sell    { @apply badge-base bg-sell/20 text-sell text-sm px-3 py-1; }
 
-  /* 모드 탭 — 모드별 색상 체계 */
-  .mode-tab {
-    @apply relative flex-1 flex flex-col items-center justify-center gap-1
-           py-2 px-2 rounded-md text-xs font-medium
-           transition-all duration-100 cursor-pointer
-           border border-transparent;
-  }
-  .mode-tab-manual-active   { @apply mode-tab bg-surface-2 text-text-primary border-border-strong; }
-  .mode-tab-manual-inactive { @apply mode-tab bg-transparent text-text-secondary hover:bg-surface-2 hover:text-text-primary; }
-  .mode-tab-semi-active     { @apply mode-tab bg-warning/10 text-warning border-warning/30; }
-  .mode-tab-semi-inactive   { @apply mode-tab bg-transparent text-text-secondary hover:bg-warning/10 hover:text-warning; }
-  .mode-tab-auto-active     { @apply mode-tab bg-buy/10 text-buy border-buy/30; }
-  .mode-tab-auto-inactive   { @apply mode-tab bg-transparent text-text-secondary hover:bg-buy/10 hover:text-buy; }
-  .mode-tab-locked          { @apply mode-tab bg-transparent text-text-disabled cursor-not-allowed; }
-
   /* StatusBar 항목 */
   .status-item { @apply flex items-center gap-1.5 text-xs; }
   .status-dot  { @apply w-1.5 h-1.5 rounded-full; }
@@ -143,18 +128,6 @@
   }
   .nav-item-active { @apply nav-item bg-surface-2 text-text-primary; }
   .nav-item-active::before { @apply opacity-100; }
-
-  /* 신호 피드 행 */
-  .signal-row        { @apply flex items-center gap-3 px-4 py-3 border-b border-border-subtle hover:bg-surface-2 transition-colors duration-100; }
-  .signal-row-latest { @apply signal-row bg-surface-2 animate-slide-in-top; }
-
-  /* 확인 다이얼로그 */
-  .confirm-dialog-overlay { @apply fixed inset-0 bg-black/70 flex items-center justify-center z-[400] animate-fade-in; }
-  .confirm-dialog-card    { @apply w-96 rounded-xl bg-surface-1 shadow-dialog border border-sell/30 p-6 animate-slide-in-top; }
-  .confirm-dialog-card-urgent { @apply confirm-dialog-card animate-border-pulse; }
-
-  /* Forced Manual 배너 */
-  .forced-manual-banner { @apply w-full px-6 py-2.5 bg-sell/20 border-b border-sell/40 flex items-center gap-3 text-sm text-sell; }
 
   /* HistoryPage 테이블 행 left accent */
   .table-row-accent { position: relative; }
