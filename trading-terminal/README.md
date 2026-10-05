@@ -213,8 +213,6 @@ WebSocket URL은 `BACKEND_URL`에서 자동 파생됩니다: `http://...` → `w
 | 문서 | 설명 |
 |------|------|
 | [`docs/api-spec.md`](../docs/api-spec.md) | 서비스 간 API & 데이터 컨트랙트 전체 명세 |
-| [`docs/trading-terminal-architecture.md`](docs/trading-terminal-architecture.md) | Electron 기술 아키텍처 상세 |
-| [`docs/trading-terminal-prd.md`](docs/trading-terminal-prd.md) | 제품 요구사항 정의서 (PRD) |
-| [`docs/trading-terminal-ui-spec.md`](docs/trading-terminal-ui-spec.md) | UI 컴포넌트 스펙 |
-| [`docs/trading-terminal-ux-spec.md`](docs/trading-terminal-ux-spec.md) | UX 플로우 스펙 |
-| [`docs/requirements.md`](docs/requirements.md) | Trading Terminal 요구사항 정의서 (원문) |
+| [`docs/developer/architecture.md`](../docs/developer/architecture.md) | 시스템 구성과 터미널 프로세스 구조 |
+| [`docs/install/desktop-app.md`](../docs/install/desktop-app.md) | 설치본 설치와 업데이트 |
+| [`docs/features/`](../docs/features/) | 기능별 사용 안내 |
