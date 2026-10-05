@@ -1,0 +1,14 @@
+# 모듈별 담당자입니다. PR 이 해당 경로를 고치면 담당자가 리뷰어로 자동 지정됩니다.
+
+/backend/           @keonha123
+/trading-terminal/  @keonha123
+/infra/             @keonha123
+
+/ai-engine/         @james10419 @yytss3
+
+/data_pipeline/     @dheorb
+
+/docs/              @keonha123
+/.github/           @keonha123
+/README.md          @keonha123
+/CONTRIBUTING.md    @keonha123
