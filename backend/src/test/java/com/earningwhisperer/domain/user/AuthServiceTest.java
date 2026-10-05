@@ -3,12 +3,9 @@ package com.earningwhisperer.domain.user;
 import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,7 +25,6 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     @Mock private UserRepository userRepository;
-    @Mock private PortfolioSettingsRepository portfolioSettingsRepository;
     @Mock private BrokerAccountService brokerAccountService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private RefreshTokenService refreshTokenService;
@@ -52,11 +48,6 @@ class AuthServiceTest {
         authService.signup("test@example.com", "password123", "테스터");
 
         // Assert
-        ArgumentCaptor<PortfolioSettings> settingsCaptor = ArgumentCaptor.forClass(PortfolioSettings.class);
-        verify(portfolioSettingsRepository).save(settingsCaptor.capture());
-        PortfolioSettings saved = settingsCaptor.getValue();
-        assertThat(saved.getBuyAmountRatio()).isEqualTo(0.1);
-        assertThat(saved.getCooldownMinutes()).isEqualTo(5);
         // KIS-paper BrokerAccount 자동 생성 + 활성화 검증
         verify(brokerAccountService).ensure(eq(42L), eq(AccountType.KIS_PAPER));
         verify(brokerAccountService).activateIfFirst(eq(42L), eq(100L));

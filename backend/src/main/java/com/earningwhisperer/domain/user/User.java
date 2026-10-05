@@ -40,8 +40,8 @@ public class User extends BaseEntity {
 
     /**
      * 사용자가 현재 활성화한 BrokerAccount 식별자.
-     * RuleEngine 평가 / PENDING Trade 생성 / 거래내역 조회 등이 이 값에 따라 분기된다.
-     * null = 아직 BrokerAccount 등록 / 활성화 안 됨 → SignalService 가 fail-safe HOLD.
+     * 수동 주문 기록 / 잔고 동기화 / 거래내역 조회 등이 이 값에 따라 분기된다.
+     * null = 아직 BrokerAccount 등록 / 활성화 안 됨.
      * FK 직접 매핑 대신 Long 으로 단순화 (순환 의존 회피 + 활성 전환 시 변경 빈도 낮음).
      */
     @Column(name = "active_broker_account_id")

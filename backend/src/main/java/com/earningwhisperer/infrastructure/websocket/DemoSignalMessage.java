@@ -8,7 +8,6 @@ import lombok.Getter;
  * Contract 4.1: Backend → Frontend WebSocket 메시지 포맷.
  * Topic: /topic/live/demo (쇼케이스 데모룸 전용)
  *
- * LiveSignalMessage(/topic/live/{ticker})와 달리
  * is_session_end 필드를 포함하여 루프 재시작 시점을 프론트엔드에 알린다.
  */
 @Getter
