@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "EarningWhisperer",
-  description: "실시간 어닝콜 AI 분석 및 모의 자동매매 시스템",
+  description: "실시간 어닝콜 AI 분석 플랫폼",
 };
 
 export default function RootLayout({

@@ -47,7 +47,7 @@ export default function AuthLeftPanel() {
       <div className="max-w-sm">
         <h1 className="text-3xl font-bold text-white">EarningWhisperer</h1>
         <p className="mt-2 text-base text-gray-400">
-          실시간 어닝콜 AI 분석 및 모의 자동매매 시스템
+          실시간 어닝콜 AI 분석 플랫폼
         </p>
 
         <div className="mt-10 space-y-5">
