@@ -222,7 +222,7 @@ EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가
 ./gradlew test
 ```
 
-외부 의존성을 격리합니다 — MySQL은 H2로, Redis/KIS API는 `@MockBean`으로 대체합니다. 테스트 전략 상세는 [`docs/testing-guidelines.md`](../docs/testing-guidelines.md)를 참조하세요.
+외부 의존성을 격리합니다 — MySQL은 H2로, Redis/KIS API는 `@MockBean`으로 대체합니다. 테스트 실행과 작성 관례는 [`docs/developer/testing.md`](../docs/developer/testing.md)에 있습니다.
 
 ---
 
@@ -232,5 +232,5 @@ EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가
 |------|------|
 | [`docs/api-spec.md`](../docs/api-spec.md) | 서비스 간 API & 데이터 컨트랙트 전체 명세 |
 | [`docs/db-schema.md`](../docs/db-schema.md) | DB 스키마 상세 (테이블, 인덱스, 비즈니스 규칙) |
-| [`docs/testing-guidelines.md`](../docs/testing-guidelines.md) | 테스트 전략 및 작성 규칙 |
-| [`docs/requirements.md`](docs/requirements.md) | 백엔드 요구사항 정의서 (원문) |
+| [`docs/developer/architecture.md`](../docs/developer/architecture.md) | 시스템 구성과 주요 흐름 |
+| [`docs/developer/testing.md`](../docs/developer/testing.md) | 테스트 실행과 작성 관례 |
