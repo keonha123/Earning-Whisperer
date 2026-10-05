@@ -458,6 +458,70 @@ HTTPS 를 도입하며 값을 바꾸거나 새로 넣은 것이 둘 있습니다
 로컬 개발에서는 둘 다 필요하지 않습니다. 로컬은 평문이어도 `BackendClient.ts` 가 `localhost` 를
 보안 채널로 취급하고, 바인딩을 좁힐 이유도 없습니다.
 
+### 5-4. 매매 신호 경로 제거에 따른 스키마 정리 (#127, 1회)
+
+백엔드는 `ddl-auto: update` 라 엔티티에서 뺀 컬럼과 테이블을 스스로 지우지 않습니다. #127 에서
+매매 신호 경로를 제거하면서 쓰지 않게 된 것을 서버 DB 에서 직접 지웁니다.
+
+| 대상 | 내용 |
+|---|---|
+| `trades.signal_id` | `signal_history` 를 가리키는 외래키 컬럼 |
+| `trades.order_ratio`, `trades.ai_score` | 자동 명령 복원용 값 |
+| `signal_history` 테이블 | 룰 엔진 신호 이력 |
+| `portfolio_settings` 테이블 | 매매 모드와 룰 엔진 설정 |
+
+새 백엔드는 이 컬럼과 테이블을 읽지도 쓰지도 않습니다. 남은 컬럼은 모두 nullable 이라 배포와
+정리 사이에 시간이 떠도 동작에 문제가 없습니다. 반대로 **정리를 배포보다 먼저 하면 안 됩니다** —
+떠 있는 옛 백엔드가 지운 컬럼을 찾다가 실패합니다. 정리한 뒤 옛 백엔드로 되돌려야 한다면 1단계
+백업에서 복원합니다. 옛 백엔드는 빠진 테이블을 빈 상태로 다시 만들어 기동은 되지만, 기존 사용자의
+설정 행이 없어 설정 조회가 실패합니다.
+
+거래 행은 그대로 남습니다. 자동 경로로 생긴 거래도 종목 · 수량 · 체결가 · 상태는 유지되고,
+어떤 신호에서 나왔는지에 대한 연결만 사라집니다.
+
+```bash
+# 1. 백업 — DROP 은 되돌릴 수 없습니다
+ssh ubuntu@43.200.26.70 \
+  'docker exec ew-mysql sh -c '"'"'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" earning_whisperer'"'"' \
+   > ~/backup-before-127-$(date +%Y%m%d).sql && tail -1 ~/backup-before-127-*.sql'
+# 마지막 줄이 "-- Dump completed on ..." 이어야 백업이 끝까지 된 것입니다
+
+# 2. 새 백엔드 배포
+./infra/deploy.sh backend
+
+# 3. 서버에서 MySQL 접속
+ssh ubuntu@43.200.26.70
+docker exec -it ew-mysql sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" earning_whisperer'
+```
+
+```sql
+-- 4. 외래키 이름 확인 — Hibernate 가 자동 생성한 이름이라 환경마다 다릅니다
+SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+ WHERE TABLE_SCHEMA = 'earning_whisperer' AND TABLE_NAME = 'trades'
+   AND COLUMN_NAME = 'signal_id' AND REFERENCED_TABLE_NAME IS NOT NULL;
+
+-- 관망(HOLD) 주문 방향을 없앴으므로 trades 에 HOLD 가 없어야 합니다 (0이어야 합니다)
+SELECT COUNT(*) FROM trades WHERE side = 'HOLD';
+
+-- 두 테이블을 가리키는 다른 외래키가 없는지도 확인합니다 (0행이어야 합니다)
+SELECT TABLE_NAME, CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+ WHERE REFERENCED_TABLE_SCHEMA = 'earning_whisperer'
+   AND REFERENCED_TABLE_NAME IN ('signal_history', 'portfolio_settings')
+   AND TABLE_NAME <> 'trades';
+
+-- 5. 외래키부터 지우고 컬럼 · 테이블을 지웁니다
+--    (4의 첫 조회가 0행이면 외래키가 없는 것이므로 첫 줄은 건너뜁니다)
+ALTER TABLE trades DROP FOREIGN KEY <4에서 확인한 이름>;
+-- 매매 신호 명령으로 생겨 아직 PENDING 인 행은 먼저 만료시킵니다. 30초 TTL 이 없어져 그대로 두면 24시간 남습니다
+UPDATE trades SET status = 'EXPIRED' WHERE status = 'PENDING' AND order_ratio IS NOT NULL;
+ALTER TABLE trades DROP COLUMN signal_id, DROP COLUMN order_ratio, DROP COLUMN ai_score;
+DROP TABLE signal_history;
+DROP TABLE portfolio_settings;
+```
+
+정리한 뒤 회원가입, 수동 주문, 체결 내역 조회가 되는지 확인합니다. 서버 `backend.env` 에
+`TRADE_PENDING_TTL_SECONDS` 가 있다면 더 이상 읽지 않으므로 지워도 됩니다.
+
 ---
 
 ## 6. 근거 데이터 (Qdrant)

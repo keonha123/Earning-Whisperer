@@ -3,11 +3,9 @@
 ## ERD 개요
 
 ```
-users (1) ──────────────────── (1) portfolio_settings
+users
   │
-  ├── (1:N) ──── signal_history
-  │
-  ├── (1:N) ──── trades ──── (N:1) signal_history
+  ├── (1:N) ──── trades
   │
   └── (1:N) ──── watchlist_items ──── (N:1) stocks ──── (1:N) earnings_calendar
 ```
@@ -32,22 +30,9 @@ users (1) ──────────────────── (1) portf
 
 ---
 
-### `portfolio_settings`
+### `portfolio_settings` (제거됨)
 
-사용자별 리스크 관리 설정 및 자체 추정 장부(Internal Ledger). User와 1:1 관계.
-
-| 컬럼               | 타입        | 제약                        | 설명                                      |
-| ------------------ | ----------- | --------------------------- | ----------------------------------------- |
-| id                 | BIGINT      | PK, AUTO_INCREMENT          | 설정 ID                                   |
-| user_id            | BIGINT      | FK(users), UNIQUE, NOT NULL | 소유 사용자                               |
-| buy_amount_ratio   | DOUBLE      | NOT NULL                    | 1회 매수 시 예수금 사용 비율 (0.0~1.0)    |
-| max_position_ratio | DOUBLE      | NOT NULL                    | 단일 종목 최대 보유 비중 (0.0~1.0)        |
-| cooldown_minutes   | INT         | NOT NULL                    | 동일 종목 재진입 대기 시간 (분)           |
-| ema_threshold      | DOUBLE      | NOT NULL                    | BUY/SELL 실행 임계치 (예: 0.6)            |
-| trading_mode       | VARCHAR(20) | NOT NULL                    | `MANUAL` / `SEMI_AUTO` / `AUTO_PILOT`     |
-| cash_balance       | DOUBLE      | NULL                        | Trading Terminal이 동기화한 실계좌 예수금 |
-| created_at         | DATETIME    | NOT NULL                    | 생성 일시                                 |
-| updated_at         | DATETIME    | NOT NULL                    | 수정 일시                                 |
+매매 모드와 룰 엔진 설정을 담던 테이블입니다. #127 에서 매매 신호 경로를 제거하면서 엔티티를 지웠습니다. 서버 DB 에서 지우는 절차는 `infra/DEPLOY.md` 5-4 에 있습니다.
 
 ---
 
@@ -100,27 +85,9 @@ S&P 500 구성 종목 마스터 데이터. FMP API를 통해 분기 1회 동기�
 
 ---
 
-### `signal_history`
+### `signal_history` (제거됨)
 
-AI가 생성한 매매 시그널 이력
-
-| 컬럼             | 타입        | 제약                | 설명                                       |
-| ---------------- | ----------- | ------------------- | ------------------------------------------ |
-| id               | BIGINT      | PK, AUTO_INCREMENT  | 시그널 ID                                  |
-| user_id          | BIGINT      | FK(users), NOT NULL | 소유 사용자                                |
-| ticker           | VARCHAR(20) | NOT NULL            | 종목 심볼                                  |
-| raw_score        | DOUBLE      | NOT NULL            | AI 원시 감성 점수 (-1.0~+1.0)              |
-| ema_score        | DOUBLE      | NOT NULL            | 백엔드 계산 EMA 누적 점수                  |
-| rationale        | TEXT        | NOT NULL            | LLM이 생성한 매매 근거 해설                |
-| text_chunk       | TEXT        | NOT NULL            | 분석에 사용된 STT 원문 텍스트              |
-| action           | VARCHAR(10) | NOT NULL            | `BUY` / `SELL` / `HOLD`                    |
-| signal_timestamp | BIGINT      | NOT NULL            | AI 분석 완료 시점 (Unix Epoch Second, UTC) |
-| created_at       | DATETIME    | NOT NULL            | 저장 일시                                  |
-
-**인덱스:**
-
-- `idx_signal_user_ticker (user_id, ticker)` — 종목별 시그널 조회
-- `idx_signal_created_at (created_at)` — 시간 범위 조회
+룰 엔진이 만든 매매 시그널 이력을 담던 테이블입니다. #127 에서 엔티티를 지웠습니다. 서버 DB 정리 절차는 `infra/DEPLOY.md` 5-4 에 있습니다.
 
 ---
 
@@ -132,11 +99,10 @@ AI가 생성한 매매 시그널 이력
 | --------------- | ----------- | ------------------------ | ----------------------------------------------- |
 | id              | BIGINT      | PK, AUTO_INCREMENT       | 거래 ID                                         |
 | user_id         | BIGINT      | FK(users), NOT NULL      | 소유 사용자                                     |
-| signal_id       | BIGINT      | FK(signal_history), NULL | 이 거래를 유발한 시그널 (없으면 NULL)           |
 | ticker          | VARCHAR(20) | NOT NULL                 | 종목 심볼                                       |
 | side            | VARCHAR(10) | NOT NULL                 | `BUY` / `SELL`                                  |
 | order_type      | VARCHAR(10) | NOT NULL                 | `MARKET` / `LIMIT`                              |
-| order_qty       | INT         | NOT NULL                 | 주문 수량 (백엔드 룰엔진 산출)                  |
+| order_qty       | INT         | NOT NULL                 | 주문 수량 (사용자 입력, 체결 시 체결 수량으로 갱신) |
 | price           | DOUBLE      | NOT NULL                 | 주문 단가 (시장가는 0)                          |
 | executed_qty    | INT         | NOT NULL, DEFAULT 0      | 실제 체결 수량 (Trading Terminal 콜백으로 확정) |
 | executed_price  | DOUBLE      | NULL                     | 실제 체결 단가 (Trading Terminal 콜백으로 확정) |
@@ -172,6 +138,6 @@ yfinance 기반 분기 재무제표 line item 저장 테이블.
 ## 주요 비즈니스 규칙
 
 - `trades.status`는 엔티티 메서드(`executed()`, `failed()`)를 통해서만 전환 가능. 직접 setter 금지.
-- `portfolio_settings.cash_balance`는 Trading Terminal이 보내는 Sync 데이터로만 덮어씀 — 백엔드가 자체 계산하지 않음.
+- `broker_accounts.cash_balance`는 Trading Terminal이 보내는 Sync 데이터로만 덮어씀 — 백엔드가 자체 계산하지 않음.
 - `stocks.active = false`는 S&P 500 제외 종목 표시. 실제 삭제하지 않음 (soft delete).
 - `earnings_calendar`는 Finnhub 스케줄러(`FinnhubEarningsScheduler`)가 매일 06:00 UTC에 자동 갱신. `POST /api/v1/earnings-calendar/sync`로 수동 트리거 가능 (개발/테스트용).
