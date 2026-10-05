@@ -3,15 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import TopHeader from './TopHeader'
 import LeftSidebar from './LeftSidebar'
 import StatusBar from './StatusBar'
-import ForcedManualBanner from '../common/ForcedManualBanner'
 import CompanyDrawer from '../dashboard/CompanyDrawer'
-import { useTradingStore } from '../../store/useTradingStore'
 import { useDrawerStore } from '../../store/useDrawerStore'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { isForcedManual, forcedManualReason, clearForcedManual } = useTradingStore()
   const closeDrawer = useDrawerStore((s) => s.close)
 
   // 라우터 변경 시 drawer 닫기.
@@ -26,26 +23,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       className="h-screen overflow-hidden bg-bg-base text-text-secondary"
       style={{
         display: 'grid',
-        gridTemplateRows: 'auto 48px 1fr 32px',
+        gridTemplateRows: '48px 1fr 32px',
         gridTemplateColumns: '200px 1fr',
         gridTemplateAreas: `
-          "banner  banner"
           "header  header"
           "sidebar content"
           "statusbar statusbar"
         `,
       }}
     >
-      {/* Forced Manual 배너 */}
-      {isForcedManual && (
-        <div style={{ gridArea: 'banner' }}>
-          <ForcedManualBanner
-            reason={forcedManualReason ?? ''}
-            onDismiss={clearForcedManual}
-          />
-        </div>
-      )}
-
       <div style={{ gridArea: 'header' }}>
         <TopHeader currentPath={location.pathname} />
       </div>

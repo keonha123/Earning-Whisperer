@@ -653,7 +653,7 @@ export const KisService = {
 
     // KIS는 HTTP 200으로 응답하면서 rt_cd='1' 등으로 비즈니스 실패를 보고한다.
     // 예: APBK0918 주문가능금액 부족, 시장 휴장, 종목 거래정지.
-    // throw하면 TradeExecutor.execute의 catch에서 FAILED 콜백으로 처리된다.
+    // throw하면 호출 측(수동 주문 핸들러)이 실패로 처리한다.
     if (data.rt_cd !== '0') {
       const msg = data.msg1 || data.msg_cd || '주문 거부'
       throw new Error(`KIS 주문 거부: ${msg}`)

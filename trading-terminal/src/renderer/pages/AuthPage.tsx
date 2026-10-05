@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS, isMac } from '../lib/ipc'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
-import { useTradingStore } from '../store/useTradingStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
@@ -22,22 +21,10 @@ export default function AuthPage() {
   const [step, setStep] = useState<Step>('login')
   const navigate = useNavigate()
   const { setAuthenticated, setHasCredentials } = useConnectionStore()
-  const { setUser, setSettings, setAccountType } = useUserStore()
+  const { setUser, setAccountType } = useUserStore()
 
-  async function handleLoginSuccess(user: any, settings: any, accountType?: string) {
+  async function handleLoginSuccess(user: any, accountType?: string) {
     setUser(user)
-    if (settings) {
-      setSettings({
-        tradingMode: settings.tradingMode,
-        maxBuyRatio: settings.buyAmountRatio,
-        maxHoldingRatio: settings.maxPositionRatio,
-        cooldownMinutes: settings.cooldownMinutes,
-      })
-      // 승인 판정은 useUserStore.settings.tradingMode 가 하지만 셀렉터/헤더는
-      // useTradingStore.mode 를 그린다. 여기서 동기화하지 않으면 SEMI_AUTO 사용자가
-      // 로그인 직후 셀렉터는 MANUAL 인데 승인 팝업이 뜬다.
-      useTradingStore.getState().setMode(settings.tradingMode)
-    }
     if (accountType) setAccountType(accountType as any)
 
     // VAULT_HAS 를 먼저 조회한다. 인증 상태를 먼저 켜면 조회가 실패했을 때
@@ -145,7 +132,7 @@ export default function AuthPage() {
 /* -------------------------------------------------------------------------- */
 /* LoginForm — 디자인 캔버스 기준 마크업 + 기존 IPC 호출 보존                 */
 /* -------------------------------------------------------------------------- */
-function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accountType?: string) => Promise<void> }) {
+function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string) => Promise<void> }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(true)
@@ -158,11 +145,11 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accoun
     setError(null)
     setLoading(true)
     try {
-      const result = await ipc.invoke<{ user: any; settings: any; accountType?: string }>(
+      const result = await ipc.invoke<{ user: any; accountType?: string }>(
         IPC_CHANNELS.AUTH_LOGIN,
         { email, password },
       )
-      await onSuccess(result.user, result.settings, result.accountType)
+      await onSuccess(result.user, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드의 "이메일 없음"/"비밀번호 틀림" 구분
       // 메시지를 그대로 노출하지 않고 generic 메시지로 통일.
@@ -195,11 +182,11 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, settings: any, accoun
     try {
       // Main 프로세스가 RFC 8252 Loopback 흐름으로 PKCE+state+localhost:9000 서버를 띄우고
       // 사용자의 기본 브라우저로 provider 인증 페이지를 연다. 콜백 수신 → 백엔드 교환 → 결과 반환.
-      const result = await ipc.invoke<{ user: any; settings: any; accountType?: string }>(
+      const result = await ipc.invoke<{ user: any; accountType?: string }>(
         IPC_CHANNELS.AUTH_OAUTH_START,
         { provider },
       )
-      await onSuccess(result.user, result.settings, result.accountType)
+      await onSuccess(result.user, result.accountType)
     } catch (err: any) {
       // user enumeration 방지: 백엔드 메시지를 그대로 노출하지 않고 generic 메시지로 통일
       setError('소셜 로그인에 실패했습니다. 다시 시도해 주세요.')

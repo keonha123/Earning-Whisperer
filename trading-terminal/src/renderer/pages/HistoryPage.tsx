@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { HistoryMode, HistoryRow, HistoryStatus } from '../types/tradeHistory'
+import type { HistoryRow, HistoryStatus } from '../types/tradeHistory'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import Pagination from '../components/common/Pagination'
 import SegmentedControl from '../components/common/SegmentedControl'
 import Dropdown from '../components/common/Dropdown'
-import MiniGauge from '../components/common/MiniGauge'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
 import { useConnectionStore } from '../store/useConnectionStore'
@@ -16,16 +15,14 @@ import { useUserStore } from '../store/useUserStore'
  *
  * 디자인 매칭: HistoryPage.html.
  *  - Row 1: 제목 + 요약 칩 (오늘/BUY/SELL) + 새로고침.
- *  - Row 2 (필터 바): 세그먼트(전체/BUY/SELL/실패) + 드롭다운 3개 (기간/종목/모드)
+ *  - Row 2 (필터 바): 세그먼트(전체/BUY/SELL/실패) + 드롭다운 2개 (기간/종목)
  *    + 검색 + CSV 내보내기 (noop).
- *  - Row 3 (테이블 카드): 10컬럼.
+ *  - Row 3 (테이블 카드): 8컬럼.
  *  - Footer: 총 N건 / Pagination / 페이지당 행 수.
  *
  * Trade 인터페이스 정책:
  *  - 기존 Trade 타입 (id, ticker, side, executedQty, executedPrice, status, createdAt)
- *    그대로 유지. mode/ai_score 필드는 추가하지 않는다.
- *  - mode / AI 컬럼은 백엔드가 값을 주지 않으므로 "—" 로 표시한다.
- *  - PROD 빌드: 백엔드에서 받은 Trade 만 표시, mode / AI 셀은 "—".
+ *    그대로 유지.
  *
  * 보안 메모:
  *  - CSV 내보내기는 본 PR 에서 noop. 다음 PR 에서 IPC 핸들러 (`SHELL_SAVE_CSV`)
@@ -52,7 +49,6 @@ type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 
 type SegmentId = 'all' | 'buy' | 'sell' | 'failed'
 type PeriodId = '7d' | '30d' | '90d' | 'all'
-type ModeFilterId = 'all' | 'AUTO' | 'SEMI' | 'MANUAL'
 
 export default function HistoryPage() {
   const [trades, setTrades] = useState<Trade[]>([])
@@ -63,7 +59,6 @@ export default function HistoryPage() {
   const [segment, setSegment] = useState<SegmentId>('all')
   const [period, setPeriod] = useState<PeriodId>('7d')
   const [tickerFilter, setTickerFilter] = useState<string>('all')
-  const [modeFilter, setModeFilter] = useState<ModeFilterId>('all')
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
@@ -178,7 +173,7 @@ export default function HistoryPage() {
   async function handleCsvExport() {
     const rows = filtered
     if (rows.length === 0) return
-    const headers = ['일시', '종목', '방향', '모드', '주문수량', '체결수량', '주문가', '체결가', '체결금액', '상태']
+    const headers = ['일시', '종목', '방향', '주문수량', '체결수량', '주문가', '체결가', '체결금액', '상태']
     const lines = [
       headers.join(','),
       ...rows.map((r) =>
@@ -186,7 +181,6 @@ export default function HistoryPage() {
           r.createdAt,
           r.ticker,
           r.side,
-          r.mode,
           r.orderQty ?? '',
           r.executedQty,
           r.price ?? '',
@@ -210,7 +204,6 @@ export default function HistoryPage() {
       id: t.id,
       ticker: t.ticker,
       side: t.side,
-      mode: 'MANUAL' as HistoryMode, // prod fallback — 실제 mode 정보 없음
       orderType: t.orderType ?? null,
       orderQty: t.orderQty ?? null,
       price: t.price ?? null,
@@ -218,7 +211,6 @@ export default function HistoryPage() {
       executedPrice: t.executedPrice,
       amount:
         t.executedPrice != null ? t.executedPrice * t.executedQty : null,
-      ai_score: null, // prod 에서는 AI 점수 없음
       status: (t.status === 'EXECUTED' || t.status === 'PENDING'
         ? t.status
         : 'FAILED') as HistoryStatus,
@@ -232,7 +224,6 @@ export default function HistoryPage() {
       if (segment === 'buy' && r.side !== 'BUY') return false
       if (segment === 'sell' && r.side !== 'SELL') return false
       if (segment === 'failed' && r.status !== 'FAILED') return false
-      if (modeFilter !== 'all' && r.mode !== modeFilter) return false
       if (tickerFilter !== 'all' && r.ticker !== tickerFilter) return false
       if (search.trim()) {
         const q = search.trim().toUpperCase()
@@ -240,7 +231,7 @@ export default function HistoryPage() {
       }
       return true
     })
-  }, [displayRows, segment, modeFilter, tickerFilter, search])
+  }, [displayRows, segment, tickerFilter, search])
 
   // 요약: 페이지 단위 집계. 거래가 없으면 0 이 맞다.
   const summary = useMemo(() => {
@@ -339,18 +330,6 @@ export default function HistoryPage() {
           options={tickerOptions}
           ariaLabel="종목 필터"
         />
-        <Dropdown<ModeFilterId>
-          prefix="모드:"
-          value={modeFilter}
-          onChange={setModeFilter}
-          options={[
-            { value: 'all', label: '전체' },
-            { value: 'AUTO', label: '🚀 AUTO' },
-            { value: 'SEMI', label: '⚡ SEMI' },
-            { value: 'MANUAL', label: '🛡 MANUAL' },
-          ]}
-          ariaLabel="모드 필터"
-        />
 
         <div className="ml-auto flex items-center gap-2 bg-surface-3 border border-border-strong rounded-md px-2.5 h-[30px] w-[200px]">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary">
@@ -388,11 +367,9 @@ export default function HistoryPage() {
               <col style={{ width: 130 }} />
               <col style={{ width: 78 }} />
               <col style={{ width: 72 }} />
-              <col style={{ width: 98 }} />
               <col style={{ width: 52 }} />
               <col style={{ width: 84 }} />
               <col style={{ width: 104 }} />
-              <col style={{ width: 82 }} />
               <col style={{ width: 80 }} />
               <col style={{ width: 62 }} />
             </colgroup>
@@ -401,11 +378,9 @@ export default function HistoryPage() {
                 <Th>일시 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th>종목</Th>
                 <Th>방향</Th>
-                <Th>모드</Th>
                 <Th align="right">체결수량</Th>
                 <Th align="right">체결가 <span className="opacity-50 ml-1">↕</span></Th>
                 <Th align="right">체결금액 <span className="opacity-50 ml-1">↕</span></Th>
-                <Th align="right">AI</Th>
                 <Th>상태</Th>
                 <Th align="center">액션</Th>
               </tr>
@@ -417,7 +392,7 @@ export default function HistoryPage() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-text-disabled text-xs">
+                  <td colSpan={8} className="px-4 py-12 text-center text-text-disabled text-xs">
                     조건에 맞는 거래 내역이 없습니다
                   </td>
                 </tr>
@@ -512,7 +487,7 @@ function Th({
 function SkeletonRow() {
   return (
     <tr>
-      {Array.from({ length: 10 }).map((_, j) => (
+      {Array.from({ length: 8 }).map((_, j) => (
         <td key={j} className="px-2 h-11 border-b border-border-subtle">
           <div className="h-3 bg-surface-2 rounded animate-pulse" />
         </td>
@@ -523,7 +498,6 @@ function SkeletonRow() {
 
 function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
   const isFailed = row.status === 'FAILED'
-  const showAi = import.meta.env.DEV && row.ai_score != null
 
   return (
     <tr
@@ -543,9 +517,6 @@ function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
       <td className="px-2 align-middle border-b border-border-subtle">
         <DirBadge side={row.side} />
       </td>
-      <td className="px-2 align-middle border-b border-border-subtle">
-        {import.meta.env.DEV ? <ModeBadge mode={row.mode} /> : <span className="text-text-disabled">—</span>}
-      </td>
       <td className="px-2 num text-right align-middle border-b border-border-subtle text-[12px] text-text-secondary tabular-nums">
         {row.executedQty}
       </td>
@@ -560,21 +531,6 @@ function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
         {row.amount != null
           ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : '—'}
-      </td>
-      <td className="px-2 align-middle border-b border-border-subtle text-right">
-        {showAi && row.ai_score != null ? (
-          <span className="inline-flex items-center justify-end w-full">
-            <MiniGauge
-              value={row.ai_score}
-              color={
-                row.ai_score >= 0.7 ? 'accent' : row.ai_score >= 0.5 ? 'warning' : 'neutral'
-              }
-              ariaLabel={`AI 점수 ${row.ai_score.toFixed(2)}`}
-            />
-          </span>
-        ) : (
-          <span className="text-text-disabled text-[10px]">—</span>
-        )}
       </td>
       <td className="px-2 align-middle border-b border-border-subtle">
         <StatusBadge status={row.status} reason={row.failureReason} />
@@ -601,20 +557,6 @@ function DirBadge({ side }: { side: 'BUY' | 'SELL' }) {
       }`}
     >
       {side === 'BUY' ? '▲' : '▼'} {side}
-    </span>
-  )
-}
-
-function ModeBadge({ mode }: { mode: HistoryMode }) {
-  const label =
-    mode === 'AUTO' ? '🚀 AUTO' : mode === 'SEMI' ? '⚡ SEMI' : '🛡 MANUAL'
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded
-                 text-[10px] font-semibold tracking-[0.06em] whitespace-nowrap
-                 border border-white/[0.22] text-text-primary"
-    >
-      {label}
     </span>
   )
 }
@@ -656,7 +598,6 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
     ['일시', formatDateTime(row.createdAt)],
     ['종목', row.ticker],
     ['방향', row.side],
-    ['모드', row.mode],
     ['주문유형', row.orderType ?? '—'],
     ['주문수량', row.orderQty != null ? String(row.orderQty) : '—'],
     ['주문가', row.price != null ? `$${row.price.toFixed(2)}` : '—'],
@@ -665,7 +606,6 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
     ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
     ['상태', row.status],
     ...(row.failureReason ? [['거부 사유', row.failureReason] as [string, string]] : []),
-    ...(row.ai_score != null ? [['AI 점수', row.ai_score.toFixed(3)] as [string, string]] : []),
   ]
   return (
     <div

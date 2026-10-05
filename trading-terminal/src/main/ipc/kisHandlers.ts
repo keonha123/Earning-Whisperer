@@ -1,6 +1,5 @@
 import { BrowserWindow } from 'electron'
 import { KisService } from '../services/KisService'
-import { TradeExecutor, type TradeSignal } from '../services/TradeExecutor'
 import { BackendClient, type AssetHistoryPoint } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
@@ -248,14 +247,6 @@ export function registerKisHandlers() {
       return await KisService.getBalance()
     } catch (e) {
       throw toKisError(e, '잔고 조회 실패')
-    }
-  })
-
-  registerHandler<TradeSignal>(IPC_CHANNELS.KIS_PLACE_ORDER, async (_e, signal) => {
-    try {
-      return await TradeExecutor.execute(signal)
-    } catch (e) {
-      throw toKisError(e, '주문 실패')
     }
   })
 
