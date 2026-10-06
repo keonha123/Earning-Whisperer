@@ -37,7 +37,7 @@ SNIPPET_CHARS = 600
 
 
 @router.post("/v1/engine/assistant/news-search", response_model=NewsSearchResponse)
-async def search_news(payload: NewsSearchRequest, request: Request) -> NewsSearchResponse:
+def search_news(payload: NewsSearchRequest, request: Request) -> NewsSearchResponse:
     retriever = request.app.state.analysis_service.external_retriever
     try:
         documents = retriever.retrieve(
@@ -56,7 +56,7 @@ async def search_news(payload: NewsSearchRequest, request: Request) -> NewsSearc
 
 
 @router.get("/v1/engine/assistant/prior-call-statements", response_model=PriorCallStatementsResponse)
-async def prior_call_statements(
+def prior_call_statements(
     request: Request,
     ticker: str = Query(min_length=1),
     before_epoch: int = Query(gt=0),
