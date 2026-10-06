@@ -23,9 +23,10 @@ public record AssistantEstimatesResponse(String ticker, long asOfEpoch, Upcoming
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Result(Instant announcedAt, String fiscalPeriodLabel, BigDecimal epsEstimate, BigDecimal epsActual,
                          BigDecimal surprisePercent, BigDecimal priceReactionPercent) {
-        static Result from(EarningsResult r) {
+        static Result from(AssistantContextQueryService.ResultView v) {
+            EarningsResult r = v.result();
             return new Result(r.getAnnouncedAt(), r.getFiscalPeriodLabel(), r.getEpsEstimate(), r.getEpsActual(),
-                    r.getSurprisePercent(), r.getPriceReactionPercent());
+                    r.getSurprisePercent(), v.priceReactionPercent());
         }
     }
 

@@ -82,7 +82,7 @@ class AssistantInternalControllerTest {
         when(result.getFiscalPeriodLabel()).thenReturn("Q1 FY27");
         when(result.getEpsActual()).thenReturn(new BigDecimal("0.6100"));
         when(queryService.estimates("WMT", 1_787_227_200L)).thenReturn(Optional.of(
-                new AssistantContextQueryService.EstimatesView("WMT", Optional.of(upcoming), List.of(result))));
+                new AssistantContextQueryService.EstimatesView("WMT", Optional.of(upcoming), List.of(new AssistantContextQueryService.ResultView(result, new BigDecimal("2.50"))))));
 
         mockMvc.perform(get("/api/v1/internal/assistant/stocks/WMT/estimates").param("as_of_epoch", "1787227200"))
                 .andExpect(status().isOk())
@@ -91,7 +91,8 @@ class AssistantInternalControllerTest {
                 .andExpect(jsonPath("$.upcoming.eps_estimate").value(0.74))
                 .andExpect(jsonPath("$.upcoming.scheduled_at").value("2026-08-20T11:00:00Z"))
                 .andExpect(jsonPath("$.recent_results[0].fiscal_period_label").value("Q1 FY27"))
-                .andExpect(jsonPath("$.recent_results[0].eps_actual").value(0.61));
+                .andExpect(jsonPath("$.recent_results[0].eps_actual").value(0.61))
+                .andExpect(jsonPath("$.recent_results[0].price_reaction_percent").value(2.5));
     }
 
     @Test

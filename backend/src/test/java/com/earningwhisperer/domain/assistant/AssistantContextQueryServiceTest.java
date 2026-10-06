@@ -82,8 +82,26 @@ class AssistantContextQueryServiceTest {
 
         AssistantContextQueryService.EstimatesView view = service.estimates("wmt", AS_OF).orElseThrow();
 
-        assertThat(view.recentResults()).containsExactly(sameDay, past);
+        assertThat(view.recentResults()).extracting(AssistantContextQueryService.ResultView::result)
+                .containsExactly(sameDay, past);
         assertThat(view.upcoming()).contains(upcoming);
+    }
+
+    @Test
+    @DisplayName("발표 후 7일 창이 as_of 까지 닫히지 않은 결과는 주가 반응을 null 로, 닫힌 과거 결과는 유지한다")
+    void estimates_priceReactionWindow() {
+        Stock stock = mock(Stock.class);
+        when(stock.getId()).thenReturn(7L);
+        when(stockRepository.findByTicker("WMT")).thenReturn(Optional.of(stock));
+        EarningsResult sameDay = result(Instant.ofEpochSecond(AS_OF - 3600), "Q2 FY27");
+        EarningsResult past = result(Instant.ofEpochSecond(AS_OF - 90 * 86_400L), "Q1 FY27");
+        when(past.getPriceReactionPercent()).thenReturn(new BigDecimal("3.10"));
+        when(resultRepository.findTop4ByStock_IdOrderByAnnouncedAtDesc(7L)).thenReturn(List.of(sameDay, past));
+
+        AssistantContextQueryService.EstimatesView view = service.estimates("WMT", AS_OF).orElseThrow();
+
+        assertThat(view.recentResults().get(0).priceReactionPercent()).isNull();
+        assertThat(view.recentResults().get(1).priceReactionPercent()).isEqualByComparingTo("3.10");
     }
 
     @Test
