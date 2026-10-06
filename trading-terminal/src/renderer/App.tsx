@@ -4,6 +4,7 @@ import { ipc, IPC_CHANNELS } from './lib/ipc'
 import { useConnectionStore } from './store/useConnectionStore'
 import { usePortfolioStore } from './store/usePortfolioStore'
 import { useUserStore } from './store/useUserStore'
+import { useAssistantStore } from './store/useAssistantStore'
 
 import AuthPage from './pages/AuthPage'
 import HomePage from './pages/HomePage'
@@ -41,6 +42,8 @@ function AppRoutes() {
       ipc.invoke(IPC_CHANNELS.WS_CONNECT)
     } else {
       ipc.invoke(IPC_CHANNELS.WS_DISCONNECT)
+      // 로그아웃 · 로그인 만료 · 사용자 전환 때 이전 사용자의 질의응답 대화가 남지 않게 비운다(진행 중이면 취소)
+      useAssistantStore.getState().reset()
     }
   }, [isAuthenticated])
 

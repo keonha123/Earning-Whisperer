@@ -77,8 +77,7 @@ export default function AssistantPanel({
   }, [turns.length, lastTurn?.text, lastTurn?.status, lastTurn?.citations.length])
 
   const startNewConversation = () => {
-    // 진행 중인 답이 있으면 서버 요청부터 멈춘다. reset 만 하면 생성이 끝까지 돌고 하루 한도도 줄어든다.
-    void cancel()
+    // reset 은 진행 중인 답의 서버 요청도 취소한다
     reset()
     open({ ticker, callId, anchorSequence })
   }
