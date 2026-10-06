@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { type MaskedCredentialsResponse } from '../../lib/ipcChannels'
-import AuthInputField from '../components/auth/AuthInputField'
 import { useUserStore } from '../store/useUserStore'
 import { useConnectionStore } from '../store/useConnectionStore'
-import KisStatusTimeline, {
-  type KisTimelineStep,
-} from '../components/settings/KisStatusTimeline'
+import KisStatusTimeline, { type KisTimelineStep } from '../components/settings/KisStatusTimeline'
+import KisKeyForm, {
+  KIS_MODE_LABEL,
+  type KisMode,
+  type MaskedKisKey,
+  type VaultSavePayload,
+} from '../components/settings/KisKeyForm'
+import SegmentedControl from '../components/common/SegmentedControl'
+import Modal from '../components/common/Modal'
+import { ComingSoon } from '../components/common/StateView'
 import { showIpcErrorToast } from '../components/common/Toast'
-
-// fixture 메타데이터(AppKey, 핑 지연 등)는 dev 빌드에서만 노출.
-// prod 에서는 generic 메시지만 표시 — 사용자가 더미 값을 진짜로 오인하지 않도록.
+import { notifyComingSoon } from '../components/auth/notifyComingSoon'
 
 /**
- * 카드 삭제 시 분기 결정 helper (테스트 친화적 순수 함수).
+ * 키 삭제 시 분기 결정 helper (테스트 친화적 순수 함수).
  *
  * 입력:
  *   - mode: 삭제 대상 모드
@@ -22,49 +26,95 @@ import { showIpcErrorToast } from '../components/common/Toast'
  *   - hasCredentials: 양쪽 등록 여부 스냅샷
  *
  * 반환:
- *   - kind 'active-switch'   : 활성 모드 키 삭제 + 다른 모드 등록됨 → 자동 전환
- *   - kind 'active-redirect' : 활성 모드 키 삭제 + 양쪽 모두 미등록 됨 → vault 화면 redirect
- *   - kind 'inactive-keep'   : 비활성 모드 키 삭제 — 활성 모드 운영 영향 없음
+ *   - kind 'active-switch'    : 활성 모드 키 삭제 + 다른 모드 등록됨 → 다른 모드로 자동 전환
+ *   - kind 'active-none-left' : 활성 모드 키 삭제 + 남는 키가 없음 → 설정에 머물며 "키 없음" 으로 표시
+ *   - kind 'inactive-keep'    : 비활성 모드 키 삭제 — 활성 모드 운영 영향 없음
  */
 export type CardDeleteDecision =
-  | { kind: 'active-switch'; switchTo: 'paper' | 'real' }
-  | { kind: 'active-redirect' }
+  | { kind: 'active-switch'; switchTo: KisMode }
+  | { kind: 'active-none-left' }
   | { kind: 'inactive-keep' }
 
 export function decideCardDelete(
-  mode: 'paper' | 'real',
+  mode: KisMode,
   isPaperTrading: boolean,
   hasCredentials: { paper: boolean; real: boolean },
 ): CardDeleteDecision {
   const isActive = (mode === 'paper') === isPaperTrading
   if (!isActive) return { kind: 'inactive-keep' }
-  const otherMode: 'paper' | 'real' = mode === 'paper' ? 'real' : 'paper'
+  const otherMode: KisMode = mode === 'paper' ? 'real' : 'paper'
   if (hasCredentials[otherMode]) return { kind: 'active-switch', switchTo: otherMode }
-  return { kind: 'active-redirect' }
+  return { kind: 'active-none-left' }
 }
 
+/** `?kis=paper|real` — 키 없이 주문을 열었을 때 그 계좌의 등록 폼을 펼친 채로 연다. */
+export function parseKisParam(value: string | null): KisMode | null {
+  return value === 'paper' || value === 'real' ? value : null
+}
+
+const MODE_ITEMS: { id: KisMode; label: string }[] = [
+  { id: 'paper', label: KIS_MODE_LABEL.paper },
+  { id: 'real', label: KIS_MODE_LABEL.real },
+]
+
 export default function SettingsPage() {
-  const navigate = useNavigate()
   const { accountType } = useUserStore()
   const isSelfPaper = accountType === 'SELF_PAPER'
-  const {
-    kisTokenStatus,
-    hasCredentials,
-    setHasCredentials,
-    setKisTokenStatus,
-  } = useConnectionStore()
 
-  // 모의/실전 환경 토글 — main 프로세스에서 단일 source of truth
-  const [isPaperTrading, setIsPaperTrading] = useState<boolean>(true)
-  const [paperToggleBusy, setPaperToggleBusy] = useState(false)
+  return (
+    <div className="max-w-[720px] mx-auto px-6 py-8 flex flex-col gap-6">
+      <h1 className="text-ink-1 text-[22px] font-bold">설정</h1>
+      {isSelfPaper ? <PaperAccountPanel /> : <KisPanel />}
+      <AppSettingsPanel />
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* PaperAccountPanel — 페이퍼 계정은 KIS 키 없이 가상 체결하므로 상태만 보인다.  */
+/* -------------------------------------------------------------------------- */
+function PaperAccountPanel() {
+  return (
+    <section className="glass rim rounded-[var(--radius-panel)] p-6 flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <h2 className="on-glass text-ink-1 text-[16px] font-semibold">페이퍼 계정</h2>
+        <StatusChip ok label="준비됨" />
+      </div>
+      <p className="text-ink-3 text-[13px] leading-relaxed">
+        증권사를 거치지 않고 현재가로 가상 체결합니다. 잔고와 체결 내역은 서버에 기록됩니다.
+      </p>
+    </section>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* KisPanel — 사용할 계좌(모드) · 연결 단계 · 키 두 벌.                          */
+/* -------------------------------------------------------------------------- */
+type PendingAction =
+  | { kind: 'switch'; to: KisMode }
+  | { kind: 'delete'; mode: KisMode; decision: CardDeleteDecision }
+
+function KisPanel() {
+  const [searchParams] = useSearchParams()
+  const kisTokenStatus = useConnectionStore((s) => s.kisTokenStatus)
+  const hasCredentials = useConnectionStore((s) => s.hasCredentials)
+  const setHasCredentials = useConnectionStore((s) => s.setHasCredentials)
+  const setKisTokenStatus = useConnectionStore((s) => s.setKisTokenStatus)
+
+  // 모의/실전 활성 모드 — main 프로세스가 단일 source of truth.
+  // 읽기 전(null)에는 모의로 표시하되 전환 · 삭제를 막는다 — 실제 모드를 모른 채 판단하지 않게.
+  const [isPaperTrading, setIsPaperTrading] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
 
   // 모드별 마스킹된 자격증명 — VAULT_GET_MASKED 응답.
   // appSecret 은 절대 포함되지 않으며 (KisService.getMaskedCredentials 가 차단),
   // 컴포넌트 언마운트 시 자동 폐기 (state 가 component-scoped 이므로).
-  const [maskedCreds, setMaskedCreds] = useState<MaskedCredentialsResponse>({
-    paper: null,
-    real: null,
-  })
+  const [maskedCreds, setMaskedCreds] = useState<MaskedCredentialsResponse>({ paper: null, real: null })
+
+  // 한 번에 하나의 키만 펼쳐서 등록 · 수정한다. 주문 시트에서 넘어오면 그 계좌를 펼친다.
+  const [editing, setEditing] = useState<KisMode | null>(() => parseKisParam(searchParams.get('kis')))
+  const [pending, setPending] = useState<PendingAction | null>(null)
+  const keysRef = useRef<HTMLDivElement>(null)
 
   // 자격증명 / 마스킹 응답 재조회 — 등록/수정/삭제 후 + 마운트 시 호출.
   async function refreshCredsState(): Promise<void> {
@@ -89,11 +139,10 @@ export default function SettingsPage() {
         if (!cancelled && typeof v === 'boolean') setIsPaperTrading(v)
       })
       .catch((err: unknown) => {
-        // 디폴트 true 유지 (안전한 쪽). 실전 모드인데 조회 실패 시 화면이 "모의" 로
-        // 거짓 표시되어 사용자가 안전한 모의로 착각하는 silent fail 차단 (review F3).
+        // null 유지 — 전환 · 삭제가 막힌 채 남는다. 실전 모드인데 조회 실패 시 화면이 "모의" 로
+        // 거짓 표시되어 사용자가 안전한 모의로 착각하는 silent fail 을 알림으로 드러낸다 (review F3).
         if (!cancelled) showIpcErrorToast(err)
       })
-    // 마운트 시 마스킹/등록 여부 초기 조회.
     void refreshCredsState()
     return () => {
       cancelled = true
@@ -101,104 +150,80 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleTogglePaperTrading() {
-    if (paperToggleBusy) return
-    // A3: 양쪽 모두 등록되어 있을 때만 토글 가능 — 한쪽만 등록된 경우 다른 모드로 전환해도 인증 실패.
-    // 양쪽 미등록은 vault 진입 화면에서 처리되므로 여기에서는 단순 disabled.
-    if (!(hasCredentials.paper && hasCredentials.real)) return
+  // 주문 시트에서 넘어왔으면 키 목록을 화면 안으로 끌어온다.
+  useEffect(() => {
+    if (parseKisParam(searchParams.get('kis'))) {
+      keysRef.current?.scrollIntoView({ block: 'center' })
+    }
+  }, [searchParams])
 
-    const next = !isPaperTrading
-    const message = next
-      ? '모의 투자 환경으로 전환하시겠습니까? 토큰이 재발급됩니다.'
-      : '실전 투자 환경으로 전환하시겠습니까? 토큰이 재발급됩니다.'
-    if (!confirm(message)) return
+  const modeKnown = isPaperTrading !== null
+  const activeMode: KisMode = isPaperTrading === false ? 'real' : 'paper'
+  const otherMode: KisMode = activeMode === 'paper' ? 'real' : 'paper'
+  const noneRegistered = !hasCredentials.paper && !hasCredentials.real
+  // 키가 있는 계좌로 바꾸는 것은 늘 안전하다. 지금 계좌의 키를 지운 뒤에도 다른 계좌로 빠져나올 수 있게
+  // "두 계좌 모두 등록" 대신 "바꿀 계좌에 키 있음" 으로 판단한다.
+  const canSwitch = modeKnown && !busy && hasCredentials[otherMode]
+  const activeModeRegistered = hasCredentials[activeMode]
+  const isKisHealthy = activeModeRegistered && kisTokenStatus === 'VALID'
 
-    setPaperToggleBusy(true)
+  function requestSwitch(to: KisMode) {
+    // 바꿀 계좌에 키가 있을 때만 전환한다 — 키 없는 모드로 바꾸면 인증이 실패한다.
+    if (!canSwitch || to === activeMode || !hasCredentials[to]) return
+    setPending({ kind: 'switch', to })
+  }
+
+  async function confirmSwitch(to: KisMode) {
+    setBusy(true)
     try {
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: next })
-      setIsPaperTrading(next)
+      await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: to === 'paper' })
+      setIsPaperTrading(to === 'paper')
       // 토큰이 무효화됐으므로 connection store 표시도 갱신
       setKisTokenStatus('UNKNOWN')
     } catch (err: unknown) {
       showIpcErrorToast(err)
     } finally {
-      setPaperToggleBusy(false)
+      setBusy(false)
     }
   }
 
-  /**
-   * A3: 카드별 키 삭제 핸들러.
-   * 활성 모드 키 삭제 시 다른 모드 등록 여부에 따라 자동 전환 / 등록 화면 안내 분기.
-   */
-  async function handleCardDelete(mode: 'paper' | 'real'): Promise<void> {
-    const isActive = (mode === 'paper') === isPaperTrading
-    const modeLabel = mode === 'paper' ? '모의' : '실전'
-    const otherMode = mode === 'paper' ? 'real' : 'paper'
-    const otherLabel = mode === 'paper' ? '실전' : '모의'
-    const otherRegistered = hasCredentials[otherMode]
+  function requestDelete(mode: KisMode) {
+    if (isPaperTrading === null) return
+    setPending({ kind: 'delete', mode, decision: decideCardDelete(mode, isPaperTrading, hasCredentials) })
+  }
 
-    if (isActive) {
-      // 활성 모드 키 삭제: 다른 모드 등록 여부에 따라 분기.
-      if (otherRegistered) {
-        // 다른 모드로 자동 전환.
-        if (
-          !confirm(
-            `${modeLabel} KIS API 키를 삭제하시겠습니까?\n삭제 후 ${otherLabel} 모드로 자동 전환됩니다.`,
-          )
-        )
-          return
-        try {
-          await ipc.invoke(IPC_CHANNELS.VAULT_DELETE, { isPaperTrading: mode === 'paper' })
-          // 다른 모드로 활성 전환.
-          await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, {
-            value: otherMode === 'paper',
-          })
-          setIsPaperTrading(otherMode === 'paper')
-          setKisTokenStatus('UNKNOWN')
-        } catch (err: unknown) {
-          showIpcErrorToast(err)
-        }
-      } else {
-        // 양쪽 다 없게 됨 — 등록 화면으로 이동 안내.
-        if (
-          !confirm(
-            `${modeLabel} KIS API 키를 삭제하시겠습니까?\n삭제 후 등록된 키가 없으므로 등록 화면으로 이동합니다.`,
-          )
-        )
-          return
-        try {
-          await ipc.invoke(IPC_CHANNELS.VAULT_DELETE, { isPaperTrading: mode === 'paper' })
-          setKisTokenStatus('UNKNOWN')
-          // 양쪽 모두 미등록 상태 — AuthPage 의 vault step 경로와 일관되게 재진입.
-          // 라우팅 변경은 사용자 동선이 큰 변경이므로 confirm 동의 후에만 이동.
-          // useNavigate 사용 — window.location.hash 직접 조작은 React Router 상태와 어긋남.
-          navigate('/auth')
-        } catch (err: unknown) {
-          showIpcErrorToast(err)
-        }
+  async function confirmDelete(mode: KisMode, decision: CardDeleteDecision) {
+    setBusy(true)
+    try {
+      await ipc.invoke(IPC_CHANNELS.VAULT_DELETE, { isPaperTrading: mode === 'paper' })
+      if (decision.kind === 'active-switch') {
+        await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: decision.switchTo === 'paper' })
+        setIsPaperTrading(decision.switchTo === 'paper')
+        setKisTokenStatus('UNKNOWN')
+      } else if (decision.kind === 'active-none-left') {
+        // 남는 키가 없어도 설정에 머문다 — 분석 기능은 키 없이 쓰고, 등록은 이 자리에서 다시 한다.
+        setKisTokenStatus('UNKNOWN')
       }
-    } else {
-      // 비활성 모드 키 삭제 — 활성 모드 운영에는 영향 없음. 토글만 disabled 로 변경됨.
-      // 비활성 모드 키 삭제 분기에 들어왔다는 것은 활성 모드 키가 등록되어 있다는 전제.
-      // (활성 모드 키가 없으면 양쪽 미등록이거나 한쪽만 등록인데, 등록된 한쪽이 곧 활성 모드.)
-      // 따라서 otherClause 는 항상 활성 모드 라벨 명시.
-      const activeLabel = isPaperTrading ? '모의' : '실전'
-      const otherClause = `\n${activeLabel} 키는 유지됩니다.`
-      if (!confirm(`${modeLabel} KIS API 키를 삭제하시겠습니까?${otherClause}`)) return
-      try {
-        await ipc.invoke(IPC_CHANNELS.VAULT_DELETE, { isPaperTrading: mode === 'paper' })
-      } catch (err: unknown) {
-        showIpcErrorToast(err)
-      }
+    } catch (err: unknown) {
+      showIpcErrorToast(err)
+    } finally {
+      setBusy(false)
     }
     await refreshCredsState()
   }
 
-  /**
-   * A3: 카드별 등록/수정 후 후처리 — 등록 상태 + 마스킹 응답 재조회.
-   * 저장 자체는 KisCredentialEditor 가 직접 VAULT_SAVE 호출.
-   */
-  async function handleCardSaved(): Promise<void> {
+  async function handlePendingConfirm() {
+    const action = pending
+    setPending(null)
+    if (!action) return
+    if (action.kind === 'switch') await confirmSwitch(action.to)
+    else await confirmDelete(action.mode, action.decision)
+  }
+
+  async function handleSave(payload: VaultSavePayload) {
+    // 비활성 모드 저장도 안전하다 — VAULT_SAVE 는 활성 모드와 같을 때만 토큰을 발급한다.
+    await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, payload)
+    setEditing(null)
     await refreshCredsState()
   }
 
@@ -211,23 +236,16 @@ export default function SettingsPage() {
     }
   }
 
-  // KIS 라이브 상태 기반 타임라인.
-  // dev 빌드: fixture 메타(AppKey, 만료시간, 핑 등) 결합 표시
-  // prod 빌드: generic 메시지만 표시 (fixture 누출 방지)
   // 표시 기준은 "활성 모드의 키 등록 여부" — 비활성 모드 키만 등록된 상태에서 활성 모드가
   // 마치 사용 가능한 것처럼 보이지 않도록 (Security H1).
-  const activeModeRegistered = hasCredentials[isPaperTrading ? 'paper' : 'real']
-  const otherModeRegistered = hasCredentials[isPaperTrading ? 'real' : 'paper']
-  const liveSteps: KisTimelineStep[] = [
+  const steps: KisTimelineStep[] = [
     {
       id: 'apikey',
       title: activeModeRegistered ? 'API 키 등록됨' : 'API 키 미등록',
       sub: activeModeRegistered
-        ? otherModeRegistered
-            ? `API 키가 안전하게 저장되어 있습니다 (${isPaperTrading ? '실전' : '모의'} 키도 등록됨)`
-            : 'API 키가 안전하게 저장되어 있습니다'
-        : otherModeRegistered
-          ? `${isPaperTrading ? '모의' : '실전'} 모드 키가 등록되지 않았습니다 (${isPaperTrading ? '실전' : '모의'} 키만 등록됨)`
+        ? 'API 키가 안전하게 저장되어 있습니다'
+        : hasCredentials[otherMode]
+          ? `${KIS_MODE_LABEL[activeMode]} 키가 없습니다. ${KIS_MODE_LABEL[otherMode]} 키만 등록되어 있습니다`
           : '등록된 API 키가 없습니다',
       status: activeModeRegistered ? 'done' : 'pending',
     },
@@ -239,523 +257,301 @@ export default function SettingsPage() {
           : kisTokenStatus === 'EXPIRED'
             ? '액세스 토큰 만료'
             : '액세스 토큰 미발급',
-      sub:
-        kisTokenStatus === 'VALID'
-          ? '토큰이 정상 발급되어 있습니다'
-          : '토큰 재발급이 필요합니다',
+      sub: kisTokenStatus === 'VALID' ? '토큰이 정상 발급되어 있습니다' : '토큰 재발급이 필요합니다',
       status: kisTokenStatus === 'VALID' ? 'done' : kisTokenStatus === 'EXPIRED' ? 'error' : 'pending',
     },
     {
       id: 'connection',
-      title:
-        activeModeRegistered && kisTokenStatus === 'VALID'
-          ? '서버 연결 정상'
-          : '서버 연결 대기',
-      sub:
-        activeModeRegistered && kisTokenStatus === 'VALID'
-          ? '정상 연결됨'
-          : 'API 키와 토큰 등록 후 연결됩니다',
-      status:
-        activeModeRegistered && kisTokenStatus === 'VALID' ? 'done' : 'pending',
+      title: isKisHealthy ? '서버 연결 정상' : '서버 연결 대기',
+      sub: isKisHealthy ? '정상 연결됨' : 'API 키와 토큰 등록 후 연결됩니다',
+      status: isKisHealthy ? 'done' : 'pending',
     },
   ]
 
-  const isKisHealthy = isSelfPaper || (activeModeRegistered && kisTokenStatus === 'VALID')
+  const closePending = useCallback(() => setPending(null), [])
+
+  const modeHelp = !modeKnown
+    ? '주문할 계좌를 확인하는 중입니다.'
+    : hasCredentials[otherMode]
+      ? null
+      : noneRegistered
+        ? '아래에서 키를 등록하면 주문할 수 있습니다.'
+        : `${KIS_MODE_LABEL[otherMode]} 키도 등록하면 바꿀 수 있습니다.`
 
   return (
-    <div className="max-w-2xl mx-auto py-8 flex flex-col gap-6">
-      {/* 페이지 헤더 */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-text-primary text-xl font-semibold tracking-tight">설정</h1>
-        <p className="text-text-tertiary text-base">
-          KIS 연동 상태를 관리합니다.
-        </p>
+    <section className="glass rim rounded-[var(--radius-panel)] p-6 flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <h2 className="on-glass text-ink-1 text-[16px] font-semibold">KIS 연동</h2>
+        <StatusChip ok={isKisHealthy} label={isKisHealthy ? '연결 정상' : '연결 대기'} />
       </div>
 
-      {/* 카드 2 — 연동 섹션: SELF_PAPER 는 간략 상태 카드, KIS 는 전체 연동 섹션 */}
-      {isSelfPaper ? (
-        <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
-              style={{ background: 'rgba(var(--ok-rgb),0.08)', border: '1px solid rgba(var(--ok-rgb),0.2)' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M8 1v14M1 8h14" strokeLinecap="round" />
-              </svg>
-            </div>
-            <div className="text-text-primary text-base font-semibold tracking-tight">페이퍼 트레이딩</div>
-            <span
-              className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider"
-              style={{ background: 'rgba(var(--ok-rgb),0.10)', color: 'var(--ok)', border: '1px solid rgba(var(--ok-rgb),0.25)' }}
-            >
-              <span className="w-[5px] h-[5px] rounded-full bg-[var(--ok)]" />
-              준비됨
-            </span>
-          </div>
-          <div className="text-sm text-text-secondary leading-[1.55] bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5">
-            KIS API 없이 가상 자금으로 매매를 시뮬레이션합니다. 잔고 및 체결 내역은 서버에 기록됩니다.
-          </div>
-        </section>
-      ) : (
-      <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
-            style={{
-              background: 'rgba(var(--ok-rgb),0.08)',
-              border: '1px solid rgba(var(--ok-rgb),0.2)',
-            }}
+      {/* 사용할 계좌 — 실전 모드는 늘 크게 표시한다 (ux.md 설계 원칙) */}
+      <div className="flex flex-col gap-2.5">
+        <span className="text-ink-2 text-[12.5px] font-medium">주문할 계좌</span>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* fieldset disabled 로 안의 버튼이 클릭 · 키보드 모두 막힌다 */}
+          <fieldset
+            disabled={!canSwitch}
+            aria-describedby={modeHelp ? 'kis-mode-help' : undefined}
+            className={`contents ${!canSwitch ? '[&>div]:opacity-[0.55]' : ''}`}
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M6.5 9.5l-2 2a2 2 0 01-2.83-2.83l3-3a2 2 0 012.83 0M9.5 6.5l2-2a2 2 0 012.83 2.83l-3 3a2 2 0 01-2.83 0" />
-            </svg>
-          </div>
-          <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
-            KIS Open API 연동
-          </div>
-          <span
-            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider whitespace-nowrap"
-            style={{
-              background: isKisHealthy
-                ? 'rgba(var(--ok-rgb),0.10)'
-                : 'rgba(var(--caution-rgb),0.10)',
-              color: isKisHealthy ? 'var(--ok)' : 'var(--caution)',
-              border: isKisHealthy
-                ? '1px solid rgba(var(--ok-rgb),0.25)'
-                : '1px solid rgba(var(--caution-rgb),0.25)',
-            }}
-          >
-            <span
-              className="w-[5px] h-[5px] rounded-full"
-              style={{ background: isKisHealthy ? 'var(--ok)' : 'var(--caution)' }}
-            />
-            {isKisHealthy ? '연결 정상' : '연결 대기'}
-          </span>
-        </div>
-
-        {/* 환경 토글 — 모의/실전.
-            A3: 양쪽 모두 등록된 경우에만 토글 활성. 한쪽만 / 양쪽 미등록 시 disabled + 안내 카피.
-        */}
-        {(() => {
-          const bothRegistered = hasCredentials.paper && hasCredentials.real
-          const noneRegistered = !hasCredentials.paper && !hasCredentials.real
-          const toggleDisabled = paperToggleBusy || !bothRegistered
-          const toggleHelp = bothRegistered
-            ? isPaperTrading
-              ? '모의 환경 (openapivts) — 가상 자금으로 주문 시뮬레이션'
-              : '실전 환경 (openapi) — 실계좌로 주문 체결'
-            : noneRegistered
-              ? '아래 카드에서 KIS API 키를 등록하면 모드 전환을 사용할 수 있습니다.'
-              : isPaperTrading
-                ? '실전 키도 등록하면 전환할 수 있습니다.'
-                : '모의 키도 등록하면 전환할 수 있습니다.'
-          return (
-            <div
-              className="flex items-center justify-between gap-3 bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5"
-              aria-live="polite"
-            >
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-text-primary text-sm font-medium">모의 투자 모드</span>
-                <span className="text-text-disabled text-xs leading-snug">{toggleHelp}</span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isPaperTrading}
-                aria-label="모의 투자 모드"
-                onClick={handleTogglePaperTrading}
-                disabled={toggleDisabled}
-                title={
-                  !bothRegistered
-                    ? '양쪽 모드 키가 모두 등록되어야 전환 가능합니다.'
-                    : undefined
-                }
-                className={
-                  'relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ' +
-                  (isPaperTrading ? 'bg-accent-500' : 'bg-surface-3 border border-border-strong')
-                }
-              >
-                <span
-                  className={
-                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform ' +
-                    (isPaperTrading ? 'translate-x-6' : 'translate-x-1')
-                  }
-                />
-              </button>
-            </div>
-          )
-        })()}
-
-        {/* 보안 안내 */}
-        <div className="text-sm text-text-secondary leading-[1.55] bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5 flex gap-2.5 items-start">
-          <span className="text-accent-400 flex-none mt-0.5" aria-hidden>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <rect x="3" y="7" width="10" height="7" rx="1.5" />
-              <path d="M5 7V5a3 3 0 016 0v2" />
-            </svg>
-          </span>
-          <span>
-            API 키와 액세스 토큰은{' '}
-            <b className="text-text-primary font-semibold">OS Credential Manager (keytar)</b>에 암호화 저장됩니다.
-            본 앱은 평문 키를 파일로 보관하지 않습니다.
-          </span>
-        </div>
-
-        {/* 3-step 타임라인 */}
-        <KisStatusTimeline steps={liveSteps} />
-
-        {/* A3: 모드별 자격증명 카드 두 개. 활성 배지 + 마스킹 표시 + 등록/수정/삭제 액션 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <KisCredentialCard
-            mode="paper"
-            isActive={isPaperTrading}
-            registered={hasCredentials.paper}
-            masked={maskedCreds.paper}
-            onSaved={handleCardSaved}
-            onDelete={() => handleCardDelete('paper')}
-          />
-          <KisCredentialCard
-            mode="real"
-            isActive={!isPaperTrading}
-            registered={hasCredentials.real}
-            masked={maskedCreds.real}
-            onSaved={handleCardSaved}
-            onDelete={() => handleCardDelete('real')}
-          />
-        </div>
-
-        {/* 액션 버튼 — API 키 삭제는 카드 [삭제] 버튼으로 이전됨. */}
-        <div className="flex items-center gap-2 pt-1.5">
-          <button
-            type="button"
-            onClick={handleIssueToken}
-            className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent text-accent-400 hover:bg-accent-500/10 transition-colors"
-            style={{ border: '1px solid rgba(var(--ok-rgb),0.35)' }}
-          >
-            토큰 재발급
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // TODO(impl): shell.openExternal('https://apiportal.koreainvestment.com') (별도 PR)
-              // 보안: URL 화이트리스트 검증 (koreainvestment.com 도메인) + state 파라미터 + main 프로세스 IPC 경유
-              console.log('[SettingsPage] open KIS portal (noop)')
-            }}
-            className="ml-auto text-text-tertiary text-sm hover:text-text-primary inline-flex items-center gap-1 bg-transparent border-0 p-0 cursor-pointer"
-          >
-            KIS 개발자 포털 열기 ↗
-          </button>
-        </div>
-      </section>
-      )}
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* KisCredentialCard — A3: 모드별 자격증명 카드.                                */
-/*                                                                              */
-/* 표시:                                                                        */
-/*   - 활성 배지 (현재 활성 모드인 경우)                                          */
-/*   - 등록됨 → 마스킹된 appKey/accountNo + [수정] [삭제]                          */
-/*   - 미등록 → "미등록" 안내 + [등록]                                             */
-/*                                                                              */
-/* [수정]/[등록] 클릭 시 인라인 폼 토글 — 모달 인프라 도입 회피.                    */
-/* -------------------------------------------------------------------------- */
-function KisCredentialCard({
-  mode,
-  isActive,
-  registered,
-  masked,
-  onSaved,
-  onDelete,
-}: {
-  mode: 'paper' | 'real'
-  isActive: boolean
-  registered: boolean
-  masked: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
-  onSaved: () => Promise<void> | void
-  onDelete: () => void | Promise<void>
-}) {
-  const [editing, setEditing] = useState(false)
-
-  const title = mode === 'paper' ? 'KIS 모의투자' : 'KIS 실전투자'
-  const tone =
-    mode === 'paper'
-      ? { color: 'var(--caution)', border: 'rgba(var(--caution-rgb),0.3)', bg: 'rgba(var(--caution-rgb),0.06)' }
-      : { color: 'var(--danger)', border: 'rgba(var(--danger-rgb),0.3)', bg: 'rgba(var(--danger-rgb),0.06)' }
-
-  return (
-    <div
-      className="rounded-lg border bg-surface-2 px-3.5 py-3 flex flex-col gap-2.5"
-      style={{ borderColor: tone.border, background: tone.bg }}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className="text-sm font-semibold tracking-tight"
-          style={{ color: tone.color }}
-        >
-          {title}
-        </span>
-        {isActive && registered && (
-          <span
-            className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold tracking-wider whitespace-nowrap"
-            style={{
-              background: 'rgba(var(--ok-rgb),0.10)',
-              color: 'var(--ok)',
-              border: '1px solid rgba(var(--ok-rgb),0.25)',
-            }}
-          >
-            <span className="w-[5px] h-[5px] rounded-full bg-accent-500" />
-            활성
-          </span>
-        )}
-      </div>
-
-      {!editing && registered && masked && (
-        <div className="flex flex-col gap-1.5 font-mono text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-text-disabled w-16 flex-none">계좌</span>
-            <span className="text-text-primary tabular-nums tracking-wide">
-              {masked.accountNoMasked}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-text-disabled w-16 flex-none">AppKey</span>
-            <span className="text-text-primary tabular-nums tracking-wide">
-              {masked.appKeyMasked}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {!editing && !registered && (
-        <div className="flex items-center gap-2 text-text-disabled text-xs">
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 14 14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden
-          >
-            <circle cx="7" cy="7" r="5.5" />
-            <path d="M7 4v3.5M7 9.5v.5" />
-          </svg>
-          <span>미등록</span>
-        </div>
-      )}
-
-      {editing && (
-        <KisCredentialEditor
-          mode={mode}
-          existing={registered ? masked : null}
-          onCancel={() => setEditing(false)}
-          onSaved={async () => {
-            setEditing(false)
-            await onSaved()
-          }}
-        />
-      )}
-
-      {!editing && (
-        <div className="flex items-center gap-2 pt-0.5">
-          {registered ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-transparent text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors"
-                style={{ border: '1px solid rgba(255,255,255,0.12)' }}
-              >
-                수정
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void onDelete()
-                }}
-                className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-transparent text-danger hover:bg-danger/10 transition-colors"
-                style={{ border: '1px solid #3f1d1d' }}
-              >
-                삭제
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="gbtn gbtn-sm"
-            >
-              등록
-            </button>
+            <SegmentedControl items={MODE_ITEMS} activeId={activeMode} onChange={requestSwitch} />
+          </fieldset>
+          {modeKnown && activeMode === 'real' && (
+            <span className="text-[color:var(--caution)] text-[13px] font-semibold">실제 돈으로 주문합니다</span>
           )}
         </div>
-      )}
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* KisCredentialEditor — 카드 내 인라인 등록/수정 폼.                            */
-/*                                                                              */
-/* AppKey/AppSecret/계좌번호 + HTS ID(선택) 입력 후 VAULT_SAVE(mode) 호출.       */
-/* 비활성 모드 수정도 안전 — KisService.saveCredentials 가 활성 모드 일치 시에만 */
-/* 토큰 발급 시도 (vaultHandlers 가 활성 모드 가드).                             */
-/* -------------------------------------------------------------------------- */
-function KisCredentialEditor({
-  mode,
-  existing,
-  onCancel,
-  onSaved,
-}: {
-  mode: 'paper' | 'real'
-  /**
-   * 이미 등록된 자격증명. 있으면 수정 흐름이다 — 빈 칸은 "기존 유지" 로 저장되므로
-   * 바꾸려는 항목만 입력하면 된다. appSecret 은 화면에 되돌려주지 않으므로(보안)
-   * 프리필 대신 안내 문구만 띄운다.
-   */
-  existing: { appKeyMasked: string; accountNoMasked: string; htsId: string | null } | null
-  onCancel: () => void
-  onSaved: () => Promise<void> | void
-}) {
-  const [appKey, setAppKey] = useState('')
-  const [appSecret, setAppSecret] = useState('')
-  const [accountNo, setAccountNo] = useState('')
-  // 선택 입력. 실시간 체결통보(H0GSCNI0/9) 의 tr_key 가 HTS ID 라서 이것만 별도로 필요하다.
-  // 없으면 체결통보를 못 받고 나머지 기능은 그대로 동작한다.
-  // HTS ID 는 비밀값이 아니라 로그인 아이디라 기존 값을 그대로 채운다.
-  const [htsId, setHtsId] = useState(existing?.htsId ?? '')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  // 언마운트 시 입력값 명시 clear — react state 가 GC 대기에 걸려 secret 이 메모리 잔존하는
-  // 위험 차단 (review hotfix #3). submit 시는 별도로 비우지만 cancel/parent unmount 경로 보강.
-  useEffect(
-    () => () => {
-      setAppKey('')
-      setAppSecret('')
-      setAccountNo('')
-      setHtsId('')
-    },
-    [],
-  )
-
-  function handleCancel() {
-    // 취소 시 입력값 즉시 폐기 — onCancel 이 부모의 editing=false 를 트리거해 unmount 되지만,
-    // 명시 clear 로 기록상 의도를 분명히 함.
-    setAppKey('')
-    setAppSecret('')
-    setAccountNo('')
-    setHtsId('')
-    onCancel()
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    const isNew = existing === null
-    if (isNew && (appKey.trim() === '' || appSecret.trim() === '' || accountNo.trim() === '')) {
-      setError('App Key, App Secret, 계좌번호를 모두 입력해주세요.')
-      return
-    }
-    setSaving(true)
-    try {
-      await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, {
-        appKey: appKey.trim(),
-        appSecret: appSecret.trim(),
-        accountNo: accountNo.trim(),
-        isPaperTrading: mode === 'paper',
-        // 이 필드는 기존 값이 프리필되므로 빈 칸은 사용자가 의도적으로 지운 것이다.
-        // 그대로 보내야 "삭제" 가 반영된다.
-        htsId: htsId.trim(),
-      })
-      // 폼 메모리에서 입력값 폐기 — secret 잔류 회피.
-      setAppKey('')
-      setAppSecret('')
-      setAccountNo('')
-      setHtsId('')
-      await onSaved()
-    } catch (err: unknown) {
-      const fallback = err instanceof Error ? err.message : '저장에 실패했습니다.'
-      setError(fallback)
-      showIpcErrorToast(err)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 mt-1">
-      {existing && (
-        <p className="text-[11px] text-text-tertiary leading-snug">
-          바꿀 항목만 입력하세요. 비워두면 기존 값이 그대로 유지됩니다.
+        <p id="kis-mode-help" className="text-ink-3 text-[12.5px] empty:hidden" aria-live="polite">
+          {modeHelp}
         </p>
-      )}
-      <AuthInputField
-        label="App Key"
-        value={appKey}
-        placeholder={existing?.appKeyMasked}
-        onChange={(e) => setAppKey(e.target.value)}
-      />
-      <AuthInputField
-        label="App Secret"
-        isPassword
-        value={appSecret}
-        placeholder={existing ? '변경할 때만 입력' : undefined}
-        onChange={(e) => setAppSecret(e.target.value)}
-      />
-      <AuthInputField
-        label="계좌번호"
-        value={accountNo}
-        placeholder={existing?.accountNoMasked}
-        onChange={(e) => setAccountNo(e.target.value)}
-      />
-      <AuthInputField
-        label="HTS ID (선택)"
-        value={htsId}
-        placeholder="한국투자증권 로그인 아이디"
-        onChange={(e) => setHtsId(e.target.value)}
-      />
-      <p className="text-[11px] text-text-tertiary leading-snug">
-        HTS ID 를 입력하면 주문 체결을 실시간으로 통보받습니다. 비워두면 체결 내역 화면에
-        들어올 때와 새로고침 시에만 확인합니다.
+      </div>
+
+      <KisStatusTimeline steps={steps} />
+
+      {/* 키 두 벌 — 고른 계좌가 "사용 중" */}
+      <div ref={keysRef} className="flex flex-col">
+        <span className="text-ink-2 text-[12.5px] font-medium mb-1">API 키</span>
+        <ul className="flex flex-col divide-y divide-border-subtle">
+          {(['paper', 'real'] as const).map((mode) => (
+            <KisKeyRow
+              key={mode}
+              mode={mode}
+              inUse={modeKnown && mode === activeMode && hasCredentials[mode]}
+              registered={hasCredentials[mode]}
+              masked={maskedCreds[mode]}
+              editing={editing === mode}
+              disabled={busy}
+              // 활성 모드를 모르면 삭제 결과(자동 전환 여부)를 판단할 수 없어 삭제만 막는다
+              deleteDisabled={busy || !modeKnown}
+              onEdit={() => setEditing(mode)}
+              onCancel={() => setEditing(null)}
+              onDelete={() => requestDelete(mode)}
+              onSave={handleSave}
+            />
+          ))}
+        </ul>
+      </div>
+
+      <p className="flex gap-2 items-start text-ink-3 text-[12.5px] leading-relaxed">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="flex-none mt-0.5" aria-hidden>
+          <rect x="3" y="7" width="10" height="7" rx="1.5" />
+          <path d="M5 7V5a3 3 0 016 0v2" />
+        </svg>
+        <span>
+          API 키와 액세스 토큰은 운영체제 자격 증명 저장소(keytar)에 암호화해 저장합니다. 키를 파일로 보관하지
+          않습니다.
+        </span>
       </p>
-      {error && <p className="text-danger text-xs">{error}</p>}
-      <div className="flex items-center gap-2 pt-0.5">
-        <button
-          type="submit"
-          disabled={saving}
-          className="gbtn gbtn-olive gbtn-sm"
-        >
-          {saving ? '저장 중...' : '저장'}
+
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={handleIssueToken} disabled={busy || !activeModeRegistered} className="gbtn gbtn-sm">
+          토큰 재발급
         </button>
         <button
           type="button"
-          onClick={handleCancel}
-          disabled={saving}
-          className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-transparent text-text-tertiary hover:bg-surface-3 hover:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+          aria-disabled="true"
+          title="준비 중입니다"
+          onClick={() => notifyComingSoon('KIS 개발자 포털 열기')}
+          className="ml-auto text-ink-4 text-[12.5px] bg-transparent border-0 p-0 cursor-default"
         >
-          취소
+          KIS 개발자 포털 열기
         </button>
       </div>
-    </form>
+
+      <ConfirmModal action={pending} onCancel={closePending} onConfirm={handlePendingConfirm} />
+    </section>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* KisKeyRow — 한 계좌의 키. 마스킹 값만 보이고 비밀값은 되돌려 받지 않는다.      */
+/* -------------------------------------------------------------------------- */
+function KisKeyRow({
+  mode,
+  inUse,
+  registered,
+  masked,
+  editing,
+  disabled,
+  deleteDisabled,
+  onEdit,
+  onCancel,
+  onDelete,
+  onSave,
+}: {
+  mode: KisMode
+  inUse: boolean
+  registered: boolean
+  masked: MaskedKisKey | null
+  editing: boolean
+  disabled: boolean
+  deleteDisabled: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onDelete: () => void
+  onSave: (payload: VaultSavePayload) => Promise<void>
+}) {
+  // 등록된 키인데 가린 값을 아직 못 받았으면 폼을 열지 않는다 — 신규 등록으로 열리면 HTS ID 칸이 비어
+  // 저장된 HTS ID 가 지워진다. 받으면(주문 시트에서 넘어온 경우 포함) 그때 펼친다.
+  const canEdit = !registered || masked !== null
+  return (
+    <li className="flex flex-col gap-3 py-3.5">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-ink-1 text-[14px] font-semibold">{KIS_MODE_LABEL[mode]}</span>
+            {inUse && (
+              <span className="glass rim rounded-full px-2 py-0.5 text-[11px] font-semibold text-ink-1 on-glass">사용 중</span>
+            )}
+          </div>
+          {registered && masked ? (
+            <dl className="flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] text-ink-3">
+              <div className="flex gap-1.5">
+                <dt>계좌</dt>
+                <dd className="num text-ink-2">{masked.accountNoMasked}</dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt>App Key</dt>
+                <dd className="num text-ink-2">{masked.appKeyMasked}</dd>
+              </div>
+              <div className="flex gap-1.5">
+                <dt>HTS ID</dt>
+                <dd className="text-ink-2">{masked.htsId ? '등록됨' : '없음'}</dd>
+              </div>
+            </dl>
+          ) : (
+            <span className="text-ink-3 text-[12px]">{registered ? '등록됨' : '등록된 키가 없습니다'}</span>
+          )}
+        </div>
+
+        {/* 폼이 실제로 펼쳐졌을 때만 버튼을 숨긴다 — 가린 값을 못 받아 폼이 안 열리면 버튼을 남긴다 */}
+        {!(editing && canEdit) && (
+          <div className="ml-auto flex items-center gap-2 flex-none">
+            {registered ? (
+              <>
+                <button type="button" onClick={onEdit} disabled={disabled || !canEdit} className="gbtn gbtn-sm">
+                  수정
+                </button>
+                <button type="button" onClick={onDelete} disabled={deleteDisabled} className="gbtn gbtn-sm">
+                  삭제
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={onEdit} disabled={disabled} className="gbtn gbtn-sm">
+                등록
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {editing && canEdit && (
+        <div className="frost rounded-[20px] p-4">
+          <KisKeyForm
+            mode={mode}
+            existing={registered ? masked : null}
+            submitLabel="저장"
+            secondaryLabel="취소"
+            onSecondary={onCancel}
+            onSubmit={onSave}
+            compact
+            autoFocus
+          />
+        </div>
+      )}
+    </li>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* ConfirmModal — 계좌 전환 · 키 삭제 확인.                                      */
+/* -------------------------------------------------------------------------- */
+function ConfirmModal({
+  action,
+  onCancel,
+  onConfirm,
+}: {
+  action: PendingAction | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  let title = ''
+  let body = ''
+  let confirmLabel = ''
+  // 실제 돈과 관련된 방향(실전으로 전환, 키 삭제)은 위험 버튼으로 둔다
+  let danger = false
+
+  if (action?.kind === 'switch') {
+    title = `${KIS_MODE_LABEL[action.to]}로 바꿀까요?`
+    body =
+      action.to === 'real'
+        ? '이제부터 실제 돈으로 주문합니다. 토큰을 다시 발급합니다.'
+        : '모의투자 서버로 주문합니다. 토큰을 다시 발급합니다.'
+    confirmLabel = '바꾸기'
+    danger = action.to === 'real'
+  } else if (action?.kind === 'delete') {
+    const label = KIS_MODE_LABEL[action.mode]
+    title = `${label} 키를 삭제할까요?`
+    const d = action.decision
+    body =
+      d.kind === 'active-switch'
+        ? d.switchTo === 'real'
+          ? `삭제하면 ${KIS_MODE_LABEL.real}로 바뀌고, 이제부터 실제 돈으로 주문합니다.`
+          : `삭제하면 ${KIS_MODE_LABEL.paper}로 바뀝니다.`
+        : d.kind === 'active-none-left'
+          ? '삭제하면 등록된 키가 없어 주문할 수 없습니다. 분석 기능은 그대로 씁니다.'
+          : '지금 쓰는 계좌의 키는 그대로 둡니다.'
+    confirmLabel = '삭제'
+    danger = true
+  }
+
+  return (
+    <Modal open={action !== null} onClose={onCancel} ariaLabel={title}>
+      <div className="w-[400px] max-w-[90vw] p-7 flex flex-col gap-3">
+        <h3 className="text-ink-1 text-[17px] font-bold">{title}</h3>
+        <p className="text-ink-2 text-[13.5px] leading-relaxed">{body}</p>
+        {/* 대화상자는 보조 버튼 왼쪽, 색상 유리 버튼 오른쪽 */}
+        <div className="flex items-center justify-between gap-2 mt-3">
+          <button type="button" onClick={onCancel} className="gbtn">
+            취소
+          </button>
+          <button type="button" onClick={onConfirm} className={`gbtn ${danger ? 'gbtn-porphyra' : 'gbtn-olive'}`}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* AppSettingsPanel — 앱 설정 자리. 아직 동작하는 항목이 없다.                   */
+/* -------------------------------------------------------------------------- */
+const APP_SETTINGS: { title: string; note: string }[] = [
+  { title: '알림', note: '콜 시작 · 체결 알림을 고르는 기능은 준비 중입니다' },
+  { title: '테마', note: '지금은 어두운 테마만 있습니다' },
+  { title: '언어', note: '지금은 한국어만 있습니다' },
+  { title: '자동 로그인', note: '로그인 정보를 보관하는 방식을 정한 뒤 추가합니다' },
+]
+
+function AppSettingsPanel() {
+  return (
+    <section className="glass rim rounded-[var(--radius-panel)] p-6 flex flex-col gap-4">
+      <h2 className="on-glass text-ink-1 text-[16px] font-semibold">앱 설정</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {APP_SETTINGS.map((it) => (
+          <ComingSoon key={it.title} title={it.title} note={it.note} className="py-6 px-4" />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function StatusChip({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: ok ? 'var(--ok)' : 'var(--caution)' }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} aria-hidden />
+      {label}
+    </span>
   )
 }

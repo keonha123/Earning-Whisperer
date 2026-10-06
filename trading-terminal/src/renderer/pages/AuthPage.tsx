@@ -6,9 +6,19 @@ import { useUserStore } from '../store/useUserStore'
 import AuthBrandSection from '../components/auth/AuthBrandSection'
 import AuthInputField from '../components/auth/AuthInputField'
 import OAuthButton from '../components/auth/OAuthButton'
+import { notifyComingSoon } from '../components/auth/notifyComingSoon'
+import KisKeyForm, {
+  KIS_MODE_LABEL,
+  type KisMode,
+  type VaultSavePayload,
+} from '../components/settings/KisKeyForm'
+import SegmentedControl from '../components/common/SegmentedControl'
+import Modal from '../components/common/Modal'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
+import { decideAfterLogin, saveOfferedKey } from '../lib/kisOnboarding'
 
+// vault = 첫 로그인 직후 KIS 키 등록 권유
 type Step = 'login' | 'vault'
 
 /**
@@ -29,17 +39,16 @@ export default function AuthPage() {
 
     // VAULT_HAS 를 먼저 조회한다. 인증 상태를 먼저 켜면 조회가 실패했을 때
     // 자격증명 등록 여부를 모른 채 대시보드/vault 중 어디로도 못 가고 멈춘다.
-    let hasCredentials: VaultHasResponse = { paper: false, real: false }
+    let hasCredentials: VaultHasResponse | null = null
     try {
       hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
     } catch (err: unknown) {
-      // 조회 실패 시 미등록으로 간주해 vault 단계로 유도한다.
+      // 조회에 실패하면 등록 여부를 모른다 — 이동은 decideAfterLogin 이 홈으로 정한다.
       showIpcErrorToast(err)
     }
-    const anyRegistered = hasCredentials.paper || hasCredentials.real
-    setHasCredentials(hasCredentials)
+    setHasCredentials(hasCredentials ?? { paper: false, real: false })
     setAuthenticated(true)
-    if (anyRegistered) {
+    if (decideAfterLogin(hasCredentials, accountType) === 'home') {
       navigate('/home')
     } else {
       setStep('vault')
@@ -59,71 +68,38 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-bg-base text-text-secondary">
+    <div className="relative h-screen w-screen overflow-hidden bg-bg-base text-ink-2">
       {/*
-        macOS 창 드래그 영역. 이 화면에는 TopHeader 가 없어 창을 잡을 곳이 없다.
+        macOS 창 드래그 영역. 이 화면에는 메뉴가 없어 창을 잡을 곳이 없다.
         상단 40px 는 비어 있어 겹치는 컨트롤이 없다.
       */}
       {isMac && (
         <div className="absolute top-0 left-0 right-0 h-10 z-[5] [-webkit-app-region:drag]" aria-hidden />
       )}
 
-      {/* 배경: radial glow + grid overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        aria-hidden
-        style={{
-          background:
-            // 바탕은 단색 — 빛 번짐 장식은 두지 않는다
-            'none',
-        }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none"
-        aria-hidden
-        style={{
-          opacity: 0.04,
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px),' +
-            'linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)',
-          backgroundSize: '48px 48px',
-          maskImage:
-            'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 80%)',
-          WebkitMaskImage:
-            'radial-gradient(ellipse 60% 60% at 50% 50%, black 30%, transparent 80%)',
-        }}
-      />
-
-      {/* 우상단: 빌드 해시 */}
-      <div className="absolute top-4 right-4 z-10 font-mono text-xs text-text-disabled tracking-wider">
-        build 2604.18
-      </div>
-
-      {/* 좌하단: 언어 선택 (UI only) */}
+      {/* 왼쪽 아래: 언어 선택 자리 — 지금은 한국어 고정 */}
       <div className="absolute bottom-4 left-4 z-10">
         <button
           type="button"
-          className="font-mono text-xs text-text-disabled hover:text-text-tertiary tracking-wider"
-          onClick={() => {
-            // TODO(impl): i18n locale switcher (PR 후속 — 현재 KO 고정)
-            console.log('[AuthPage] language switcher clicked (noop)')
-          }}
+          aria-disabled="true"
+          title="준비 중입니다"
+          className="text-[12px] text-ink-4 hover:text-ink-3 bg-transparent border-0 p-0 cursor-default"
+          onClick={() => notifyComingSoon('언어 선택')}
         >
-          KO ▾
+          한국어
         </button>
       </div>
 
-      {/* 중앙 column */}
-      <div className="relative z-[2] min-h-full box-border flex flex-col items-center justify-center px-4 py-10 gap-3.5">
+      {/* 가운데 열 */}
+      <div className="relative z-[2] h-full overflow-y-auto box-border flex flex-col items-center justify-center px-4 py-10 gap-5">
         <AuthBrandSection />
 
         {step === 'login' ? (
           <LoginForm onSuccess={handleLoginSuccess} />
         ) : (
-          <KisVaultDualForm onSuccess={handleVaultSaved} />
+          <KisKeyOffer onSaved={handleVaultSaved} onSkip={() => navigate('/home')} />
         )}
       </div>
-
     </div>
   )
 }
@@ -134,7 +110,6 @@ export default function AuthPage() {
 function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string) => Promise<void> }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [oauthLoading, setOauthLoading] = useState<'google' | 'kakao' | null>(null)
@@ -198,24 +173,15 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string)
     }
   }
 
+  const busy = loading || oauthLoading !== null
+
   return (
     <>
-      <div
-        className="w-[380px] max-w-full bg-surface-1 border border-border-subtle rounded-xl px-[26px] pt-5 pb-[22px]"
-        style={{
-          boxShadow:
-            '0 20px 50px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.02) inset',
-        }}
-      >
+      <div className="frost rim rim-float w-[400px] max-w-full rounded-[var(--radius-sheet)] px-8 pt-7 pb-7">
         <form onSubmit={handleSubmit} className="flex flex-col">
-          <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
-            로그인
-          </div>
-          <div className="text-text-tertiary text-sm mt-1">
-            계정 정보로 터미널에 접속하세요
-          </div>
+          <h1 className="text-ink-1 text-[19px] font-bold">로그인</h1>
 
-          <div className="flex flex-col gap-2.5 mt-3.5">
+          <div className="flex flex-col gap-3 mt-5">
             <AuthInputField
               label="이메일"
               type="email"
@@ -223,21 +189,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string)
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="username"
-              leadingIcon={
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <rect x="1.5" y="3" width="11" height="8" rx="1.5" />
-                  <path d="M2 4l5 3.5L12 4" />
-                </svg>
-              }
             />
-
             <AuthInputField
               label="비밀번호"
               isPassword
@@ -248,480 +200,171 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string)
               labelTrailing={
                 <button
                   type="button"
-                  className="text-text-tertiary text-xs hover:text-accent-400 whitespace-nowrap"
-                  onClick={() => {
-                    // TODO(impl): 비밀번호 찾기 플로우 (별도 PR)
-                    console.log('[AuthPage] password reset clicked (noop)')
-                  }}
+                  aria-disabled="true"
+                  title="준비 중입니다"
+                  className="text-ink-4 text-[12px] bg-transparent border-0 p-0 cursor-default whitespace-nowrap"
+                  onClick={() => notifyComingSoon('비밀번호 찾기')}
                 >
                   비밀번호 찾기
                 </button>
               }
-              leadingIcon={
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
-                  <rect x="2.5" y="6" width="9" height="6.5" rx="1" />
-                  <path d="M4.5 6V4a2.5 2.5 0 015 0v2" />
-                </svg>
-              }
             />
           </div>
 
-          {/* 옵션 행 */}
-          <div className="flex items-center justify-between gap-2.5 mt-3">
-            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-              {/*
-                peer 패턴: input 이 sr-only 지만 :focus-visible 시 옆 span 에
-                키보드 포커스 링을 그려 a11y 포커스 시각화 보장.
-                인라인 hex (#10b981 / #242e3f) → 디자인 토큰화.
-              */}
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="peer sr-only"
-              />
-              <span
-                className={`w-3.5 h-3.5 rounded-sm grid place-items-center transition-colors ${
-                  rememberMe ? 'bg-accent-500' : 'bg-surface-3'
-                } peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500/40 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-1`}
-                style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.12)' }}
-                aria-hidden
-              >
-                {rememberMe && (
-                  <svg
-                    width="9"
-                    height="9"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                    stroke="#212226"
-                    strokeWidth="2.6"
-                  >
-                    <path d="M2.5 6.2l2.3 2.3L9.5 3.7" />
-                  </svg>
-                )}
-              </span>
-              <span className="text-text-secondary text-sm whitespace-nowrap">
-                자동 로그인
-              </span>
-            </label>
-          </div>
-
-          {/* 에러 영역 — 디자인은 비워두지만 공간 확보 */}
-          <div className={`min-h-[16px] mt-2 transition-opacity ${error ? 'opacity-100' : 'opacity-0'}`}>
-            {error && <p className="text-danger text-sm">{error}</p>}
-          </div>
-
+          {/*
+            자동 로그인 자리. 로그인 정보를 디스크에 남기지 않으므로 아직 동작하지 않는다
+            (ux.md "아직 정하지 않은 것"). 켜진 것처럼 보이지 않게 빈 상자로 둔다.
+          */}
           <button
-            type="submit"
-            disabled={loading || oauthLoading !== null}
-            className="gbtn gbtn-lapis w-full mt-2"
+            type="button"
+            aria-disabled="true"
+            title="준비 중입니다"
+            onClick={() => notifyComingSoon('자동 로그인')}
+            className="inline-flex items-center gap-2 self-start mt-3.5 bg-transparent border-0 p-0 cursor-default opacity-60"
           >
-            {loading ? '로그인 중...' : '로그인'}
-            {!loading && (
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" />
-              </svg>
-            )}
+            <span className="w-4 h-4 rounded-[5px] border border-border-strong" aria-hidden />
+            <span className="text-ink-3 text-[13px]">자동 로그인</span>
           </button>
 
-          {/* Divider */}
-          <div className="flex items-center gap-2.5 mt-4">
+          <p className="min-h-[18px] mt-3 text-danger text-[13px] leading-snug" role="alert">
+            {error}
+          </p>
+
+          <button type="submit" disabled={busy} className="gbtn gbtn-lapis w-full mt-1">
+            {loading ? '로그인 중' : '로그인'}
+          </button>
+
+          <div className="flex items-center gap-3 mt-5">
             <span className="flex-1 h-px bg-border-subtle" />
-            <span className="text-text-disabled text-[10.5px] tracking-[.1em] uppercase whitespace-nowrap">
-              또는 소셜 로그인
-            </span>
+            <span className="text-ink-4 text-[12px] whitespace-nowrap">또는</span>
             <span className="flex-1 h-px bg-border-subtle" />
           </div>
 
-          {/* OAuth 버튼 — 진행 중에는 다른 provider 와 이메일 로그인 모두 비활성 */}
-          <div className="flex flex-col gap-2 mt-3">
+          {/* 소셜 로그인 — 진행 중에는 다른 provider 와 이메일 로그인 모두 비활성 */}
+          <div className="flex flex-col gap-2.5 mt-4">
             <OAuthButton
               provider="google"
               onClick={() => handleOAuth('google')}
-              disabled={loading || oauthLoading !== null}
+              disabled={busy}
               loading={oauthLoading === 'google'}
             />
             <OAuthButton
               provider="kakao"
               onClick={() => handleOAuth('kakao')}
-              disabled={loading || oauthLoading !== null}
+              disabled={busy}
               loading={oauthLoading === 'kakao'}
             />
           </div>
         </form>
       </div>
 
-      {/* Below card */}
-      <div className="flex flex-col items-center gap-1">
-        <div className="text-text-tertiary text-sm">
-          계정이 없으신가요?{' '}
+      <div className="flex flex-col items-center gap-1.5">
+        <p className="text-ink-3 text-[13px]">
+          계정이 없으면{' '}
           <button
             type="button"
-            className="text-accent-400 font-medium hover:underline bg-transparent border-0 p-0 cursor-pointer"
-            onClick={() => {
-              // TODO(impl): shell.openExternal('https://earning-whisperer.example/signup')
-              // 보안: URL 화이트리스트 검증 (자체 도메인) + state 파라미터 + main 프로세스 IPC 경유
-              console.log('[AuthPage] open signup URL (noop)')
-            }}
+            aria-disabled="true"
+            title="준비 중입니다"
+            className="text-ink-3 underline underline-offset-2 decoration-ink-4 bg-transparent border-0 p-0 cursor-default"
+            onClick={() => notifyComingSoon('웹사이트 가입')}
           >
-            웹사이트에서 가입하기 ↗
+            웹사이트에서 가입
           </button>
-        </div>
-        <div className="font-mono text-text-disabled text-xs tracking-wider">
-          v1.0.0 · build 2604.18
-        </div>
+        </p>
+        <span className="num text-ink-4 text-[11px]">v1.0.0</span>
       </div>
     </>
   )
 }
 
 /* -------------------------------------------------------------------------- */
-/* KisVaultDualForm — 모의/실전 두 카드 폼.                                    */
-/*                                                                              */
-/* A3: 사용자는 양쪽 모두 또는 한쪽만 입력 가능. "기본 모드" 라디오 로 어느           */
-/* 모드를 디폴트로 시작할지 명시. 한쪽만 입력했다면 자동으로 그쪽이 활성.           */
-/*                                                                              */
-/* 빈 카드(세 필드 모두 비어있음)는 등록 skip. 한쪽이라도 일부만 채우면 검증 에러.    */
+/* KisKeyOffer — 첫 로그인 직후 키 등록 권유. 건너뛰고 홈으로 갈 수 있다.          */
+/* 모의 · 실전 중 하나를 골라 키 한 벌만 받는다. 고른 모드가 활성 모드가 된다.      */
 /* -------------------------------------------------------------------------- */
-export type ModeKey = 'paper' | 'real'
+const MODE_ITEMS: { id: KisMode; label: string }[] = [
+  { id: 'paper', label: KIS_MODE_LABEL.paper },
+  { id: 'real', label: KIS_MODE_LABEL.real },
+]
 
-export interface VaultCardState {
-  appKey: string
-  appSecret: string
-  accountNo: string
-}
+function KisKeyOffer({ onSaved, onSkip }: { onSaved: () => Promise<void>; onSkip: () => void }) {
+  const [mode, setMode] = useState<KisMode>('paper')
+  const [saving, setSaving] = useState(false)
+  // 처음 그릴 때만 App Key 칸에 포커스를 준다 — 화살표로 계좌를 바꿀 때는 전환에 포커스를 둔다
+  const [focusForm, setFocusForm] = useState(true)
+  const [confirmReal, setConfirmReal] = useState<((ok: boolean) => void) | null>(null)
 
-export const EMPTY_CARD: VaultCardState = { appKey: '', appSecret: '', accountNo: '' }
-
-export function isCardEmpty(c: VaultCardState): boolean {
-  return c.appKey === '' && c.appSecret === '' && c.accountNo === ''
-}
-
-export function isCardComplete(c: VaultCardState): boolean {
-  return c.appKey.trim() !== '' && c.appSecret.trim() !== '' && c.accountNo.trim() !== ''
-}
-
-/**
- * 입력된 카드와 활성 모드 선택을 받아 VAULT_SAVE 호출 순서를 결정.
- * 활성 모드 먼저 저장하면 vaultHandlers 가 활성 모드 일치 시 issueToken 트리거 (저장 직후 자동 발급).
- * 비활성 모드는 후순위 — vaultHandlers 가 활성 모드 가드로 token 발급 skip.
- *
- * 반환:
- *   - 양쪽 모두 입력 → [activeMode, otherMode]
- *   - 한쪽만 입력 → [filledMode]
- *   - 양쪽 미입력 → []
- */
-export function resolveSaveOrder(
-  paperFilled: boolean,
-  realFilled: boolean,
-  activeMode: ModeKey,
-): ModeKey[] {
-  const order: ModeKey[] = []
-  if (activeMode === 'paper') {
-    if (paperFilled) order.push('paper')
-    if (realFilled) order.push('real')
-  } else {
-    if (realFilled) order.push('real')
-    if (paperFilled) order.push('paper')
+  function handleModeChange(next: KisMode) {
+    setFocusForm(false)
+    setMode(next)
   }
-  return order
-}
 
-/**
- * 카드별 try/catch 결과(성공/실패 모드 + 메시지)를 조합해 사용자 인지용 에러 메시지 반환.
- * null = 양쪽 다 성공 (호출 측이 onSuccess 트리거).
- */
-export function composePartialFailureMessage(
-  successes: ModeKey[],
-  failures: { mode: ModeKey; message: string }[],
-): string | null {
-  if (failures.length === 0) return null
-  const label = (m: ModeKey): string => (m === 'paper' ? '모의' : '실전')
-  if (successes.length > 0) {
-    const failureLines = failures
-      .map((f) => `${label(f.mode)} 키 저장 실패: ${f.message}`)
-      .join('\n')
-    const successLine = successes.map(label).join('/')
-    return `${successLine} 키는 저장됐지만 ${failureLines}\n설정 페이지에서 추가 등록 가능합니다.`
+  // 실전 계좌는 저장 전에 한 번 더 묻는다 (설정의 실전 전환과 같은 마찰)
+  function confirmSubmit(): Promise<boolean> {
+    if (mode !== 'real') return Promise.resolve(true)
+    return new Promise((resolve) => setConfirmReal(() => resolve))
   }
-  // 양쪽 다 실패
-  return failures.map((f) => `${label(f.mode)} 키 저장 실패: ${f.message}`).join('\n')
-}
 
-function KisVaultDualForm({ onSuccess }: { onSuccess: () => void }) {
-  const [paperCard, setPaperCard] = useState<VaultCardState>(EMPTY_CARD)
-  const [realCard, setRealCard] = useState<VaultCardState>(EMPTY_CARD)
-  // 사용자가 명시적으로 선택한 활성 모드. null = 미선택 (한쪽만 입력 시 자동 결정).
-  const [selectedActiveMode, setSelectedActiveMode] = useState<ModeKey | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  function closeConfirm(ok: boolean) {
+    confirmReal?.(ok)
+    setConfirmReal(null)
+  }
 
-  const paperFilled = !isCardEmpty(paperCard)
-  const realFilled = !isCardEmpty(realCard)
-  // 양쪽 모두 입력 시: 사용자 명시 선택 필수. 한쪽만 입력 시: 자동으로 그쪽이 활성.
-  const resolvedActiveMode: ModeKey | null =
-    paperFilled && realFilled
-      ? selectedActiveMode
-      : paperFilled
-        ? 'paper'
-        : realFilled
-          ? 'real'
-          : null
-
-  // 최소 한쪽이라도 입력되어야 제출 가능 — disabled 가드.
-  const canSubmit = paperFilled || realFilled
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-
-    // 검증: 입력이 시작된 카드는 세 필드 모두 채워져야 함 (부분 입력 거부).
-    if (paperFilled && !isCardComplete(paperCard)) {
-      setError('모의투자 카드의 모든 필드를 입력해주세요. (App Key / App Secret / 계좌번호)')
-      return
-    }
-    if (realFilled && !isCardComplete(realCard)) {
-      setError('실전투자 카드의 모든 필드를 입력해주세요. (App Key / App Secret / 계좌번호)')
-      return
-    }
-    if (!paperFilled && !realFilled) {
-      setError('최소 한쪽 모드의 API 키를 입력해주세요.')
-      return
-    }
-    // 양쪽 입력인데 활성 모드 미선택 — 사용자가 어느 쪽으로 시작할지 명시해야 함.
-    if (paperFilled && realFilled && selectedActiveMode === null) {
-      setError('어느 모드를 기본 모드로 사용할지 선택해주세요.')
-      return
-    }
-
-    const finalActive = resolvedActiveMode
-    if (finalActive === null) {
-      // 위 가드들로 도달 불가능하지만 type narrowing 위해 명시.
-      setError('활성 모드를 결정할 수 없습니다.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      // 1) 활성 모드 먼저 main 에 박아 두면, 후속 VAULT_SAVE 가 활성 모드 일치 시 토큰 발급.
-      //    SETTINGS_SET_PAPER_TRADING 은 invalidateRuntime 을 트리거하므로 VAULT_SAVE 선행 필수.
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, {
-        value: finalActive === 'paper',
-      })
-
-      // 2) 카드별 try/catch 분리 — 부분 저장 실패 시 어느 카드 실패인지 사용자에게 명시.
-      // 단일 에러 메시지로는 "첫 카드 성공 + 두 번째 실패" 시 어느 모드 키가 들어갔는지
-      // 사용자가 알 수 없어 재등록 흐름이 막힌다 (review hotfix #2).
-      const saveOrder = resolveSaveOrder(paperFilled, realFilled, finalActive)
-      const failures: { mode: ModeKey; message: string }[] = []
-      const successes: ModeKey[] = []
-      for (const mode of saveOrder) {
-        const card = mode === 'paper' ? paperCard : realCard
-        try {
-          await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, {
-            appKey: card.appKey.trim(),
-            appSecret: card.appSecret.trim(),
-            accountNo: card.accountNo.trim(),
-            isPaperTrading: mode === 'paper',
-          })
-          successes.push(mode)
-        } catch (err: any) {
-          failures.push({
-            mode,
-            message: err?.message ?? '저장 실패',
-          })
-          // 첫 카드 실패는 toast 만 (사용자가 form 으로 재시도 가능). 마지막 실패는 인라인까지 노출.
-          showIpcErrorToast(err)
-        }
-      }
-
-      const partialMessage = composePartialFailureMessage(successes, failures)
-      if (partialMessage === null) {
-        onSuccess()
-        return
-      }
-      setError(partialMessage)
-    } catch (err: any) {
-      setError(err?.message ?? 'API 키 저장에 실패했습니다.')
-      showIpcErrorToast(err)
-    } finally {
-      setLoading(false)
-    }
+  async function handleSubmit(payload: VaultSavePayload) {
+    await saveOfferedKey(ipc.invoke, payload)
+    await onSaved()
   }
 
   return (
-    <div
-      className="w-[460px] max-w-full bg-surface-1 border border-border-subtle rounded-xl px-[26px] pt-5 pb-[22px]"
-      style={{
-        boxShadow:
-          '0 20px 50px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.02) inset',
-      }}
-    >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-        <div>
-          <h2 className="text-text-primary text-base font-semibold tracking-tight">
-            KIS API 키 등록
-          </h2>
-          <p className="text-text-tertiary text-xs mt-1">
-            모의 / 실전 환경별로 키쌍을 등록합니다. 한쪽만 등록해도 진행할 수 있고, 나중에 설정에서 다른 모드를 추가할 수 있습니다.
-          </p>
-        </div>
-
-        <VaultCard
-          mode="paper"
-          title="KIS 모의투자"
-          accentTone="paper"
-          card={paperCard}
-          onChange={setPaperCard}
-          activeRadio={resolvedActiveMode === 'paper'}
-          onActivateRadio={() => setSelectedActiveMode('paper')}
-          showRadio={paperFilled && realFilled}
-          autoActivated={paperFilled && !realFilled}
-        />
-
-        <VaultCard
-          mode="real"
-          title="KIS 실전투자"
-          accentTone="real"
-          card={realCard}
-          onChange={setRealCard}
-          activeRadio={resolvedActiveMode === 'real'}
-          onActivateRadio={() => setSelectedActiveMode('real')}
-          showRadio={paperFilled && realFilled}
-          autoActivated={realFilled && !paperFilled}
-        />
-
-        {error && <p className="text-danger text-sm">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={loading || !canSubmit}
-          className="gbtn gbtn-olive w-full mt-1"
-        >
-          {loading ? '저장 중...' : '저장하고 시작'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* VaultCard — 한 모드용 입력 카드. paper/real 색조만 분기.                     */
-/* -------------------------------------------------------------------------- */
-function VaultCard({
-  mode,
-  title,
-  accentTone,
-  card,
-  onChange,
-  activeRadio,
-  onActivateRadio,
-  showRadio,
-  autoActivated,
-}: {
-  mode: ModeKey
-  title: string
-  accentTone: 'paper' | 'real'
-  card: VaultCardState
-  onChange: (next: VaultCardState) => void
-  activeRadio: boolean
-  onActivateRadio: () => void
-  showRadio: boolean
-  autoActivated: boolean
-}) {
-  const tone =
-    accentTone === 'paper'
-      ? { color: 'var(--caution)', bg: 'rgba(var(--caution-rgb),0.06)', border: 'rgba(var(--caution-rgb),0.3)' }
-      : { color: 'var(--danger)', bg: 'rgba(var(--danger-rgb),0.06)', border: 'rgba(var(--danger-rgb),0.3)' }
-
-  return (
-    <div
-      className="rounded-md border bg-surface-2 px-3 pt-2.5 pb-3 flex flex-col gap-2"
-      style={{ borderColor: tone.border, background: tone.bg }}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className="text-text-primary text-sm font-semibold tracking-tight"
-          style={{ color: tone.color }}
-        >
-          {title}
-        </span>
-        {autoActivated && (
-          <span
-            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-semibold tracking-wider whitespace-nowrap"
-            style={{
-              background: 'rgba(var(--ok-rgb),0.10)',
-              color: 'var(--ok)',
-              border: '1px solid rgba(var(--ok-rgb),0.25)',
-            }}
-          >
-            기본 모드
-          </span>
-        )}
+    <div className="frost rim rim-float w-[440px] max-w-full rounded-[var(--radius-sheet)] px-8 pt-7 pb-7 flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-ink-1 text-[19px] font-bold">주문용 KIS 키 등록</h1>
+        <p className="text-ink-3 text-[13px] leading-relaxed">
+          어닝콜 분석은 키 없이 모두 쓸 수 있습니다. 주문하려면 한국투자증권 Open API 키가 필요하고,
+          나중에 설정에서 등록해도 됩니다.
+        </p>
       </div>
 
-      <AuthInputField
-        label="App Key"
-        value={card.appKey}
-        onChange={(e) => onChange({ ...card, appKey: e.target.value })}
-      />
-      <AuthInputField
-        label="App Secret"
-        isPassword
-        value={card.appSecret}
-        onChange={(e) => onChange({ ...card, appSecret: e.target.value })}
-      />
-      <AuthInputField
-        label="계좌번호 (예: 5012345601)"
-        value={card.accountNo}
-        onChange={(e) => onChange({ ...card, accountNo: e.target.value })}
+      <div className="flex flex-col gap-2">
+        {/* 저장 중에는 계좌를 바꾸지 못하게 막는다 */}
+        <fieldset disabled={saving} className="contents">
+          <SegmentedControl items={MODE_ITEMS} activeId={mode} onChange={handleModeChange} className="self-start" />
+        </fieldset>
+        <p className={`text-[12.5px] leading-snug ${mode === 'real' ? 'text-[color:var(--caution)]' : 'text-ink-3'}`} aria-live="polite">
+          {mode === 'real'
+            ? '실제 돈으로 주문하는 계좌입니다. 체결되면 되돌릴 수 없습니다.'
+            : '모의투자 서버로 주문합니다. 실제 돈은 움직이지 않습니다.'}
+        </p>
+      </div>
+
+      {/* 모드를 바꾸면 폼을 새로 그려 입력값을 비운다 — 다른 계좌의 키가 섞여 저장되지 않게 */}
+      <KisKeyForm
+        key={mode}
+        mode={mode}
+        submitLabel="저장하고 시작"
+        secondaryLabel="나중에"
+        onSecondary={onSkip}
+        onSubmit={handleSubmit}
+        confirmSubmit={confirmSubmit}
+        onSavingChange={setSaving}
+        autoFocus={focusForm}
       />
 
-      {showRadio && (
-        <label className="inline-flex items-center gap-2 cursor-pointer select-none mt-1">
-          <input
-            type="radio"
-            name="vault-active-mode"
-            checked={activeRadio}
-            onChange={onActivateRadio}
-            value={mode}
-            className="peer sr-only"
-          />
-          <span
-            className={`w-3.5 h-3.5 rounded-full grid place-items-center transition-colors ${
-              activeRadio ? 'bg-accent-500' : 'bg-surface-3'
-            } peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500/40 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2`}
-            style={{ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.15)' }}
-            aria-hidden
-          >
-            {activeRadio && (
-              <span className="w-1.5 h-1.5 rounded-full bg-accent-foreground" />
-            )}
-          </span>
-          <span className="text-text-secondary text-xs whitespace-nowrap">
-            기본 모드로 사용
-          </span>
-        </label>
-      )}
-      {showRadio && (
-        <span className="text-text-disabled text-[10px] tracking-wide leading-snug">
-          설정에서 언제든 변경 가능
-        </span>
-      )}
+      <Modal open={confirmReal !== null} onClose={() => closeConfirm(false)} ariaLabel="실전투자 키 저장 확인">
+        <div className="w-[400px] max-w-[90vw] p-7 flex flex-col gap-3">
+          <h2 className="text-ink-1 text-[17px] font-bold">실전투자 계좌로 시작할까요?</h2>
+          <p className="text-ink-2 text-[13.5px] leading-relaxed">
+            저장하면 이 계좌로 실제 돈을 주문합니다. 모의투자로 먼저 써 보려면 취소하고 모의투자를 고릅니다.
+          </p>
+          <div className="flex items-center justify-between gap-2 mt-3">
+            <button type="button" onClick={() => closeConfirm(false)} className="gbtn">
+              취소
+            </button>
+            <button type="button" onClick={() => closeConfirm(true)} className="gbtn gbtn-porphyra">
+              실전투자로 저장
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

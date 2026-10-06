@@ -15,8 +15,9 @@ interface KisStatusTimelineProps {
 }
 
 /**
- * KisStatusTimeline — KIS 연동 3-step 수직 타임라인.
- * 각 스텝은 22×22 원형 아이콘 + 점선 연결자 + 본문 (제목 + 모노스페이스 메타).
+ * KisStatusTimeline — KIS 연동 3단계 세로 타임라인.
+ * 각 단계는 22×22 원형 아이콘 + 점선 연결자 + 본문(제목 + 설명)이다.
+ * 아이콘 색은 상태색(ok · danger)만 쓰고, 아직 안 된 단계는 흐린 글자색으로 둔다.
  */
 export default function KisStatusTimeline({ steps }: KisStatusTimelineProps) {
   return (
@@ -42,9 +43,9 @@ function TimelineStep({
       color: 'var(--ok)',
     },
     pending: {
-      bg: 'rgba(var(--caution-rgb),0.12)',
-      border: 'rgba(var(--caution-rgb),0.35)',
-      color: 'var(--caution)',
+      bg: 'transparent',
+      border: 'var(--line-strong)',
+      color: 'var(--ink-4)',
     },
     error: {
       bg: 'rgba(var(--danger-rgb),0.12)',
@@ -66,7 +67,7 @@ function TimelineStep({
             left: '15px',
             top: '-6px',
             height: '12px',
-            borderLeft: '1px dashed #35363b',
+            borderLeft: '1px dashed var(--line-strong)',
           }}
           aria-hidden
         />
@@ -107,10 +108,8 @@ function TimelineStep({
         )}
       </div>
       <div className="flex flex-col gap-0.5 py-px">
-        <span className="text-text-primary text-base font-medium">{step.title}</span>
-        <span className="text-text-tertiary font-mono text-sm tracking-wide">
-          {step.sub}
-        </span>
+        <span className="text-ink-1 text-[14px] font-medium">{step.title}</span>
+        <span className="text-ink-3 text-[12.5px] leading-snug">{step.sub}</span>
       </div>
     </div>
   )

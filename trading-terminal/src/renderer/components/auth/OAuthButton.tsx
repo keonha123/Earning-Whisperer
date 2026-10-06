@@ -9,8 +9,8 @@ interface OAuthButtonProps {
 
 /**
  * OAuthButton — Google / Kakao 소셜 로그인 버튼.
- * provider 별 색상·아이콘은 디자인 캔버스 기준으로 인라인 hex 사용
- * (회사 브랜드 색은 디자인 토큰화 대상이 아님).
+ * 보조 버튼이므로 맑은 유리(.gbtn)에 두고, 회사 색은 로고 아이콘에만 남긴다
+ * (색 있는 면은 색상 유리 버튼에만 쓴다 — design-system.md).
  *
  * loading=true 시 라벨이 "인증 중..." 으로 변경되며, disabled=true 면 클릭 차단.
  */
@@ -23,10 +23,9 @@ export default function OAuthButton({ provider, onClick, disabled, loading }: OA
         onClick={onClick}
         disabled={isDisabled}
         aria-busy={loading || undefined}
-        className="w-full h-9 rounded-md inline-flex items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-[filter] hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
-        style={{ background: '#ffffff', color: '#1f2937' }}
+        className="gbtn w-full"
       >
-        <svg width="15" height="15" viewBox="0 0 18 18" className="flex-none">
+        <svg width="15" height="15" viewBox="0 0 18 18" className="flex-none" aria-hidden="true">
           <path
             fill="#4285F4"
             d="M17.64 9.2c0-.64-.06-1.25-.17-1.84H9v3.48h4.84a4.14 4.14 0 01-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"
@@ -55,12 +54,13 @@ export default function OAuthButton({ provider, onClick, disabled, loading }: OA
       onClick={onClick}
       disabled={isDisabled}
       aria-busy={loading || undefined}
-      className="w-full h-9 rounded-md inline-flex items-center justify-center gap-2 text-sm font-medium whitespace-nowrap transition-[filter] hover:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
-      style={{ background: '#FEE500', color: '#000000' }}
+      className="gbtn w-full"
     >
-      <svg width="15" height="15" viewBox="0 0 16 16" className="flex-none">
+      <svg width="16" height="16" viewBox="0 0 16 16" className="flex-none" aria-hidden="true">
+        <rect width="16" height="16" rx="4" fill="#FEE500" />
         <path
           fill="#000"
+          transform="translate(2.4 2.6) scale(0.7)"
           d="M8 2C4.14 2 1 4.54 1 7.68c0 2.03 1.32 3.81 3.33 4.84l-.7 2.64c-.07.27.22.48.46.34l3.1-2.08c.26.03.54.04.81.04 3.86 0 7-2.54 7-5.68C15 4.54 11.86 2 8 2z"
         />
       </svg>
