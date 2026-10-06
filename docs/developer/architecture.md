@@ -134,7 +134,7 @@ FastAPI 서버이고 포트는 8000 입니다. 진입점은 `main.py` 의 `app` 
 |---|---|
 | 실시간 팩트체크(문장 버퍼, 3문장마다 주장 추출 → 근거 대조) | `api/routers/live_fact_check.py`, `services/live_news_fact_check_service.py` (`LiveNewsFactCheckService`) |
 | 종합 판단 / 회피·관련 종목 영향·손절 계획 | `core/analysis_service.py` / `services/earnings_intelligence_service.py` |
-| 직전 콜 대조 | `api/routers/transcript_diff.py`, `services/transcript_diff_service.py` |
+| 직전 콜 대조(저장된 핵심 문장 중 관련 문장을 LLM 이 번호로 고름. 문장이 없으면 청크 검색) | `api/routers/transcript_diff.py`, `services/transcript_diff_service.py`, `services/transcript_statement_diff.py` |
 | 직전 콜 핵심 문장 추출(적재 시 경영진 문장을 원문 그대로 골라 저장) | `services/transcript_statement_extraction_service.py`, `services/transcript_statement_service.py`, `repositories/transcript_statement_repository.py` |
 | 근거 준비 확인, 수집기 인입 | `api/routers/integration.py`, `services/news_ingestion_service.py` |
 | 근거 저장소(Qdrant) / 분석 이벤트 저장(PostgreSQL) | `QdrantEvidenceRepository` / `EventStoreRepository` (`repositories/`) |

@@ -160,11 +160,14 @@ def create_app() -> FastAPI:
     app.state.evidence_repository = _build_evidence_repository(settings, app.state.event_store_repository)
     app.state.transcript_repository = _build_transcript_repository(settings)
     app.state.evidence_service = EvidenceRetrievalService(repository=app.state.evidence_repository)
-    app.state.transcript_diff_service = TranscriptDiffService(app.state.transcript_repository)
     app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
     app.state.transcript_statement_service = TranscriptStatementService(
         extractor=TranscriptStatementExtractionService(settings=settings),
         repository=_build_transcript_statement_repository(app.state.transcript_repository),
+    )
+    app.state.transcript_diff_service = TranscriptDiffService(
+        app.state.transcript_repository,
+        statement_service=app.state.transcript_statement_service,
     )
     app.state.analysis_service = AnalysisService(
         settings=settings,
