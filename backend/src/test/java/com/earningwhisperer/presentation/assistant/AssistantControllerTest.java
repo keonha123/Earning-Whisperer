@@ -188,6 +188,23 @@ class AssistantControllerTest {
         mockMvc.perform(ask(BODY))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("assistant_overloaded"));
+        // 중계가 이미 잠금을 풀므로 컨트롤러는 다시 풀지 않는다.
+        verify(quota, never()).unlock(7L);
+    }
+
+    @Test
+    @DisplayName("한도 확인 중 Redis 장애면 503 assistant_unavailable 이고 잠금은 푼다")
+    void quotaFailureReleasesLock() throws Exception {
+        when(askService.prepare(any())).thenReturn(PREPARED);
+        when(quota.tryLock(eq(7L), any(Duration.class))).thenReturn(true);
+        when(quota.tryConsumeDaily(eq(7L), any(), eq(50)))
+                .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("down"));
+
+        mockMvc.perform(ask(BODY))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("assistant_unavailable"));
+        verify(quota).unlock(7L);
+        verify(relay, never()).start(any());
     }
 
     @Test
@@ -218,7 +235,8 @@ class AssistantControllerTest {
     @DisplayName("질문 501자·대화 7개·잘못된 추천 질문 id·잘못된 역할은 400")
     void validation() throws Exception {
         String longQuestion = "가".repeat(501);
-        mockMvc.perform(ask(BODY.replace("  가이던스가 바뀌었어?  ", longQuestion))).andExpect(status().isBadRequest());
+        mockMvc.perform(ask(BODY.replace("  가이던스가 바뀌었어?  ", longQuestion))).andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 
         String sevenTurns = "[" + String.join(",", java.util.Collections.nCopies(7, "{\"role\": \"user\", \"text\": \"q\"}")) + "]";
         mockMvc.perform(ask(BODY.replaceFirst("\\[\\{\"role\".*\\]", sevenTurns))).andExpect(status().isBadRequest());

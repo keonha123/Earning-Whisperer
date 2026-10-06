@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -72,27 +73,44 @@ public class AssistantController {
             log.warn("질의응답 세그먼트 조회 실패 user_id={}", userId, e);
             return error(HttpStatus.SERVICE_UNAVAILABLE, "assistant_unavailable", "질의응답을 잠시 사용할 수 없습니다.");
         }
+        // 잠금을 잡은 뒤 중계가 소유권을 넘겨받기 전에 어떤 이유로든 빠져나가면 여기서 푼다.
+        // RejectedExecutionException 은 중계가 이미 잠금을 풀었으므로 다시 풀지 않는다.
+        boolean locked = false;
+        boolean released = false;
         try {
             Duration lockTtl = Duration.ofSeconds(properties.streamTimeoutSeconds()).plus(LOCK_MARGIN);
             if (!quota.tryLock(userId, lockTtl)) {
                 return error(HttpStatus.CONFLICT, "assistant_busy", "이전 질문의 답변이 끝난 뒤 다시 질문해 주세요.");
             }
+            locked = true;
             LocalDate today = LocalDate.now(QUOTA_ZONE);
             if (!quota.tryConsumeDaily(userId, today, properties.dailyLimit())) {
-                quota.unlock(userId);
                 Map<String, Object> payload = body("daily_limit_exceeded", "오늘 질문 횟수를 모두 썼습니다.");
                 payload.put("reset_at", today.plusDays(1).atStartOfDay(QUOTA_ZONE).toInstant().toString());
                 return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).contentType(MediaType.APPLICATION_JSON).body(payload);
             }
+            SseEmitter emitter = relay.start(prepared);
+            released = true; // 중계가 소유권을 넘겨받았다.
+            return emitter;
+        } catch (RejectedExecutionException e) {
+            released = true; // 중계가 이미 잠금을 풀었다.
+            log.warn("질의응답 중계 스레드가 가득 찼습니다 user_id={}", userId);
+            return error(HttpStatus.SERVICE_UNAVAILABLE, "assistant_overloaded", "질문이 몰려 있습니다. 잠시 후 다시 질문해 주세요.");
         } catch (DataAccessException e) {
             log.warn("질의응답 한도 확인 실패 user_id={}", userId, e);
             return error(HttpStatus.SERVICE_UNAVAILABLE, "assistant_unavailable", "질의응답을 잠시 사용할 수 없습니다.");
+        } finally {
+            if (locked && !released) {
+                releaseQuietly(userId);
+            }
         }
+    }
+
+    private void releaseQuietly(Long userId) {
         try {
-            return relay.start(prepared);
-        } catch (RejectedExecutionException e) {
-            log.warn("질의응답 중계 스레드가 가득 찼습니다 user_id={}", userId);
-            return error(HttpStatus.SERVICE_UNAVAILABLE, "assistant_overloaded", "질문이 몰려 있습니다. 잠시 후 다시 질문해 주세요.");
+            quota.unlock(userId);
+        } catch (RuntimeException e) {
+            log.warn("질의응답 잠금 해제 실패 user_id={}", userId, e);
         }
     }
 
