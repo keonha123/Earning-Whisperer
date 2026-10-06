@@ -21,6 +21,7 @@ import { applyTradeRecords, type SessionOrder, type TradeRecord } from "../lib/s
 import {
   countDiffsByType,
   currentCallSegments,
+  translationsByLastSequence,
   deriveCallPhase,
   formatCallClock,
   groupDiffsBySequence,
@@ -34,6 +35,7 @@ import { usePrices } from "../hooks/usePrices";
 import { useCompanyDetail } from "../hooks/useCompanyDetail";
 import { useFactCheck } from "../hooks/useFactCheck";
 import { useTranscriptDiff } from "../hooks/useTranscriptDiff";
+import { useTranscriptTranslation } from "../hooks/useTranscriptTranslation";
 import { useEarningsSummary } from "../hooks/useEarningsSummary";
 
 /** 위쪽에 떠 있는 콜 바 아래로 내용이 지나가도록 각 면의 위쪽에 비워 두는 높이(px). */
@@ -80,6 +82,16 @@ export default function TradingRoomPage() {
     previousCall: transcriptDiffPreviousCall,
     clear: clearTranscriptDiff,
   } = useTranscriptDiff(ticker);
+
+  // ── 자막 번역 · 용어 밑줄 (STOMP /topic/transcript-translation/{ticker}) ──────
+  // 구독에 참조 카운트가 없어 이 화면에서 한 번만 부르고 결과를 자막에 내린다.
+  const {
+    items: translationItems,
+    glossaryStatus,
+    clear: clearTranslation,
+  } = useTranscriptTranslation(ticker);
+  // 초보 투자자가 원문을 따라가는 것이 이 기능의 목적이라 번역을 켠 채로 시작한다.
+  const [showTranslation, setShowTranslation] = useState(true);
 
   // ── 어닝콜 종료 후 종합 판단 (Contract 4.7 STOMP /topic/evaluation/{ticker}) ──
   // 회차당 1건뿐이라 늦게 구독하면 놓친다. 여기서 ticker 와 함께 구독을 세워 둔다.
@@ -133,6 +145,16 @@ export default function TradingRoomPage() {
   );
   const isLive = phase === "LIVE";
   const lastCallId = segments.length > 0 ? segments[segments.length - 1].callId : null;
+  const translations = useMemo(
+    () => translationsByLastSequence(translationItems, lastCallId),
+    [translationItems, lastCallId],
+  );
+  const translationProps = {
+    translations,
+    showTranslation,
+    onShowTranslationChange: setShowTranslation,
+    glossaryStatus,
+  };
   // 지난 회차 판단은 보이지 않는다 — 콜 상태 판단과 같은 기준이다.
   const currentSummary =
     earningsSummary &&
@@ -316,6 +338,7 @@ export default function TradingRoomPage() {
       setStoppedCallId(null);
       clearFactCheck(ticker);
       clearTranscriptDiff(ticker);
+      clearTranslation(ticker);
       // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이 계속 떠 있게 된다.
       clearEarningsSummary(ticker);
       // 세션 시작 응답이 늦게 와도 시연 표시가 꺼지지 않게, 세션 종목을 먼저 맞춘 뒤 표시를 켠다.
@@ -478,6 +501,7 @@ export default function TradingRoomPage() {
               isLive
               topInset={TOP_INSET}
               focus={focus}
+              {...translationProps}
               onSpeakerClick={speakerProfiles.length > 0 ? openSpeakerProfile : undefined}
             />
             <CallSideTabs
@@ -497,6 +521,7 @@ export default function TradingRoomPage() {
               isLive={false}
               compact
               topInset={TOP_INSET}
+              {...translationProps}
               onSpeakerClick={speakerProfiles.length > 0 ? openSpeakerProfile : undefined}
             />
             <CallVerdict
