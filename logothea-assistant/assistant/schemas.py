@@ -28,6 +28,8 @@ class AskRequest(BaseModel):
     question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_QUESTION_CHARS)]
     suggested_question_id: SuggestedQuestionId | None = None
     history: list[HistoryTurn] = Field(default_factory=list, max_length=MAX_HISTORY_MESSAGES)
+    # 질문 시점의 마지막 세그먼트가 콜 종료 신호인지. backend 가 저장된 세그먼트로 정한다.
+    call_ended: bool = False
 
     @model_validator(mode="after")
     def _anchor_not_after_as_of(self) -> AskRequest:

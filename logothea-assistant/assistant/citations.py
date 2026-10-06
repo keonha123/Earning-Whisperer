@@ -18,6 +18,8 @@ QUOTE_CHARS = 300
 MARKER_RE = re.compile(r"\[([SNPE]\d+(?:\s*,\s*[SNPE]\d+)*)\]")
 _LEADING_MARKERS_RE = re.compile(r"^\s*((?:\[[SNPE]\d+(?:\s*,\s*[SNPE]\d+)*\]\s*)+)")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。])\s+|\n+")
+# 모델은 "…밝혔습니다.[S20] 다음 문장" 처럼 마침표 뒤에 공백 없이 표시를 붙이기도 한다. 공백을 넣어 앞 문장의 인용으로 묶는다.
+_MARKER_AFTER_PERIOD_RE = re.compile(r"([.!?。])(?=\[[SNPE]\d)")
 
 _NUM = r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 _SCALES = {
@@ -95,7 +97,7 @@ def find_markers(text: str) -> list[str]:
 
 def split_sentences(answer: str) -> list[str]:
     sentences: list[str] = []
-    for piece in _SENTENCE_SPLIT_RE.split(answer):
+    for piece in _SENTENCE_SPLIT_RE.split(_MARKER_AFTER_PERIOD_RE.sub(r"\1 ", answer)):
         if not piece or not piece.strip():
             continue
         # "…늘었습니다. [S3] 다음 문장" 처럼 표시가 마침표 뒤에 오면 앞 문장의 인용으로 본다.

@@ -106,6 +106,12 @@ app:
   assistant:
     # 질의응답(#112)이 근거로 쓰는 콜 단위 세그먼트 기록의 보관 시간. 마지막 세그먼트 기준으로 갱신된다.
     segment-ttl-hours: ${ASSISTANT_SEGMENT_TTL_HOURS:48}
+    # logothea-assistant 주소. 같은 인스턴스의 루프백에만 바인딩된다.
+    base-url: ${ASSISTANT_BASE_URL:http://127.0.0.1:8100}
+    # 사용자별 하루 질문 수(Asia/Seoul 날짜 기준). 질문을 시작할 때 차감한다.
+    daily-limit: ${ASSISTANT_DAILY_LIMIT:50}
+    # 답변 스트림 전체 상한(초). 넘으면 error 이벤트를 보내고 assistant 연결을 닫는다.
+    stream-timeout-seconds: ${ASSISTANT_STREAM_TIMEOUT_SECONDS:60}
 
   trade:
     # 수동 주문 PENDING 의 유효시간(초). 증권사에 실제로 들어가 체결을 기다리는
