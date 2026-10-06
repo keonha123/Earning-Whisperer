@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.data.redis.RedisConnectionFailureException;
+
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +41,7 @@ class AssistantRelayTest {
     @Mock AssistantStreamClient client;
     @Mock AssistantQuota quota;
     @Mock ScheduledExecutorService scheduler;
+    @Mock ScheduledExecutorService heartbeatScheduler;
 
     private AssistantRelay relay;
 
@@ -56,9 +60,15 @@ class AssistantRelayTest {
         final List<String> events = new ArrayList<>();
         int completed;
         int failOn = -1;
+        int heartbeats;
+        boolean heartbeatFails;
         @Override public void send(String event, String data) throws IOException {
             if (events.size() == failOn) throw new IOException("client gone");
             events.add(event + " " + data);
+        }
+        @Override public void heartbeat() throws IOException {
+            heartbeats++;
+            if (heartbeatFails) throw new IOException("client gone");
         }
         @Override public void complete() { completed++; }
     }
@@ -66,7 +76,7 @@ class AssistantRelayTest {
     @BeforeEach
     void setUp() {
         relay = new AssistantRelay(client, quota, new ObjectMapper(), (Executor) Runnable::run, scheduler,
-                new AssistantProperties(null, 50, 60));
+                heartbeatScheduler, new AssistantProperties(null, 50, 60));
     }
 
     @Test
@@ -159,7 +169,8 @@ class AssistantRelayTest {
     @DisplayName("스레드풀이 가득 차면 잠금을 풀고 RejectedExecutionException 을 던진다")
     void rejected() {
         AssistantRelay full = new AssistantRelay(client, quota, new ObjectMapper(),
-                command -> { throw new RejectedExecutionException("full"); }, scheduler, new AssistantProperties(null, 50, 60));
+                command -> { throw new RejectedExecutionException("full"); }, scheduler, heartbeatScheduler,
+                new AssistantProperties(null, 50, 60));
 
         assertThatThrownBy(() -> full.start(ASK)).isInstanceOf(RejectedExecutionException.class);
         verify(quota).unlock(7L);
@@ -185,8 +196,8 @@ class AssistantRelayTest {
         session.attach(body);
         RecordingSink sink = new RecordingSink();
 
-        relay.onStreamTimeout(sink, session);
-        relay.onStreamTimeout(sink, session);
+        relay.onStreamTimeout(sink, session, "call-1");
+        relay.onStreamTimeout(sink, session, "call-1");
 
         assertThat(sink.events).hasSize(1);
         assertThat(sink.events.get(0)).startsWith("error ").contains("\"code\":\"timeout\"");
@@ -202,7 +213,7 @@ class AssistantRelayTest {
         RecordingSink sink = new RecordingSink();
         AssistantRelay.Session session = relay.newSession(7L);
 
-        relay.onStreamTimeout(sink, session);
+        relay.onStreamTimeout(sink, session, "call-1");
         relay.relay(ASK, sink, session);
 
         assertThat(sink.events).hasSize(1);
@@ -229,6 +240,65 @@ class AssistantRelayTest {
         assertThat(sink.events).hasSize(1);
         assertThat(sink.events.get(0)).contains("\"code\":\"assistant_stream_interrupted\"");
         assertThat(sink.completed).isEqualTo(1);
+        verify(quota).unlock(7L);
+    }
+
+    @Test
+    @DisplayName("heartbeat 전송이 실패하면 세션을 닫아 assistant 본문을 닫고 잠금을 한 번 푼다")
+    void heartbeatFailureClosesSession() {
+        TrackingStream body = new TrackingStream("");
+        AssistantRelay.Session session = relay.newSession(7L);
+        session.attach(body);
+        RecordingSink sink = new RecordingSink();
+        sink.heartbeatFails = true;
+
+        relay.heartbeat(sink, session);
+        relay.heartbeat(sink, session);
+
+        assertThat(sink.heartbeats).isEqualTo(1);
+        assertThat(body.closed).isTrue();
+        verify(quota, times(1)).unlock(7L);
+    }
+
+    @Test
+    @DisplayName("닫힌 세션에는 heartbeat 를 보내지 않는다")
+    void heartbeatOnClosedSessionDoesNothing() {
+        AssistantRelay.Session session = relay.newSession(7L);
+        session.close();
+        RecordingSink sink = new RecordingSink();
+
+        relay.heartbeat(sink, session);
+
+        assertThat(sink.heartbeats).isZero();
+    }
+
+    @Test
+    @DisplayName("start 는 heartbeat 를 2초 고정 주기로 예약한다")
+    void startSchedulesHeartbeat() {
+        relay.start(ASK);
+
+        verify(heartbeatScheduler).scheduleAtFixedRate(any(Runnable.class), eq(2L), eq(2L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("done 을 넘긴 뒤에는 더 읽지 않고 바로 끝낸다")
+    void stopsReadingAfterDone() throws Exception {
+        when(client.open(ASK)).thenReturn(new TrackingStream("event: done\ndata: {}\n\nevent: delta\ndata: {}\n\n"));
+        RecordingSink sink = new RecordingSink();
+
+        relay.relay(ASK, sink, relay.newSession(7L));
+
+        assertThat(sink.events).containsExactly("done {}");
+        assertThat(sink.completed).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("잠금 해제가 실패해도 세션을 닫을 때 예외를 던지지 않는다")
+    void unlockFailureDoesNotEscape() {
+        doThrow(new RedisConnectionFailureException("down")).when(quota).unlock(7L);
+
+        relay.newSession(7L).close();
+
         verify(quota).unlock(7L);
     }
 }

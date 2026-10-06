@@ -248,6 +248,8 @@ class AssistantControllerTest {
 
         mockMvc.perform(ask(BODY.replace("\"as_of_sequence\": 17", "\"as_of_sequence\": -1"))).andExpect(status().isBadRequest());
 
+        mockMvc.perform(ask(BODY.replaceFirst("\\[\\{\"role\".*\\]", "[null]"))).andExpect(status().isBadRequest());
+
         verify(askService, never()).prepare(any());
     }
 }

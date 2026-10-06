@@ -22,10 +22,10 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -46,26 +46,31 @@ public class AssistantRelay {
             "assistant_stream_interrupted", "답변 전송이 중간에 끊겼습니다.",
             "timeout", "답변 시간이 제한을 넘어 중단했습니다.");
 
+    private static final long HEARTBEAT_SECONDS = 2;
+
     private final AssistantStreamClient client;
     private final AssistantQuota quota;
     private final ObjectMapper objectMapper;
     private final Executor executor;
     private final ScheduledExecutorService scheduler;
+    private final ScheduledExecutorService heartbeatScheduler;
     private final Duration streamTimeout;
 
     @Autowired
     public AssistantRelay(AssistantStreamClient client, AssistantQuota quota, ObjectMapper objectMapper,
                           AssistantProperties properties) {
-        this(client, quota, objectMapper, newRelayExecutor(), newTimeoutScheduler(), properties);
+        this(client, quota, objectMapper, newRelayExecutor(), newTimeoutScheduler(), newHeartbeatScheduler(), properties);
     }
 
     AssistantRelay(AssistantStreamClient client, AssistantQuota quota, ObjectMapper objectMapper,
-                   Executor executor, ScheduledExecutorService scheduler, AssistantProperties properties) {
+                   Executor executor, ScheduledExecutorService scheduler, ScheduledExecutorService heartbeatScheduler,
+                   AssistantProperties properties) {
         this.client = client;
         this.quota = quota;
         this.objectMapper = objectMapper;
         this.executor = executor;
         this.scheduler = scheduler;
+        this.heartbeatScheduler = heartbeatScheduler;
         this.streamTimeout = Duration.ofSeconds(properties.streamTimeoutSeconds());
     }
 
@@ -82,7 +87,18 @@ public class AssistantRelay {
     private static ScheduledExecutorService newTimeoutScheduler() {
         CustomizableThreadFactory factory = new CustomizableThreadFactory("assistant-timeout-");
         factory.setDaemon(true);
-        return Executors.newSingleThreadScheduledExecutor(factory);
+        ScheduledThreadPoolExecutor timeoutScheduler = new ScheduledThreadPoolExecutor(1, factory);
+        timeoutScheduler.setRemoveOnCancelPolicy(true);
+        return timeoutScheduler;
+    }
+
+    /** 끊김 확인용 keep-alive 를 보내는 스레드. 막힌 쓰기가 타임아웃 측정을 늦추지 않도록 타임아웃 스케줄러와 분리한다. */
+    private static ScheduledExecutorService newHeartbeatScheduler() {
+        CustomizableThreadFactory factory = new CustomizableThreadFactory("assistant-heartbeat-");
+        factory.setDaemon(true);
+        ScheduledThreadPoolExecutor heartbeatScheduler = new ScheduledThreadPoolExecutor(2, factory);
+        heartbeatScheduler.setRemoveOnCancelPolicy(true);
+        return heartbeatScheduler;
     }
 
     @PreDestroy
@@ -91,11 +107,15 @@ public class AssistantRelay {
             service.shutdownNow();
         }
         scheduler.shutdownNow();
+        heartbeatScheduler.shutdownNow();
     }
 
     /** 터미널로 나가는 이벤트 통로. 운영에서는 SseEmitter, 테스트에서는 기록용 구현. */
     interface EventSink {
         void send(String event, String data) throws IOException;
+
+        /** 데이터 없이 연결이 살아 있는지 확인하는 SSE 주석 줄(:)을 보낸다. 끊겼으면 예외. */
+        void heartbeat() throws IOException;
 
         void complete();
     }
@@ -107,6 +127,7 @@ public class AssistantRelay {
         private final AtomicBoolean terminated = new AtomicBoolean(false);
         private volatile InputStream body;
         private volatile ScheduledFuture<?> timeoutTask;
+        private volatile ScheduledFuture<?> heartbeatTask;
 
         private Session(Long userId) {
             this.userId = userId;
@@ -121,6 +142,13 @@ public class AssistantRelay {
 
         void watch(ScheduledFuture<?> task) {
             timeoutTask = task;
+            if (closed.get() && task != null) {
+                task.cancel(false);
+            }
+        }
+
+        void watchHeartbeat(ScheduledFuture<?> task) {
+            heartbeatTask = task;
             if (closed.get() && task != null) {
                 task.cancel(false);
             }
@@ -141,8 +169,17 @@ public class AssistantRelay {
                 if (task != null) {
                     task.cancel(false);
                 }
+                ScheduledFuture<?> beat = heartbeatTask;
+                if (beat != null) {
+                    beat.cancel(false);
+                }
                 closeQuietly(body);
-                quota.unlock(userId);
+                try {
+                    quota.unlock(userId);
+                } catch (RuntimeException e) {
+                    // 잠금 해제 실패(Redis 장애 등)가 중계 스레드나 start() 의 다른 예외를 가리지 않게 한다. 잠금은 TTL 로 풀린다.
+                    log.warn("동시 질문 잠금을 풀지 못했습니다 user_id={}", userId, e);
+                }
             }
         }
     }
@@ -159,7 +196,10 @@ public class AssistantRelay {
         emitter.onError(error -> session.close());
         // 컨테이너 타임아웃은 이미 완료 처리된 뒤라 이벤트를 보낼 수 없다. 정리만 하고 60초는 직접 잰다.
         emitter.onTimeout(session::close);
-        session.watch(scheduler.schedule(() -> onStreamTimeout(sink, session), streamTimeout.toSeconds(), TimeUnit.SECONDS));
+        session.watch(scheduler.schedule(() -> onStreamTimeout(sink, session, ask.callId()),
+                streamTimeout.toSeconds(), TimeUnit.SECONDS));
+        session.watchHeartbeat(heartbeatScheduler.scheduleAtFixedRate(() -> heartbeat(sink, session),
+                HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS));
         try {
             executor.execute(() -> relay(ask, sink, session));
         } catch (RejectedExecutionException e) {
@@ -169,10 +209,22 @@ public class AssistantRelay {
         return emitter;
     }
 
-    void onStreamTimeout(EventSink sink, Session session) {
+    /** 위쪽이 말이 없는 동안(분류·문맥 수집)에도 사용자가 끊었는지 알아채도록 주기적으로 연결을 확인한다. */
+    void heartbeat(EventSink sink, Session session) {
+        if (session.isClosed()) {
+            return;
+        }
+        try {
+            sink.heartbeat();
+        } catch (IOException | IllegalStateException e) {
+            session.close();
+        }
+    }
+
+    void onStreamTimeout(EventSink sink, Session session, String callId) {
         try {
             if (session.tryTerminate()) {
-                log.warn("질의응답 스트림이 제한 시간을 넘었습니다");
+                log.warn("질의응답 스트림이 제한 시간을 넘었습니다 user_id={} call_id={}", session.userId, callId);
                 sendError(sink, "timeout");
                 sink.complete();
             }
@@ -199,6 +251,7 @@ public class AssistantRelay {
                         if ("done".equals(frame.event())) {
                             logUsage(ask, frame.data());
                         }
+                        break;
                     }
                 }
             }
@@ -269,6 +322,11 @@ public class AssistantRelay {
         @Override
         public void send(String event, String data) throws IOException {
             emitter.send(SseEmitter.event().name(event).data(data));
+        }
+
+        @Override
+        public void heartbeat() throws IOException {
+            emitter.send(SseEmitter.event().comment(""));
         }
 
         @Override

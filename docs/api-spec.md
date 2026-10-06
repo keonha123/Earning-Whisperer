@@ -612,7 +612,7 @@ start 응답 예시:
 - **요청.** `as_of_sequence` 는 터미널이 마지막으로 받은 세그먼트 번호입니다. backend 는 이를 저장된 마지막 세그먼트 이하로 낮추고, 그 세그먼트의 발행 시각을 근거 시점으로 씁니다. `anchor_sequence` 는 사용자가 고른 대목이며 없으면 `null` 입니다. `suggested_question_id` 가 있으면 대목 지정은 무시하고 콜 전체 범위로 답합니다. `question` 은 500자, `history` 는 6개(후속 질문 3회)까지이고 대화 기록은 터미널이 보관합니다.
 - **Accept.** 성공은 `text/event-stream`, 실패는 JSON 이므로 `Accept: text/event-stream, application/json` 으로 보냅니다.
 - **성공(200).** 이벤트는 10.6 과 같습니다(`meta` → `delta` → `citations` → `done`, 실패 시 `error`). backend 가 덧붙이는 `error` 의 `code` 는 `assistant_unavailable`(질의응답 서비스 연결 실패), `assistant_stream_interrupted`(완료 이벤트 없이 끊김), `timeout`(60초 초과)입니다.
-- **실패.** 본문은 `{"error": "<메시지>", "code": "<code>"}` 입니다.
+- **실패.** 본문은 `{"error": "<메시지>", "code": "<code>"}` 입니다. 검증 오류 400 과 401 의 본문에는 `code` 가 없습니다.
 
 | 상태 | code | 의미 |
 |---|---|---|
@@ -623,8 +623,9 @@ start 응답 예시:
 | 429 | `daily_limit_exceeded` | 하루 질문 수(기본 50, 한국 시간 자정 초기화) 초과. `reset_at` 에 다음 초기화 시각(UTC ISO-8601) |
 | 503 | `assistant_overloaded` / `assistant_unavailable` | 중계가 가득 참 / 자막·한도 저장소(Redis) 장애 |
 
-- 하루 횟수는 질문을 시작할 때 차감하며, 답이 실패해도 돌려주지 않습니다. 404·400·409 는 횟수를 쓰지 않습니다.
-- 사용자가 연결을 끊으면 backend 는 질의응답 서비스 연결을 닫고, 질의응답 서비스는 진행 중인 생성을 멈춥니다.
+- 하루 횟수는 질문을 시작할 때 차감하며, 답이 실패해도 돌려주지 않습니다. 503 `assistant_overloaded` 도 횟수를 차감한 뒤 거절합니다. 404·400·409 는 횟수를 쓰지 않습니다.
+- 사용자가 연결을 끊으면 backend 는 다음 전송 시점에, 또는 2초마다 보내는 keep-alive 주석으로 몇 초 안에 이를 알아채고 질의응답 서비스 연결을 닫으며, 질의응답 서비스는 진행 중인 생성을 멈춥니다.
+- 스트림에는 2초마다 SSE 주석 줄(`:`)이 섞여 나오며 클라이언트는 무시하면 됩니다.
 - **관련 설정:** `app.assistant.base-url`, `app.assistant.daily-limit`, `app.assistant.stream-timeout-seconds`.
 
 ---

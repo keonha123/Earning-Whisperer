@@ -22,7 +22,7 @@ public record AssistantAskRequest(
         @Min(0) Integer anchorSequence,
         @NotBlank @Size(max = 500) String question,
         @Pattern(regexp = "summary|vs_last_quarter|guidance|vs_expectations|risks") String suggestedQuestionId,
-        @Size(max = 6) List<@Valid Turn> history
+        @Size(max = 6) List<@Valid @NotNull Turn> history
 ) {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
