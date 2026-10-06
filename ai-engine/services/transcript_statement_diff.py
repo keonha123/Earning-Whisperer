@@ -30,9 +30,10 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-#: backend 의 ai-engine 읽기 제한(기본 8초)보다 짧게 둔다. 넘으면 backend 가 응답을 버린다.
-#: 실측(WMT Q2 24구간)에서 응답은 2~6초였다.
-LLM_TIMEOUT_SECONDS = 7.0
+#: 실측(WMT Q2 24구간)에서 응답은 로컬 2~6초, 시연 서버 4~7초였다. backend 는 대조를 자막과 별도
+#: 스레드에서 한 구간씩 차례로 보내므로(읽기 제한 50초), 구간 간격(시연 스크립트 15초)을 넘지 않으면
+#: 대기열이 쌓이지 않는다.
+LLM_TIMEOUT_SECONDS = 15.0
 LLM_MAX_OUTPUT_TOKENS = 1024
 
 #: LLM 에 보여 줄 직전 콜 문장 수 상한. 관련도 순으로 자른다.
