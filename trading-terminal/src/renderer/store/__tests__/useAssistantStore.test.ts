@@ -16,6 +16,9 @@ vi.mock('../../lib/ipc', async () => {
   }
 })
 
+const showIpcErrorToast = vi.fn()
+vi.mock('../../components/common/Toast', () => ({ showIpcErrorToast: (...args: unknown[]) => showIpcErrorToast(...args) }))
+
 import { useAssistantStore, selectCanAsk, selectIsStreaming, selectRemainingQuestions } from '../useAssistantStore'
 import { useTranscriptStore } from '../useTranscriptStore'
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
@@ -39,6 +42,7 @@ function lastAskPayload() {
 beforeEach(() => {
   useAssistantStore.getState().reset()
   invoke.mockReset()
+  showIpcErrorToast.mockReset()
   invoke.mockImplementation(async (_channel: string, payload: { requestId?: string }) => ({ requestId: payload?.requestId }))
   useTranscriptStore.getState().clearTicker('WMT')
   for (const s of [1, 2, 3]) useTranscriptStore.getState().upsertSegment(segment(s))
@@ -124,6 +128,31 @@ describe('useAssistantStore', () => {
       status: 'error', error: { code: 'daily_limit_exceeded', message: ASSISTANT_ERROR_MESSAGES.daily_limit_exceeded }, resetAt: '2026-10-07T15:00:00Z',
     })
     expect(useAssistantStore.getState().activeTurnId).toBeNull()
+  })
+
+  it('로그인 만료는 오류 턴과 함께 재로그인 흐름(토스트)으로 알리고, 429 는 알리지 않는다', async () => {
+    const expired = new IpcError('AUTH_EXPIRED', '로그인이 만료됐습니다.', { status: 401, code: null, message: '로그인이 만료됐습니다.', resetAt: null })
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) throw expired
+      return true
+    })
+    useAssistantStore.getState().open({ ticker: 'WMT', callId: 'call-1' })
+    await useAssistantStore.getState().ask({ question: 'q' })
+
+    expect(showIpcErrorToast).toHaveBeenCalledWith(expired)
+    expect(useAssistantStore.getState().conversation!.turns[0].status).toBe('error')
+
+    showIpcErrorToast.mockReset()
+    useAssistantStore.getState().reset()
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) {
+        throw new IpcError('BUSINESS_RULE', 'x', { status: 429, code: 'daily_limit_exceeded', message: 'x', resetAt: null })
+      }
+      return true
+    })
+    useAssistantStore.getState().open({ ticker: 'WMT', callId: 'call-1' })
+    await useAssistantStore.getState().ask({ question: 'q' })
+    expect(showIpcErrorToast).not.toHaveBeenCalled()
   })
 
   it('후속 질문에는 직전 답변까지의 대화를 최대 3쌍 싣고, 질문은 대화당 4개까지다', async () => {

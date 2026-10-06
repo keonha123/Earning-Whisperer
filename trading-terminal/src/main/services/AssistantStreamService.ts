@@ -14,7 +14,7 @@ import type {
  * 어닝콜 질의응답 스트림 (#112, Contract 7.10).
  *
  * backend 의 SSE 를 Node 내장 fetch 로 읽어 프레임마다 renderer 로 민다. axios 는 응답을 다 받은 뒤에야
- * 돌려주므로 스트림에는 쓰지 않는다. 한 창에서 질문은 하나만 진행한다 — 새 질문이 오면 이전 연결을 끊는다.
+ * 돌려주므로 스트림에는 쓰지 않는다. 앱 전체에서 하나뿐인 싱글톤이라 질문은 앱 전체에서 한 번에 하나만 진행한다(터미널은 현재 창이 하나다). 새 질문이 오면 이전 연결을 끊는다.
  * 연결을 끊으면 backend 가 assistant 연결을 닫고, assistant 가 OpenAI 생성을 멈춘다.
  */
 
@@ -25,6 +25,8 @@ export interface AssistantStreamDeps {
   sleep: (ms: number) => Promise<void>
   now: () => number
   baseUrl: string
+  /** 바이트가 이 시간 동안 오지 않으면 끊긴 것으로 본다. 기본 STREAM_IDLE_TIMEOUT_MS. */
+  idleTimeoutMs?: number
 }
 
 const EVENT_TYPES = new Set<AssistantEventType>(['meta', 'delta', 'citations', 'done', 'error'])
@@ -32,6 +34,8 @@ const TERMINAL_EVENTS = new Set<AssistantEventType>(['done', 'error'])
 // 직전 질문을 취소한 직후에는 backend 가 끊김을 알아채기 전(하트비트 주기 수 초)이라 같은 사용자의 잠금이 남아 409 가 온다.
 // 그때만 짧게 기다렸다 다시 보낸다. 다른 기기에서 진행 중인 질문 때문인 409 는 바로 알린다.
 const BUSY_RETRY_WINDOW_MS = 10_000
+// backend 는 2초마다 하트비트(`:`)를 보낸다. 이 시간 동안 아무 바이트도 없으면 연결이 죽은 것으로 본다.
+export const STREAM_IDLE_TIMEOUT_MS = 15_000
 const BUSY_RETRY_DELAYS_MS = [1_500, 2_500, 3_500]
 
 const DEFAULT_MESSAGES: Record<string, string> = {
@@ -58,6 +62,7 @@ export class AssistantStreamService {
       sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
       now: deps.now ?? (() => Date.now()),
       baseUrl: deps.baseUrl ?? process.env.BACKEND_URL ?? 'http://localhost:8082',
+      idleTimeoutMs: deps.idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS,
     }
   }
 
@@ -104,7 +109,7 @@ export class AssistantStreamService {
     for (;;) {
       let response: Response
       try {
-        response = await this.deps.fetch(`${this.deps.baseUrl}/api/v1/assistant/ask`, {
+        response = await this.deps.fetch(new URL('/api/v1/assistant/ask', this.deps.baseUrl).toString(), {
           method: 'POST',
           signal,
           headers: headers(),
@@ -120,6 +125,7 @@ export class AssistantStreamService {
       const code = typeof body.code === 'string' ? body.code : null
       if (response.status === 401 && !refreshed) {
         refreshed = true
+        if (!mainState.backendRefreshToken) throw rejection('AUTH_EXPIRED', 401, code, DEFAULT_MESSAGES.auth)
         try {
           await BackendClient.refreshSession()
         } catch {
@@ -158,8 +164,16 @@ export class AssistantStreamService {
     }
     let terminal = false
     let interrupted = false
+    let idleTimer: ReturnType<typeof setTimeout> | null = null
+    let idleFired = false
     try {
       reading: for (;;) {
+        if (idleTimer) clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => {
+          idleFired = true
+          active.controller.abort()
+          void reader.cancel().catch(() => undefined)
+        }, this.deps.idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS)
         const { done, value } = await reader.read()
         if (done) break
         for (const frame of parser.push(decoder.decode(value, { stream: true }))) {
@@ -177,11 +191,14 @@ export class AssistantStreamService {
           }
         }
       }
-      interrupted = !terminal && !active.controller.signal.aborted
+      interrupted = !terminal && (idleFired || !active.controller.signal.aborted)
     } catch {
       // 사용자가 취소했으면(abort) 화면은 이미 취소 상태다. 그 밖의 읽기 실패는 끊김으로 알린다.
-      interrupted = !active.controller.signal.aborted
+      interrupted = idleFired || !active.controller.signal.aborted
     } finally {
+      if (idleTimer) clearTimeout(idleTimer)
+      // 연결을 우리가 닫는 시점이다. backend 가 아직 사용자 잠금을 쥐고 있을 수 있어 직후 409 재시도 기준으로 삼는다.
+      this.lastCancelAt = this.deps.now()
       if (this.active === active) this.active = null
       // 끝 이벤트 뒤에는 연결을 닫는다. backend 가 뒤늦게 보내는 이벤트와 하트비트를 받을 이유가 없다.
       active.controller.abort()

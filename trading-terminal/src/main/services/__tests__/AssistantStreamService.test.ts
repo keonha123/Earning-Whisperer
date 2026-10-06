@@ -33,16 +33,23 @@ async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-function setup(fetchImpl: (...args: unknown[]) => Promise<Response>, now = () => 1_000_000) {
+function setup(
+  fetchImpl: (...args: unknown[]) => Promise<Response>,
+  now = () => 1_000_000,
+  extra: { baseUrl?: string; idleTimeoutMs?: number } = {},
+) {
   const fetch = vi.fn(fetchImpl)
   const sleep = vi.fn(async () => undefined)
-  const service = new AssistantStreamService({ fetch: fetch as unknown as typeof globalThis.fetch, sleep, now, baseUrl: 'http://backend' })
+  const service = new AssistantStreamService({
+    fetch: fetch as unknown as typeof globalThis.fetch, sleep, now, baseUrl: extra.baseUrl ?? 'http://backend', idleTimeoutMs: extra.idleTimeoutMs,
+  })
   const events: AssistantStreamEvent[] = []
   return { fetch, sleep, service, events, sink: (e: AssistantStreamEvent) => events.push(e) }
 }
 
 beforeEach(() => {
   mainState.setBackendToken('tok')
+  mainState.setBackendRefreshToken('rt')
 })
 
 describe('AssistantStreamService', () => {
@@ -233,5 +240,69 @@ describe('AssistantStreamService', () => {
     expect((firstInit.signal as AbortSignal).aborted).toBe(true)
     expect(events.filter((e) => e.requestId === 'r1').map((e) => e.type)).toEqual(['meta'])
     expect(events.filter((e) => e.requestId === 'r2').map((e) => e.type)).toEqual(['done'])
+  })
+
+  it('401 인데 갱신 토큰이 없으면 갱신 없이 AUTH_EXPIRED', async () => {
+    mainState.setBackendRefreshToken(null)
+    const refresh = vi.spyOn(BackendClient, 'refreshSession').mockResolvedValue(undefined as never)
+    const { service, sink } = setup(async () => jsonResponse(401, {}))
+
+    await expect(service.ask(request(), sink)).rejects.toMatchObject({ code: 'AUTH_EXPIRED' })
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('답변이 끝난 직후의 409 assistant_busy 도 다시 시도한다', async () => {
+    const busy = () => jsonResponse(409, { error: 'busy', code: 'assistant_busy' })
+    const responses = [sseResponse(['event:done\ndata:{}\n\n']), busy(), sseResponse(['event:done\ndata:{}\n\n'])]
+    const { fetch, sleep, service, sink } = setup(async () => responses.shift() as Response)
+
+    await service.ask(request({ requestId: 'r1' }), sink)
+    await flush()
+    await service.ask(request({ requestId: 'r2' }), sink)
+
+    expect(sleep).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('baseUrl 끝의 슬래시는 주소를 겹치게 하지 않는다', async () => {
+    const { fetch, service, sink } = setup(async () => sseResponse(['event:done\ndata:{}\n\n']), undefined, { baseUrl: 'http://backend/' })
+
+    await service.ask(request(), sink)
+
+    expect(fetch.mock.calls[0][0]).toBe('http://backend/api/v1/assistant/ask')
+  })
+
+  it('바이트가 한동안 오지 않으면 연결을 끊고 stream_interrupted 를 한 번 민다', async () => {
+    const { fetch, service, events, sink } = setup(async () => sseResponse(['event:meta\ndata:{}\n\n'], true), undefined, { idleTimeoutMs: 20 })
+
+    await service.ask(request(), sink)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit]
+    expect((init.signal as AbortSignal).aborted).toBe(true)
+    expect(events.map((e) => e.type)).toEqual(['meta', 'error'])
+    expect(events[1].data).toEqual({ code: 'stream_interrupted', message: '답변 전송이 중간에 끊겼습니다.' })
+  })
+
+  it('시간 안에 계속 바이트가 오면 끊지 않는다', async () => {
+    let push: (text: string) => void = () => undefined
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (text) => controller.enqueue(encoder.encode(text))
+      },
+    })
+    const { fetch, service, events, sink } = setup(async () => new Response(body, { status: 200 }), undefined, { idleTimeoutMs: 60 })
+
+    await service.ask(request(), sink)
+    for (let i = 0; i < 4; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      push(':\n\n')
+    }
+    push('event:done\ndata:{}\n\n')
+    await flush()
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit]
+    expect(events.map((e) => e.type)).toEqual(['done'])
+    expect((init.signal as AbortSignal).aborted).toBe(true) // 끝 이벤트 뒤 정리
   })
 })

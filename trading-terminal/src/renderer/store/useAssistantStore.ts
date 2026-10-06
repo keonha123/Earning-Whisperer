@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useTranscriptStore } from './useTranscriptStore'
 import { isIpcError } from '../../lib/types/ipcError'
+import { showIpcErrorToast } from '../components/common/Toast'
 import type {
   AssistantAskRequest,
   AssistantHistoryTurn,
@@ -152,6 +153,8 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
       await ipc.invoke(IPC_CHANNELS.ASSISTANT_ASK, request)
     } catch (e) {
       if (get().activeTurnId !== requestId) return
+      // 로그인 만료는 오류 턴만으로 끝나지 않고 기존 재로그인 흐름(전역 핸들러)으로 이어져야 한다.
+      if (isIpcError(e) && e.code === 'AUTH_EXPIRED') showIpcErrorToast(e)
       const rejection = rejectionOf(e)
       updateTurn(set, get, requestId, (turn) =>
         rejection.code === 'cancelled'
