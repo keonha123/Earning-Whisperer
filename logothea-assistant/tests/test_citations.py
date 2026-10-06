@@ -62,6 +62,20 @@ def test_split_sentences_attaches_leading_markers_to_previous_sentence():
     ]
 
 
+def test_split_sentences_handles_marker_glued_to_period():
+    # 실제 모델 출력에서 나온 형태: 마침표 바로 뒤에 공백 없이 표시가 붙는다.
+    assert split_sentences("750bp 기여했다고 밝혔습니다.[S20] 다만 17.4% 는 따로 없습니다.") == [
+        "750bp 기여했다고 밝혔습니다. [S20]", "다만 17.4% 는 따로 없습니다."]
+
+
+def test_marker_glued_to_period_is_verified_against_its_own_sentence():
+    evidence = {"S20": Evidence("S20", "segment", "20",
+                                "Operating income growth included a net benefit of approximately 750 basis points.")}
+    result = verify_citations("관세 환급이 약 750bp 기여했다고 밝혔습니다.[S20] 다만 17.4%에서 뺀 수치는 없습니다.", evidence)
+    assert result.citations[0]["verified"] is True
+    assert "number_mismatch" not in result.warnings
+
+
 def test_split_sentences_attaches_comma_separated_leading_markers():
     assert split_sentences("기존점 매출은 늘었습니다. [S3, S12] 다음 문장입니다.") == [
         "기존점 매출은 늘었습니다. [S3, S12]", "다음 문장입니다."]
