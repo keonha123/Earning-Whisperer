@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../../lib/ipc'
 import { usePortfolioStore, type Holding } from '../../store/usePortfolioStore'
@@ -8,6 +8,7 @@ import { useDrawerStore } from '../../store/useDrawerStore'
 import { useStockMarketStore } from '../../store/useStockMarketStore'
 import { usePrices } from '../../hooks/usePrices'
 import { useEarningsTimeline } from '../../hooks/useEarningsTimeline'
+import { ACCOUNT_LABELS, useOrderAccount } from '../../hooks/useOrderAccount'
 import { COMPANY_META } from '../../constants/companyMeta'
 import { isIpcError } from '../../../lib/types/ipcError'
 import { showIpcErrorToast } from '../common/Toast'
@@ -50,7 +51,7 @@ export default function AssetsView() {
   const setAuthenticated = useConnectionStore((s) => s.setAuthenticated)
   const openDrawer = useDrawerStore((s) => s.open)
   const navigate = useNavigate()
-  const accountLabel = useAccountLabel()
+  const account = useOrderAccount()
 
   async function syncBalance() {
     startSync()
@@ -177,7 +178,7 @@ export default function AssetsView() {
             <div className="flex items-baseline gap-2 min-w-0">
               <h2 className="text-[18px] font-semibold text-ink-1 whitespace-nowrap">계좌</h2>
               <span className="text-[13px] text-ink-3 truncate">
-                {accountLabel ?? '계좌 확인 중'}
+                {account ? ACCOUNT_LABELS[account] : '계좌 확인 중'}
                 {lastSyncedAt != null && (
                   <>
                     {' · '}동기화 <span className="num">{TIME.format(new Date(lastSyncedAt * 1000))}</span>
@@ -242,38 +243,4 @@ export default function AssetsView() {
       </section>
     </div>
   )
-}
-
-const ACCOUNT_LABELS = {
-  KIS_PAPER: 'KIS 모의투자',
-  KIS_REAL: 'KIS 실전투자',
-  SELF_PAPER: '페이퍼 계정',
-} as const
-
-/**
- * 잔고가 나오는 계좌 종류. 판단 방식과 문구는 hooks/useOrderAccount.ts(#156)와 같다.
- * 그 hook 이 main 에 들어오면 이 함수를 지우고 그 hook 과 ACCOUNT_LABELS 를 쓴다.
- */
-function useAccountLabel(): string | null {
-  const accountType = useUserStore((s) => s.accountType)
-  const [isPaperTrading, setIsPaperTrading] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    ipc
-      .invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
-      .then((v) => {
-        if (!cancelled) setIsPaperTrading(v !== false)
-      })
-      .catch(() => {
-        // 모르는 채로 둔다 — "계좌 확인 중" 으로 남는다
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  if (accountType === 'SELF_PAPER') return ACCOUNT_LABELS.SELF_PAPER
-  if (accountType == null || isPaperTrading === null) return null
-  return isPaperTrading ? ACCOUNT_LABELS.KIS_PAPER : ACCOUNT_LABELS.KIS_REAL
 }
