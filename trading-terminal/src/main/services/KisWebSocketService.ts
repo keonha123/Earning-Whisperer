@@ -58,11 +58,13 @@ const DAY_PREFIX:   Record<KisExchange, string> = { NAS: 'RBAQ', NYS: 'RBAY', AM
 
 // 알려진 NYSE 상장 종목. 목록 미포함 ticker는 NASDAQ 으로 fallback.
 // AMEX 개별 종목은 현재 대상 없음 (ETF/소형주 위주) — 필요 시 exchangeOverrides 로 주입.
+// WMT 는 2025-12 나스닥으로 이전해 목록에서 뺐다. NYSE 로 조회하면 KIS 가 빈 시세를 돌려주고
+// 현재가가 없어 주문이 막힌다.
 const STATIC_NYSE: ReadonlySet<string> = new Set([
   // Financials
   'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BX', 'KKR',
   // Consumer / Retail
-  'WMT', 'TGT', 'HD', 'MCD', 'NKE', 'DIS', 'KO', 'PEP', 'PG', 'MO', 'PM',
+  'TGT', 'HD', 'MCD', 'NKE', 'DIS', 'KO', 'PEP', 'PG', 'MO', 'PM',
   // Energy
   'XOM', 'CVX', 'COP',
   // Healthcare
@@ -88,6 +90,21 @@ export function setExchangeHints(hints: Record<string, KisExchange>): void {
   for (const [ticker, exchange] of Object.entries(hints)) {
     exchangeOverrides.set(ticker, exchange)
   }
+}
+
+/**
+ * KIS 시스템 응답이 거부(rt_cd ≠ '0')면 로그용 문구를, 아니면 null 을 돌려준다.
+ * 예: 같은 앱키로 이미 연결된 세션이 있으면 rt_cd='9', msg1='ALREADY IN USE appkey' 가 오고
+ * 서버가 곧 연결을 끊는다. 이를 남기지 않으면 "연결됨 → 연결 종료" 반복만 보여 원인을 알 수 없다.
+ */
+export function describeSystemReject(msg: {
+  header?: { tr_id?: string }
+  body?: { rt_cd?: string; msg_cd?: string; msg1?: string }
+}): string | null {
+  const rtCd = msg?.body?.rt_cd
+  if (rtCd === undefined || rtCd === '0') return null
+  const trId = msg?.header?.tr_id ?? '-'
+  return `tr_id=${trId} rt_cd=${rtCd} msg_cd=${msg?.body?.msg_cd ?? '-'} msg1=${(msg?.body?.msg1 ?? '').trim()}`
 }
 
 export function resolveExchange(ticker: string): KisExchange {
@@ -151,6 +168,17 @@ function decryptNotice(cipherText: string): string | null {
 }
 
 /**
+ * 체결단가는 소수점 없이 소수 4자리를 붙인 정수 문자열로 온다.
+ * 모의투자 실측(2026-10-07): AAPL $333.09 체결 → "3330900".
+ * 소수점이 들어 있으면 그대로 읽는다.
+ */
+function parseNoticePrice(raw: string | undefined): number {
+  const text = (raw ?? '').trim()
+  if (!text) return NaN
+  return text.includes('.') ? Number(text) : Number(text) / 10_000
+}
+
+/**
  * 체결통보를 FillNotice 로 변환. 체결이 아닌 통보(주문 접수/정정/취소/거부)는 null.
  *
  * CNTG_YN: '1' = 주문·정정·취소·거부 접수 통보, '2' = 체결 통보.
@@ -163,7 +191,7 @@ export function parseFillNotice(plain: string): FillNotice | null {
   const orderId = (fields[NOTICE_IDX.ODER_NO] ?? '').trim()
   const ticker = (fields[NOTICE_IDX.STCK_SHRN_ISCD] ?? '').trim()
   const qty = Number(fields[NOTICE_IDX.CNTG_QTY])
-  const price = Number(fields[NOTICE_IDX.CNTG_UNPR])
+  const price = parseNoticePrice(fields[NOTICE_IDX.CNTG_UNPR])
   if (!orderId || !Number.isFinite(qty) || qty <= 0) return null
 
   return {
@@ -354,12 +382,14 @@ export const KisWebSocketService = {
         try {
           const msg = JSON.parse(raw) as {
             header?: { tr_id?: string }
-            body?: { output?: { key?: string; iv?: string }; msg1?: string; rt_cd?: string }
+            body?: { output?: { key?: string; iv?: string }; msg1?: string; msg_cd?: string; rt_cd?: string }
           }
           if (msg?.header?.tr_id === 'PINGPONG') {
             ws?.send(JSON.stringify({ header: { tr_id: 'PINGPONG' } }))
             return
           }
+          const reject = describeSystemReject(msg)
+          if (reject) console.warn(`[KisWS] KIS 응답 거부 — ${reject}`)
           // 체결통보 구독 응답에만 복호화 key/iv 가 실려 온다. 이걸 놓치면 이후 통보를
           // 받아도 읽을 수 없다.
           //
@@ -416,13 +446,13 @@ export const KisWebSocketService = {
       }])
     })
 
-    ws.on('close', () => {
+    ws.on('close', (code: number, reason: Buffer) => {
       wsState = 'DISCONNECTED'
       // 키/IV 는 연결 단위로만 유효하다. 남겨두면 재연결 후 옛 키로 복호화를 시도한다.
       noticeAesKey = null
       noticeAesIv = null
       clearKisWsCovered()
-      console.info('[KisWS] 연결 종료 — 재연결 예약')
+      console.info(`[KisWS] 연결 종료(code=${code}${reason?.length ? ` ${reason.toString()}` : ''}) — 재연결 예약`)
       scheduleReconnect()
     })
 
