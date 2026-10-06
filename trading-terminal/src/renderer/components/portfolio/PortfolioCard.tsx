@@ -19,13 +19,13 @@ interface Props {
 
 function StackedBar({ cashRatio, stockRatio }: { cashRatio: number; stockRatio: number }) {
   return (
-    <div className="w-full h-1.5 bg-[#1e2738] rounded-full overflow-hidden flex">
+    <div className="w-full h-1.5 bg-[rgba(251,250,246,0.08)] rounded-full overflow-hidden flex">
       <div
-        className="h-full transition-all duration-500 bg-[#3b82f6]"
+        className="h-full transition-all duration-500 bg-ink-4"
         style={{ width: `${Math.min(cashRatio * 100, 100)}%` }}
       />
       <div
-        className="h-full transition-all duration-500 bg-[#22c55e]"
+        className="h-full transition-all duration-500 bg-ink-1"
         style={{ width: `${Math.min(stockRatio * 100, 100)}%` }}
       />
     </div>
@@ -41,7 +41,7 @@ function AssetPage({
     <>
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3b82f6] shrink-0" />
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-ink-4 shrink-0" />
           <span className="text-[10px] text-text-disabled uppercase tracking-wide">현금</span>
           <span className="num text-sm text-text-primary">
             ${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -54,7 +54,7 @@ function AssetPage({
             ${stockValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </span>
           <span className="text-[10px] text-text-disabled uppercase tracking-wide">평가</span>
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#22c55e] shrink-0" />
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-ink-1 shrink-0" />
         </div>
       </div>
       <StackedBar cashRatio={cashRatio} stockRatio={stockRatio} />
@@ -67,11 +67,12 @@ function AssetPage({
 
 // ── 페이지 2: 종목 비중 도넛 ──────────────────────────────────────
 
-const DONUT_COLORS = ['#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#ec4899', '#10b981', '#e879f9']
+// 종목 비중은 범주라서 상태색 · 가격색을 쓰지 않고 무채 단계로 나눈다
+const DONUT_COLORS = ['rgba(var(--ink-rgb),0.92)', 'rgba(var(--ink-rgb),0.72)', 'rgba(var(--ink-rgb),0.56)', 'rgba(var(--ink-rgb),0.42)', 'rgba(var(--ink-rgb),0.32)', 'rgba(var(--ink-rgb),0.24)', 'rgba(var(--ink-rgb),0.18)', 'rgba(var(--ink-rgb),0.12)']
 
 function DonutPage({ holdings, totalCash }: { holdings: Holding[]; totalCash: number }) {
   const slices: { label: string; value: number; color: string }[] = []
-  if (totalCash > 0) slices.push({ label: '현금', value: totalCash, color: '#3b82f6' })
+  if (totalCash > 0) slices.push({ label: '현금', value: totalCash, color: 'rgba(251,250,246,0.4)' })
   holdings.forEach((h, i) => {
     const v = h.qty * (h.currentPrice ?? 0)
     if (v > 0) slices.push({ label: h.ticker, value: v, color: DONUT_COLORS[i % DONUT_COLORS.length] })
@@ -225,7 +226,7 @@ export default function PortfolioCard({
       {/* 안쪽: 스크롤 컨테이너 — 총자산 + 페이지 컨텐츠가 함께 스크롤 */}
       <div className="h-full overflow-y-auto">
         {/* 총자산 섹션 — 압축 (pt-3 pb-2, text-xl) */}
-        <div className="px-5 pt-3 pb-2 border-b border-[#1e2738]">
+        <div className="px-5 pt-3 pb-2 border-b border-[rgba(251,250,246,0.08)]">
           <div className="flex items-center justify-between mb-0.5">
             <p className="text-[10px] text-text-disabled uppercase tracking-widest">총 자산 (USD)</p>
             <div className="flex items-center gap-1">

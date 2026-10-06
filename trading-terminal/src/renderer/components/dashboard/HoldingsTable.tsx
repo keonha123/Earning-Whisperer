@@ -243,8 +243,8 @@ function EarningsBadge({ value }: { value: 'LIVE' | number | null | undefined })
 
   if (value === 'LIVE') {
     return (
-      <span className="num text-[10px] px-1.5 py-0.5 rounded-[3px] font-semibold tracking-[0.06em] inline-flex items-center gap-1 bg-sell/10 text-sell border border-sell/30">
-        <span className="w-1 h-1 rounded-full bg-sell" />
+      <span className="num text-[10px] px-1.5 py-0.5 rounded-[3px] font-semibold tracking-[0.06em] inline-flex items-center gap-1 bg-white/[0.06] border border-border-strong text-ink-1">
+        <span className="w-1 h-1 rounded-full bg-ink-1" />
         LIVE
       </span>
     )
@@ -259,9 +259,9 @@ function EarningsBadge({ value }: { value: 'LIVE' | number | null | undefined })
   const daysLeft = Math.ceil((value - Date.now() / 1000) / 86400)
   const cls =
     daysLeft <= 3
-      ? 'bg-sell/10 text-[#fca5a5] border border-sell/30'
+      ? 'bg-warning/10 text-warning border border-warning/30'
       : daysLeft <= 14
-        ? 'bg-warning/10 text-[#fdba74] border border-warning/30'
+        ? 'bg-surface-3 text-text-secondary border border-border-subtle'
         : 'bg-surface-3 text-text-tertiary border border-border-subtle'
 
   return (

@@ -89,7 +89,7 @@ export default function STTScriptPanel({
           </p>
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/home')}
             className="text-xs text-accent-400 hover:text-accent-300 underline underline-offset-4
                        transition-colors duration-100"
           >
@@ -117,7 +117,7 @@ export default function STTScriptPanel({
                 WPM <b className="text-accent-400 font-semibold">{wpm}</b>
               </>
             )}
-            <span className="w-1 h-1 rounded-full bg-buy" />
+            <span className="w-1 h-1 rounded-full bg-ink-1 animate-pulse" />
             LIVE
           </span>
         ) : (
@@ -177,15 +177,15 @@ export default function STTScriptPanel({
                     <span
                       className={
                         'ml-2 px-1 py-px rounded bg-surface-2 text-[9px] ' +
-                        // 음수 점수: text-text-tertiary 토큰 (#94a3b8) 그대로 사용.
+                        // 음수 점수: text-text-tertiary 토큰 (var(--ink-3)) 그대로 사용.
                         (line.ai_score >= 0 ? '' : 'text-text-tertiary')
                       }
                       // 양수 점수만 인라인 hex — design-canvas: AI score purple
-                      // (#a78bfa, violet-400). 디자인 시스템에 ai-* 토큰 정식 정의 후
+                      // (var(--ink-1), violet-400). 디자인 시스템에 ai-* 토큰 정식 정의 후
                       // 일괄 치환 예정 (TradingRoomPage 보라색 칩들과 동일 사유).
                       style={
                         line.ai_score >= 0
-                          ? { color: '#a78bfa' }
+                          ? { color: 'var(--ink-1)' }
                           : undefined
                       }
                     >
@@ -210,16 +210,14 @@ export default function STTScriptPanel({
         {/* 우측 스크롤 인디케이터 라인 — 디자인 캔버스 .stt-scroll-indicator */}
         <span
           className="pointer-events-none absolute right-1.5 top-3 bottom-3 w-0.5 opacity-40 rounded"
-          style={{ background: 'linear-gradient(#10b981, transparent)' }}
+          style={{ background: 'linear-gradient(rgba(var(--ink-rgb),0.5), transparent)' }}
         />
 
         {!isStickyBottom && (
           <button
             type="button"
             onClick={jumpToLatest}
-            className="absolute right-3 bottom-3 px-2.5 py-1 rounded-md
-                       bg-accent-500 text-accent-foreground text-[10px] font-bold tracking-[0.06em]
-                       shadow-md hover:bg-accent-600 transition-colors duration-100"
+            className="gbtn gbtn-sm absolute right-3 bottom-3"
           >
             최신 ↓
           </button>

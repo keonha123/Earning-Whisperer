@@ -8,10 +8,10 @@ export default function AuthBrandSection() {
       <div
         className="w-11 h-11 rounded-xl grid place-items-center font-extrabold text-base tracking-tight"
         style={{
-          background: 'linear-gradient(135deg, #34d399, #059669)',
-          color: '#041711',
+          background: 'linear-gradient(135deg, #3a3b40, #26272b)',
+          color: '#fbfaf6',
           boxShadow:
-            '0 0 0 1px rgba(255,255,255,.06), 0 12px 40px -8px rgba(16,185,129,.55), inset 0 1px 0 rgba(255,255,255,.35)',
+            '0 0 0 1px rgba(226,189,98,.5), 0 12px 32px -10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.35)',
         }}
       >
         EW

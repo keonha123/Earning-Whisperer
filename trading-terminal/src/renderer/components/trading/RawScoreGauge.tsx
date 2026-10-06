@@ -5,9 +5,9 @@ interface RawScoreGaugeProps {
 const ARC_LENGTH = Math.PI * 80
 
 function getArcColor(score: number): string {
-  if (score <= 0.4) return '#ef4444'
-  if (score <= 0.6) return '#f59e0b'
-  return '#22c55e'
+  if (score <= 0.4) return 'var(--danger)'
+  if (score <= 0.6) return 'var(--caution)'
+  return 'var(--ok)'
 }
 
 function describeArc(cx: number, cy: number, r: number): string {
@@ -28,7 +28,7 @@ function getNeedleCoords(cx: number, cy: number, length: number, angleDeg: numbe
 
 export default function RawScoreGauge({ score }: RawScoreGaugeProps) {
   const safeScore = score ?? 0
-  const arcColor = score !== null ? getArcColor(safeScore) : '#1e2738'
+  const arcColor = score !== null ? getArcColor(safeScore) : 'rgba(251,250,246,0.08)'
   const dashOffset = ARC_LENGTH * (1 - safeScore)
   const needleAngleDeg = -180 + safeScore * 180
   const { x2, y2 } = getNeedleCoords(100, 100, 65, needleAngleDeg)
@@ -40,7 +40,7 @@ export default function RawScoreGauge({ score }: RawScoreGaugeProps) {
         <path
           d={describeArc(100, 100, 80)}
           fill="none"
-          stroke="#1e2738"
+          stroke="rgba(251,250,246,0.08)"
           strokeWidth={12}
           strokeLinecap="round"
         />
@@ -60,12 +60,12 @@ export default function RawScoreGauge({ score }: RawScoreGaugeProps) {
           y1={100}
           x2={x2}
           y2={y2}
-          stroke="#e2e8f0"
+          stroke="var(--ink-1)"
           strokeWidth={2}
           strokeLinecap="round"
         />
         {/* 중심 원 */}
-        <circle cx={100} cy={100} r={4} fill="#e2e8f0" />
+        <circle cx={100} cy={100} r={4} fill="var(--ink-1)" />
         {/* 점수 텍스트 */}
         <text
           x={100}
@@ -74,7 +74,7 @@ export default function RawScoreGauge({ score }: RawScoreGaugeProps) {
           className="num"
           fontSize={22}
           fontWeight="bold"
-          fill="#e2e8f0"
+          fill="var(--ink-1)"
           fontFamily="monospace"
         >
           {score !== null ? (score * 100).toFixed(0) : '--'}

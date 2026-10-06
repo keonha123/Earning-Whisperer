@@ -68,7 +68,7 @@ export default function CompanyDrawer() {
   const onEnterTradingRoom = useCallback(
     (ticker: string) => {
       close()
-      navigate(`/trading-room?ticker=${encodeURIComponent(ticker)}`)
+      navigate(`/call?ticker=${encodeURIComponent(ticker)}`)
     },
     [close, navigate],
   )
@@ -263,9 +263,9 @@ function DrawerHeader({
               <span
                 className="num text-[9px] font-bold tracking-[0.14em] inline-flex items-center gap-1
                            px-1.5 py-0.5 rounded-[3px]
-                           bg-buy/10 border border-buy/30 text-buy"
+                           bg-white/[0.06] border border-border-strong text-ink-1"
               >
-                <span className="w-1 h-1 rounded-full bg-buy animate-pulse" /> LIVE
+                <span className="w-1 h-1 rounded-full bg-ink-1 animate-pulse" /> LIVE
               </span>
             )}
             {partial && (
@@ -355,10 +355,7 @@ function ActionBar({
       <button
         type="button"
         onClick={() => onEnterTradingRoom(ticker)}
-        className="flex-[1.3] h-9 px-3.5 rounded-md
-                   bg-accent-500 hover:bg-accent-600 text-accent-foreground
-                   text-[12px] font-bold tracking-[0.04em]
-                   inline-flex items-center justify-center gap-1.5"
+        className="gbtn gbtn-lapis gbtn-sm flex-[1.3]"
       >
         TradingRoom 진입
         <svg
@@ -432,7 +429,7 @@ function NextEarningRow({
           <span
             className="num text-[9px] font-bold tracking-[0.14em] inline-flex items-center
                        px-1.5 py-0.5 rounded-[3px]
-                       bg-buy/10 border border-buy/30 text-buy"
+                       bg-ok/10 border border-ok/30 text-ok"
           >
             확정
           </span>

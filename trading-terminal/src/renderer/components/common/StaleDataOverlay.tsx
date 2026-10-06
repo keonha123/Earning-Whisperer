@@ -33,8 +33,8 @@ interface StaleDataOverlayProps {
  * 데이터로 오인하는 silent fail 을 차단한다.
  *
  * 디자인 원칙:
- *  - 숫자가 흐릿하게 보이되 읽히지 않도록 backdrop-blur + 어두운 반투명 배경.
- *  - 경고 톤 (warning border) 으로 "정상 상태가 아님" 신호.
+ *  - 마지막 값은 흐리게 읽히도록 남기고, 그 값이 마지막 값임을 문장으로 밝힌다.
+ *  - 사유 · 마지막 정상 조회 시각 · 다시 조회를 가운데 유리 판 한 곳에 모은다.
  *  - 재시도 액션을 overlay 안에 둬서 사용자가 Dashboard 헤더의 "동기화" 버튼을
  *    찾아 헤매지 않도록 가까이 배치.
  *  - 부모 컴포넌트 (PortfolioCard / HoldingsTable) 자체는 변경 최소화 —
@@ -59,13 +59,14 @@ export default function StaleDataOverlay({
       // role=alert 으로 screen reader 즉시 안내. aria-live=assertive.
       role="alert"
       aria-live="assertive"
+      // 마지막 값은 흐리게라도 읽혀야 한다 (상태 패턴: 실패 시 마지막 값 유지).
+      // 옅은 서리만 깔고, 사유 · 시각 · 다시 조회는 가운데 유리 판에 둔다.
       className={`absolute inset-0 z-10 flex items-center justify-center
-                  bg-surface-0/80 backdrop-blur-[2px]
-                  border border-warning/40 rounded-lg
+                  bg-bg-base/45 backdrop-blur-[1px] rounded-[inherit]
                   ${className}`}
     >
-      <div className="flex flex-col items-center gap-2 px-4 py-3 max-w-[280px] text-center">
-        <div className="flex items-center gap-1.5 text-warning text-[11px] font-semibold uppercase tracking-[0.12em]">
+      <div className="glass rim on-glass flex flex-col items-center gap-2 px-5 py-4 max-w-[300px] text-center rounded-[22px]">
+        <div className="flex items-center gap-1.5 text-danger text-[12px] font-semibold">
           <svg
             width="12"
             height="12"
@@ -81,27 +82,19 @@ export default function StaleDataOverlay({
           </svg>
           조회 실패
         </div>
-        <p className="text-text-primary text-[12px] leading-snug">
+        <p className="text-ink-1 text-[13px] leading-snug">
           {userMessage}
         </p>
-        <p className="text-text-tertiary text-[10px]">
-          데이터 신뢰 불가 — 매매 판단 보류
-          {lastSyncLabel !== null && (
-            <>
-              <br />
-              마지막 정상 조회 {lastSyncLabel}
-            </>
-          )}
+        <p className="text-ink-3 text-[11px] leading-snug">
+          아래 값은 마지막으로 받은 값입니다
+          {lastSyncLabel !== null && <> · {lastSyncLabel}</>}
         </p>
         {onRetry !== undefined && (
           <button
             type="button"
             onClick={onRetry}
             disabled={isRetrying}
-            className="mt-1 h-7 px-3 inline-flex items-center gap-1.5 rounded-md
-                       bg-surface-2 border border-border-strong text-text-primary
-                       hover:bg-surface-3 text-[11px] font-medium
-                       disabled:opacity-40 disabled:cursor-not-allowed"
+            className="gbtn gbtn-sm mt-1"
           >
             <svg
               width="11"

@@ -5,9 +5,9 @@ import type { EarningsSummary, ImpactDirection, SignalDirection } from '../../ty
  * "강세/약세" 로 쓴다. 실행 여부는 아래 실행 게이트 블록이 따로 말한다.
  */
 const DIRECTION_META: Record<SignalDirection, { label: string; color: string }> = {
-  BULLISH: { label: '강세', color: '#10b981' },
-  BEARISH: { label: '약세', color: '#ef4444' },
-  NEUTRAL: { label: '중립', color: '#f59e0b' },
+  BULLISH: { label: '강세', color: 'var(--ink-1)' },
+  BEARISH: { label: '약세', color: 'var(--ink-1)' },
+  NEUTRAL: { label: '중립', color: 'var(--ink-1)' },
 }
 
 /**
@@ -54,21 +54,21 @@ const GATE_RESULT_LABELS: Record<string, string> = {
 
 /** 파급 영향 방향별 색. 모르는 값(null)은 회색 — 호재로 칠하지 않는다. */
 const IMPACT_COLORS: Record<ImpactDirection, string> = {
-  positive: '#10b981',
-  negative: '#ef4444',
-  mixed: '#f59e0b',
-  neutral: '#64748b',
+  positive: 'var(--ok)',
+  negative: 'rgb(var(--porphyra))',
+  mixed: 'var(--ink-2)',
+  neutral: 'var(--ink-3)',
 }
 
 /** 기관 등급 A~E 색. */
 function gradeColor(grade: string | null): string {
   switch (grade) {
-    case 'A': return '#10b981'
-    case 'B': return '#34d399'
-    case 'C': return '#f59e0b'
-    case 'D': return '#fb923c'
-    case 'E': return '#ef4444'
-    default:  return '#64748b'
+    case 'A': return 'var(--ok)'
+    case 'B': return 'var(--ok)'
+    case 'C': return 'var(--caution)'
+    case 'D': return 'var(--danger)'
+    case 'E': return 'var(--danger)'
+    default:  return 'var(--ink-4)'
   }
 }
 
@@ -107,7 +107,7 @@ function Meter({ label, value, color }: MeterProps) {
         className="flex-1 h-[3px] rounded-full bg-surface-2"
         style={
           value === null
-            ? { backgroundImage: 'repeating-linear-gradient(90deg,#334155 0 3px,transparent 3px 6px)' }
+            ? { backgroundImage: 'repeating-linear-gradient(90deg,#3a3b40 0 3px,transparent 3px 6px)' }
             : undefined
         }
       >
@@ -216,7 +216,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
             {gate.action && (
               <span
                 className="shrink-0 px-1.5 py-px rounded text-[10px] font-bold tracking-[0.04em]"
-                style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
+                style={{ color: 'var(--caution)', background: 'rgba(var(--caution-rgb),0.12)' }}
               >
                 {ACTION_LABELS[gate.action] ?? gate.action}
                 {gate.gateResult && ` · ${GATE_RESULT_LABELS[gate.gateResult] ?? gate.gateResult}`}
@@ -255,7 +255,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
           <Meter
             label="회피도"
             value={evasion.evasionScore}
-            color={evasion.evasionScore !== null && evasion.evasionScore >= 0.5 ? '#f59e0b' : '#64748b'}
+            color={evasion.evasionScore !== null && evasion.evasionScore >= 0.5 ? 'var(--caution)' : 'var(--ink-4)'}
           />
           {evasion.missingTopics.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -264,7 +264,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
                 <span
                   key={`${i}-${topic}`}
                   className="px-1.5 py-px rounded text-[9px] font-semibold"
-                  style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.12)' }}
+                  style={{ color: 'var(--caution)', background: 'rgba(var(--caution-rgb),0.12)' }}
                 >
                   {topic}
                 </span>
@@ -272,7 +272,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
             </div>
           )}
           {evasion.pivotDetected && (
-            <div className="text-[9.5px]" style={{ color: '#f59e0b' }}>
+            <div className="text-[9.5px]" style={{ color: 'var(--caution)' }}>
               답변이 다른 주제로 전환되었습니다.
             </div>
           )}
@@ -299,9 +299,9 @@ export default function EarningsSummaryPanel({ summary }: Props) {
           {riskPlan.available === true ? (
             <>
               <div className="grid grid-cols-3 gap-1.5">
-                <PlanCell label="손절" value={price(riskPlan.stopLoss)} sub={signedPct(riskPlan.stopPct)} color="#ef4444" />
-                <PlanCell label="1차 익절" value={price(riskPlan.takeProfit1)} sub={signedPct(riskPlan.takeProfit1Pct)} color="#10b981" />
-                <PlanCell label="2차 익절" value={price(riskPlan.takeProfit2)} sub={signedPct(riskPlan.takeProfit2Pct)} color="#10b981" />
+                <PlanCell label="손절" value={price(riskPlan.stopLoss)} sub={signedPct(riskPlan.stopPct)} color="var(--down)" />
+                <PlanCell label="1차 익절" value={price(riskPlan.takeProfit1)} sub={signedPct(riskPlan.takeProfit1Pct)} color="var(--up)" />
+                <PlanCell label="2차 익절" value={price(riskPlan.takeProfit2)} sub={signedPct(riskPlan.takeProfit2Pct)} color="var(--up)" />
               </div>
               <div className="flex items-center justify-between text-[9.5px] text-text-tertiary">
                 <span>
@@ -347,7 +347,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
                   link.impactScore === null
                     ? {
                         backgroundImage:
-                          'repeating-linear-gradient(45deg, #334155 0 3px, transparent 3px 6px)',
+                          'repeating-linear-gradient(45deg, #3a3b40 0 3px, transparent 3px 6px)',
                       }
                     : undefined
                 }
@@ -358,7 +358,7 @@ export default function EarningsSummaryPanel({ summary }: Props) {
                     style={{
                       width: `${link.impactScore * 100}%`,
                       // 모르는 방향을 초록으로 칠하면 없는 호재 판단을 만들어내는 셈이다.
-                      background: link.direction ? IMPACT_COLORS[link.direction] : '#64748b',
+                      background: link.direction ? IMPACT_COLORS[link.direction] : 'var(--ink-4)',
                     }}
                   />
                 )}
@@ -381,10 +381,10 @@ export default function EarningsSummaryPanel({ summary }: Props) {
       {warnings.length > 0 && (
         <div
           className="rounded px-2.5 py-2 flex flex-col gap-0.5"
-          style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.30)' }}
+          style={{ background: 'rgba(var(--caution-rgb),0.10)', border: '1px solid rgba(var(--caution-rgb),0.30)' }}
         >
           {warnings.map((warning, i) => (
-            <div key={`${i}-${warning}`} className="text-[9.5px] leading-snug" style={{ color: '#f59e0b' }}>
+            <div key={`${i}-${warning}`} className="text-[9.5px] leading-snug" style={{ color: 'var(--caution)' }}>
               {warning}
             </div>
           ))}

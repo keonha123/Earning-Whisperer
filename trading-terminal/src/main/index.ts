@@ -63,7 +63,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
-    backgroundColor: '#0a0c0f',
+    backgroundColor: '#1d1e22',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

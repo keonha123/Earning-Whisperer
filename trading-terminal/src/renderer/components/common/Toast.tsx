@@ -262,19 +262,29 @@ export function showIpcErrorToast(
 
 /**
  * AppToaster — App.tsx 의 router 내부에 1회 마운트.
- * react-hot-toast 의 <Toaster> 를 우상단 56px 오프셋, 최대 3개 stack, gutter 8px 로 래핑.
+ * react-hot-toast 의 <Toaster> 를 우상단 16px 오프셋, 최대 3개 stack, gutter 8px 로 래핑.
+ * 기본 토스트는 흰 바탕을 인라인으로 깔기 때문에 서리 유리 값을 style 로 직접 넘긴다.
  */
 export function AppToaster(): JSX.Element {
   return (
     <Toaster
       position="top-right"
       gutter={8}
-      containerStyle={{ top: 56, right: 16 }}
+      containerStyle={{ top: 16, right: 16 }}
       // react-hot-toast 는 max stack 옵션이 없어 toastOptions.duration 외 별도 제한이 없다.
       // 호출 사이트의 동일 id 중복 억제 (makeToastId) 로 자연스럽게 stack 이 제한된다.
       // 시각적 안전망: 기본 duration 외에 ariaProps 로 a11y 보장.
       toastOptions={{
         duration: 6000,
+        style: {
+          background: 'rgba(18,19,22,0.72)',
+          backdropFilter: 'blur(22px) saturate(1.2)',
+          color: '#fbfaf6',
+          borderRadius: 20,
+          boxShadow:
+            'inset 0 1px 0 rgba(255,255,255,0.18), inset 0 0 0 1px rgba(226,189,98,0.55), 0 14px 34px -12px rgba(0,0,0,0.55)',
+          fontSize: 13,
+        },
       }}
     />
   )

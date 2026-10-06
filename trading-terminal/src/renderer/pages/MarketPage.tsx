@@ -38,7 +38,7 @@ export default function MarketPage() {
   const rankOffset = safePage * PAGE_SIZE
 
   function handleEnter(ticker: string) {
-    navigate(`/trading-room?ticker=${encodeURIComponent(ticker)}`)
+    navigate(`/call?ticker=${encodeURIComponent(ticker)}`)
   }
 
   return (

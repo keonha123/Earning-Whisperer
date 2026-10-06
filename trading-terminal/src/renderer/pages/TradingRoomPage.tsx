@@ -36,7 +36,7 @@ type Timeframe = (typeof TIMEFRAMES)[number];
 const EMPTY_PRICES: readonly PricePoint[] = [];
 
 export default function TradingRoomPage() {
-  const { setSession } = useTradingStore();
+  const { setSession, setDemo } = useTradingStore();
   const orderableCash = usePortfolioStore((s) => s.orderableCash);
   const holdings = usePortfolioStore((s) => s.holdings);
   // 잔고를 한 번이라도 불러왔는지. 0주 보유와 "아직 안 불러왔다" 를 구분해야 한다.
@@ -258,7 +258,7 @@ export default function TradingRoomPage() {
   }, [ticker]);
 
   // ticker 없으면 Market Screen으로 — 모든 hooks 이후에 체크
-  if (!ticker) return <Navigate to="/market" replace />;
+  if (!ticker) return <Navigate to="/stocks" replace />;
 
   /**
    * 시연 재생 시작 (Contract 7.8).
@@ -285,6 +285,7 @@ export default function TradingRoomPage() {
         // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이
         // 계속 떠 있게 된다.
         clearEarningsSummary(ticker)
+        setDemo(true)
         return
       }
       // showIpcErrorToast 는 Error 를 기대한다 — 문자열을 그대로 넘기지 않는다.
@@ -303,7 +304,7 @@ export default function TradingRoomPage() {
   }
 
   function handleExit() {
-    navigate("/market");
+    navigate("/stocks");
   }
 
   const [isOrderLoading, setIsOrderLoading] = useState(false);
@@ -410,7 +411,7 @@ export default function TradingRoomPage() {
         <section className="card p-0 flex flex-col overflow-hidden min-h-0">
           <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
-              <span className="w-2 h-2 rounded-sm bg-accent-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              <span className="w-2 h-2 rounded-sm bg-accent-500" />
               {ticker ?? "—"} · 실시간 차트
             </span>
             <TimeframeToggle value={timeframe} onChange={setTimeframe} />
@@ -509,7 +510,7 @@ export default function TradingRoomPage() {
           <section className="card p-0 flex flex-col overflow-hidden min-h-0" style={{ flex: "6 1 0%" }}>
             <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0">
               <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
-                <span className="w-2 h-2 rounded-sm bg-accent-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="w-2 h-2 rounded-sm bg-accent-500" />
                 어닝콜 종합 판단
               </span>
             </div>
@@ -570,7 +571,7 @@ function TimeframeToggle({ value, onChange }: TimeframeToggleProps) {
             className={
               "num px-2.5 py-[3px] rounded-[3px] text-[10.5px] font-semibold tracking-[0.04em] " +
               (active
-                ? "text-accent-300 bg-accent-500/[0.16] shadow-[inset_0_0_0_1px_rgba(16,185,129,0.4)]"
+                ? "glass rim text-ink-1"
                 : "text-text-tertiary hover:text-text-secondary")
             }
           >
@@ -683,8 +684,8 @@ function ChartPane({
           <span
             className={`num text-[11px] font-semibold px-1.5 py-px rounded ${
               changePercent >= 0
-                ? "bg-buy/[0.14] text-buy"
-                : "bg-sell/[0.14] text-sell"
+                ? "bg-white/[0.06] text-buy"
+                : "bg-white/[0.06] text-sell"
             }`}
           >
             {changePercent >= 0 ? "+" : ""}
@@ -748,7 +749,7 @@ function ChartPane({
               y1="15"
               x2={VIEW_W}
               y2="15"
-              stroke="#1e2738"
+              stroke="rgba(251,250,246,0.08)"
               strokeWidth="1"
             />
             <line
@@ -756,7 +757,7 @@ function ChartPane({
               y1="50"
               x2={VIEW_W}
               y2="50"
-              stroke="#1e2738"
+              stroke="rgba(251,250,246,0.08)"
               strokeWidth="1"
             />
             <line
@@ -764,7 +765,7 @@ function ChartPane({
               y1="85"
               x2={VIEW_W}
               y2="85"
-              stroke="#1e2738"
+              stroke="rgba(251,250,246,0.08)"
               strokeWidth="1"
             />
             <line
@@ -772,25 +773,25 @@ function ChartPane({
               y1="115"
               x2={VIEW_W}
               y2="115"
-              stroke="#1e2738"
+              stroke="rgba(251,250,246,0.08)"
               strokeWidth="1"
             />
 
-            <path d={areaPath} fill="rgba(16,185,129,0.10)" />
+            <path d={areaPath} fill="rgba(251,250,246,0.06)" />
             <path
               d={linePath}
               fill="none"
-              stroke="#10b981"
+              stroke="var(--ink-2)"
               strokeWidth="1.5"
               strokeLinejoin="round"
             />
-            <circle cx={lastX} cy={lastY} r="10" fill="rgba(16,185,129,0.18)" />
+            <circle cx={lastX} cy={lastY} r="10" fill="rgba(251,250,246,0.14)" />
             <circle
               cx={lastX}
               cy={lastY}
               r="4"
-              fill="#10b981"
-              stroke="#0b1017"
+              fill="var(--ink-1)"
+              stroke="#212226"
               strokeWidth="2"
             />
           </svg>

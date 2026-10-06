@@ -12,11 +12,11 @@ interface RippleEffectModalProps {
 
 /** impact 값에 따른 색상. */
 function impactColor(impact: number): string {
-  if (impact >= 0.5) return '#10b981'   // 강 긍정 — buy green
-  if (impact >= 0.1) return '#34d399'   // 약 긍정
-  if (impact <= -0.3) return '#f87171'  // 강 부정 — sell red
-  if (impact < 0) return '#fca5a5'      // 약 부정
-  return '#94a3b8'                      // 중립
+  if (impact >= 0.5) return 'var(--up)'   // 강 긍정 — 상승 빨강
+  if (impact >= 0.1) return 'rgba(var(--up-rgb),0.65)'   // 약 긍정
+  if (impact <= -0.3) return 'var(--down)'  // 강 부정 — 하락 파랑
+  if (impact < 0) return 'rgba(var(--down-rgb),0.65)'      // 약 부정
+  return 'var(--ink-3)'                      // 중립
 }
 
 function impactLabel(impact: number): string {
@@ -52,7 +52,7 @@ export default function RippleEffectModal({
           <div className="flex items-center gap-2.5">
             <span
               className="w-2 h-2 rounded-sm"
-              style={{ background: '#10b981', boxShadow: '0 0 8px rgba(16,185,129,0.5)' }}
+              style={{ background: 'var(--ink-2)' }}
             />
             <span className="text-[13px] font-semibold text-text-primary">
               어닝콜 파급효과 분석
@@ -125,7 +125,7 @@ export default function RippleEffectModal({
                     {/* 노드 원 */}
                     <circle
                       cx={x} cy={y} r={r}
-                      fill="#0b1017"
+                      fill="#212226"
                       stroke={color}
                       strokeWidth={isCenter ? 2 : 1.5}
                     />
@@ -191,7 +191,7 @@ export default function RippleEffectModal({
                         </div>
                         <span
                           className="shrink-0 px-1.5 py-px rounded text-[9px] font-bold border"
-                          style={{ color, background: `${color}18`, borderColor: `${color}55` }}
+                          style={{ color, background: 'rgba(var(--ink-rgb),0.06)', borderColor: `color-mix(in srgb, ${color} 33%, transparent)` }}
                         >
                           {impactLabel(node.impact)}
                         </span>
@@ -228,10 +228,10 @@ export default function RippleEffectModal({
         <div className="h-9 px-5 flex items-center gap-4 border-t border-border-subtle shrink-0">
           <span className="text-[10px] text-text-disabled">파급 강도:</span>
           {[
-            { color: '#10b981', label: '강 수혜' },
-            { color: '#34d399', label: '수혜' },
-            { color: '#fca5a5', label: '약 부정' },
-            { color: '#f87171', label: '부정' },
+            { color: 'var(--up)', label: '강 수혜' },
+            { color: 'rgba(var(--up-rgb),0.65)', label: '수혜' },
+            { color: 'rgba(var(--down-rgb),0.65)', label: '약 부정' },
+            { color: 'var(--down)', label: '부정' },
           ].map(({ color, label }) => (
             <span key={label} className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full" style={{ background: color }} />

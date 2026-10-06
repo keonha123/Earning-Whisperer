@@ -1,86 +1,113 @@
 /** @type {import('tailwindcss').Config} */
+// 값의 기준은 src/renderer/styles/tokens.css 다. 여기서는 같은 값을 클래스 이름으로 노출한다.
+// 예전 이름(surface · accent · buy · sell 등)은 화면 코드가 그대로 쓰도록 남기고 값만 새 토큰으로 바꿨다.
+// 화면 이슈(#155~#159)에서 화면을 다시 만들 때 새 이름(ink · gold · up · down · ok · danger)으로 옮긴다.
+const rgb = (v) => `rgb(${v} / <alpha-value>)`
+
 module.exports = {
   content: ['./src/renderer/**/*.{ts,tsx,html}'],
   theme: {
     extend: {
       colors: {
-        // Surface (배경 계층)
+        // 바탕 — 단색 #1d1e22. surface 는 바탕 위 불투명 면(목록 · 입력 · 펼침 메뉴)
         bg: {
-          base: '#030712', // 가장 어두운 외곽 (앱 베이스)
+          base: '#1d1e22',
         },
         surface: {
-          0: '#0b1017', // AppShell, sidebar/header 배경
-          1: '#111827', // 카드, 테이블
-          2: '#1a2332', // hover, 활성
-          3: '#242e3f', // input, dropdown
+          0: '#212226',
+          1: '#26272b',
+          2: '#2d2e33',
+          3: '#35363b',
         },
 
-        // Accent (PRIMARY, 에메랄드 스케일)
+        // 글자 — ink-1 · ink-2(82%) · ink-3(58%) · ink-4(40%)
+        ink: {
+          1: '#fbfaf6',
+          2: 'rgba(251,250,246,0.82)',
+          3: 'rgba(251,250,246,0.58)',
+          4: 'rgba(251,250,246,0.4)',
+        },
+        text: {
+          primary: '#fbfaf6',
+          secondary: 'rgba(251,250,246,0.82)',
+          tertiary: 'rgba(251,250,246,0.58)',
+          disabled: 'rgba(251,250,246,0.4)',
+        },
+
+        // 금 — 금테 · 포커스 · 선택 표시. 예전 accent(에메랄드) 자리를 금이 받는다
+        gold: {
+          hi: '#fff1c4',
+          DEFAULT: '#e2bd62',
+          lo: '#8a6420',
+        },
         accent: {
-          300: '#6ee7b7',
-          400: '#34d399',
-          500: '#10b981', // PRIMARY
-          600: '#059669',
-          700: '#047857',
-          800: '#065f46',
-          900: '#064e3b',
-          DEFAULT: '#10b981',
-          // accent 색 위에 올라가는 텍스트 (로고 텍스트, accent 버튼 텍스트 등)
-          foreground: '#041711',
+          300: '#f3dc9a',
+          400: '#ebcd7c',
+          500: '#e2bd62',
+          600: '#c49a43',
+          700: '#a57e2f',
+          800: '#8a6420',
+          900: '#5e4416',
+          DEFAULT: '#e2bd62',
+          foreground: '#1d1e22',
         },
 
-        // Signal / Semantic
+        // 색상 유리 — 버튼 면에만
+        lapis: rgb('92 140 255'),
+        olive: rgb('176 204 82'),
+        porphyra: rgb('232 102 192'),
+
+        // 가격 — 한국 관례. 매수 = 상승 빨강, 매도 = 하락 파랑
+        up: '#ff5a5f',
+        down: '#5b9bff',
         buy: {
-          DEFAULT: '#10b981',
-          hover: '#059669',
-          subtle: 'rgba(16,185,129,0.12)',
+          DEFAULT: '#ff5a5f',
+          hover: '#ff7478',
+          subtle: 'rgba(255,90,95,0.12)',
         },
         sell: {
-          DEFAULT: '#ef4444',
-          hover: '#dc2626',
-          subtle: 'rgba(239,68,68,0.12)',
+          DEFAULT: '#5b9bff',
+          hover: '#79aeff',
+          subtle: 'rgba(91,155,255,0.12)',
+        },
+
+        // 상태 — 정상 · 오류 · 주의
+        ok: '#b0cc52',
+        danger: {
+          DEFAULT: '#ff8a5c',
+          subtle: 'rgba(255,138,92,0.12)',
         },
         warning: {
-          DEFAULT: '#f59e0b',
-          subtle: 'rgba(245,158,11,0.12)',
+          DEFAULT: '#e2bd62',
+          subtle: 'rgba(226,189,98,0.12)',
         },
         info: {
-          DEFAULT: '#3b82f6',
-          subtle: 'rgba(59,130,246,0.12)',
+          DEFAULT: '#c9c8c5',
+          subtle: 'rgba(201,200,197,0.12)',
         },
         neutral: {
-          DEFAULT: '#64748b',
-          subtle: 'rgba(100,116,139,0.12)',
+          DEFAULT: '#9e9e9d',
+          subtle: 'rgba(158,158,157,0.12)',
         },
 
-        // Border
         border: {
-          DEFAULT: '#2a3344', // = strong (기존 호환)
-          subtle: '#1e2738',
-          strong: '#2a3344',
-          focus: '#10b981', // 파랑 → 에메랄드
+          DEFAULT: 'rgba(251,250,246,0.14)',
+          subtle: 'rgba(251,250,246,0.08)',
+          strong: 'rgba(251,250,246,0.14)',
+          focus: '#fff1c4',
         },
 
-        // Text (4단계로 세분화)
-        text: {
-          primary: '#f9fafb',
-          secondary: '#cbd5e1',
-          tertiary: '#94a3b8',
-          disabled: '#64748b',
-        },
-
-        // 연결 상태 (기존 키 유지, 값만 에메랄드 통일)
-        connected: '#10b981',
-        connecting: '#f59e0b',  // = warning. WS 재연결 의미 한정 — 신규 코드는 warning 사용
-        reconnecting: '#f97316',
-        disconnected: '#ef4444',
+        connected: '#b0cc52',
+        connecting: '#e2bd62',
+        reconnecting: '#e2bd62',
+        disconnected: '#ff8a5c',
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+        sans: ['Pretendard Variable', '-apple-system', 'BlinkMacSystemFont', 'Apple SD Gothic Neo', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'Consolas', 'monospace'],
       },
       fontSize: {
-        xs: ['0.625rem', { lineHeight: '1rem' }],
+        xs: ['0.6875rem', { lineHeight: '1rem' }],
         sm: ['0.75rem', { lineHeight: '1.125rem' }],
         base: ['0.875rem', { lineHeight: '1.375rem' }],
         md: ['1rem', { lineHeight: '1.5rem' }],
@@ -90,21 +117,27 @@ module.exports = {
         '3xl': ['2.25rem', { lineHeight: '2.75rem' }],
       },
       borderRadius: {
-        sm: '4px',
-        DEFAULT: '6px',
-        md: '6px',
-        lg: '8px',
-        xl: '12px',
+        sm: '6px',
+        DEFAULT: '8px',
+        md: '8px',
+        lg: '12px',
+        xl: '16px',
+        field: '16px',
+        panel: '28px',
+        sheet: '30px',
       },
       boxShadow: {
         sm: '0 1px 2px rgba(0,0,0,0.4)',
-        md: '0 4px 6px rgba(0,0,0,0.5)',
-        lg: '0 8px 24px rgba(0,0,0,0.6)',
-        xl: '0 16px 48px rgba(0,0,0,0.75)',
-        dialog: '0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(239,68,68,0.3)',
+        md: '0 4px 10px rgba(0,0,0,0.45)',
+        lg: '0 14px 34px -12px rgba(0,0,0,0.55)',
+        xl: '0 24px 60px -16px rgba(0,0,0,0.7)',
+        dialog: '0 24px 60px -16px rgba(0,0,0,0.7)',
+      },
+      transitionTimingFunction: {
+        spring: 'cubic-bezier(0.3, 1.35, 0.5, 1)',
       },
       animation: {
-        'slide-in-top': 'slideInTop 200ms ease',
+        'slide-in-top': 'slideInTop 380ms cubic-bezier(0.3, 1.35, 0.5, 1)',
         'fade-in': 'fadeIn 150ms ease',
         'border-pulse': 'borderPulse 500ms ease infinite',
       },
@@ -118,8 +151,8 @@ module.exports = {
           '100%': { opacity: '1' },
         },
         borderPulse: {
-          '0%, 100%': { borderColor: 'rgba(239,68,68,0.4)' },
-          '50%': { borderColor: 'rgba(239,68,68,1)' },
+          '0%, 100%': { borderColor: 'rgba(255,138,92,0.4)' },
+          '50%': { borderColor: 'rgba(255,138,92,1)' },
         },
       },
     },

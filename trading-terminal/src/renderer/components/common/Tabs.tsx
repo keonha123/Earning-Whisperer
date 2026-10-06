@@ -55,12 +55,12 @@ export default function Tabs({
       {items.map((it, idx) => {
         const isActive = it.id === activeId
         const baseCls =
-          'inline-flex items-center gap-1.5 px-2.5 h-[38px] text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors duration-100 cursor-pointer'
+          'inline-flex items-center gap-1.5 px-3 h-[38px] text-[12px] font-semibold tracking-[0.02em] transition-colors duration-100 cursor-pointer'
 
         if (variant === 'pill') {
           const pillCls = isActive
-            ? 'bg-surface-2 text-text-primary rounded-md'
-            : 'text-text-tertiary hover:text-text-primary'
+            ? 'glass rim rim-float text-text-primary rounded-full on-glass'
+            : 'text-text-tertiary hover:text-text-primary rounded-full'
           return (
             <button
               key={it.id}
@@ -84,7 +84,7 @@ export default function Tabs({
 
         // underline (default)
         const underlineCls = isActive
-          ? 'text-text-primary border-b-2 border-accent-500 -mb-px'
+          ? 'text-text-primary border-b-2 border-ink-1 -mb-px'
           : 'text-text-tertiary hover:text-text-primary border-b-2 border-transparent -mb-px'
         return (
           <button

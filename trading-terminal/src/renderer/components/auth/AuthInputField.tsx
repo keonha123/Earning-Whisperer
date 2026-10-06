@@ -69,7 +69,7 @@ export default function AuthInputField({
         }`}
         style={
           focused
-            ? { boxShadow: '0 0 0 3px rgba(16,185,129,0.14)' }
+            ? { boxShadow: '0 0 0 3px rgba(226,189,98,0.18)' }
             : undefined
         }
       >

@@ -306,7 +306,7 @@ export default function DashboardPage() {
       </div>
 
       {error && (
-        <div className="shrink-0 px-3 py-2 rounded bg-sell/20 border border-sell/40 text-xs text-sell">
+        <div className="shrink-0 px-3 py-2 rounded-[12px] bg-danger/10 border border-danger/40 text-xs text-danger">
           {error}
         </div>
       )}
@@ -324,7 +324,7 @@ export default function DashboardPage() {
             className="absolute left-0 top-0 bottom-0 w-0.5 opacity-50"
             style={{
               background:
-                'linear-gradient(180deg, #34d399, transparent)',
+                'linear-gradient(180deg, rgba(var(--ink-rgb),0.5), transparent)',
             }}
           />
           <PortfolioCard
@@ -370,7 +370,7 @@ export default function DashboardPage() {
           data={earningsData}
           onPickTicker={(t) => openDrawer(t)}
           onEnterLive={(t) =>
-            navigate(`/trading-room?ticker=${encodeURIComponent(t)}`)
+            navigate(`/call?ticker=${encodeURIComponent(t)}`)
           }
         />
       </div>

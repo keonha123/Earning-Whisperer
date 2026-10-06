@@ -1,64 +1,57 @@
-import SessionBadge from './SessionBadge'
+import { isMac } from '../../lib/ipc'
+import OpenCallSlot from './OpenCallSlot'
+import ShellStatus from './ShellStatus'
 
+/**
+ * 메뉴 (docs/design/ux.md 정보 구조).
+ *
+ *  - 맨 위: 콜을 열었을 때만 생기는 "열린 콜" 자리
+ *  - 가운데: 홈 · 종목 · 포트폴리오 · 설정
+ *  - 아래쪽: 연결 · KIS 상태와 계정 — 앱 전체에서 상태를 보여 주는 곳은 여기 한 곳뿐이다
+ *
+ * 메뉴 판은 조작층이라 맑은 유리 + 금테 1px, 고른 메뉴는 세그먼트 썸과 같은 떠 있는 유리다.
+ * 굴절은 걸지 않는다. 메뉴 판 뒤는 단색 바탕이라 휠 것이 없고, 판 안쪽 유리는 판에 가려 뒤를 보지 못한다.
+ */
 const NAV_ITEMS = [
-  { path: '/dashboard', label: '대시보드' },
-  { path: '/market', label: 'Market' },
-  { path: '/history', label: '체결 내역' },
+  { path: '/home', label: '홈' },
+  { path: '/stocks', label: '종목' },
+  { path: '/portfolio', label: '포트폴리오' },
   { path: '/settings', label: '설정' },
 ] as const
 
-const NAV_ICONS: Record<string, React.ReactNode> = {
-  '/dashboard': (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="2" y="2" width="5" height="5" rx="1" />
-      <rect x="9" y="2" width="5" height="5" rx="1" />
-      <rect x="2" y="9" width="5" height="5" rx="1" />
-      <rect x="9" y="9" width="5" height="5" rx="1" />
+const ICON_PROPS = {
+  viewBox: '0 0 20 20',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.6,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+
+const NAV_ICONS: Record<(typeof NAV_ITEMS)[number]['path'], React.ReactNode> = {
+  '/home': (
+    <svg {...ICON_PROPS}>
+      <path d="M3.5 9 10 3.5 16.5 9" />
+      <path d="M5.5 7.5V16h9V7.5" />
     </svg>
   ),
-  '/market': (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path d="M2 12l3-4 3 2 3-5 3 3" />
-      <circle cx="13" cy="8" r="1" fill="currentColor" />
+  '/stocks': (
+    <svg {...ICON_PROPS}>
+      <circle cx="8.5" cy="8.5" r="5" />
+      <path d="m12.5 12.5 4 4" />
     </svg>
   ),
-  '/history': (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path d="M2 3h12M2 8h12M2 13h12" />
+  '/portfolio': (
+    <svg {...ICON_PROPS}>
+      <rect x="3" y="6" width="14" height="10" rx="2.5" />
+      <path d="M7 6V4.5h6V6M3 10.5h14" />
     </svg>
   ),
   '/settings': (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <circle cx="8" cy="8" r="2.5" />
-      <path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4M12.6 12.6l-1.4-1.4M4.8 4.8L3.4 3.4" />
+    <svg {...ICON_PROPS}>
+      <circle cx="10" cy="10" r="2.5" />
+      <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" />
     </svg>
   ),
 }
@@ -70,59 +63,32 @@ interface Props {
 
 export default function LeftSidebar({ activePath, onNavigate }: Props) {
   return (
-    <nav className="flex flex-col h-full">
-      {/* 브랜드 영역 */}
-      <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border-subtle shrink-0">
-        <div
-          className="w-6 h-6 rounded-md grid place-items-center text-[12px] font-bold num shrink-0 text-accent-foreground"
-          style={{
-            background: 'linear-gradient(135deg, var(--color-accent-500), var(--color-accent-700))',
-            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)',
-          }}
-        >
-          EW
-        </div>
-        <div className="flex flex-col leading-tight min-w-0">
-          <span className="text-text-primary text-[13px] font-semibold truncate">
-            EarningWhisperer
-          </span>
-          <span className="text-text-disabled text-[10px] uppercase tracking-[0.14em] mt-0.5">
-            Trading Terminal
-          </span>
-        </div>
+    <nav className="glass glass-flat rim h-full rounded-[24px] flex flex-col" aria-label="메뉴">
+      {/* 이름 — macOS 는 창 단추 아래로 내리고, 이 띠를 창 끌기 영역으로 쓴다 */}
+      <div
+        className={`shrink-0 px-5 ${isMac ? 'pt-11 [-webkit-app-region:drag]' : 'pt-5'} pb-4`}
+      >
+        <span className="on-glass text-[17px] font-semibold tracking-[0.01em] text-ink-1">Logothea</span>
       </div>
 
-      {/* 네비게이션 */}
-      <div className="flex-1 px-2 py-2.5 flex flex-col gap-0.5">
-        <div className="text-text-disabled text-[10px] uppercase tracking-[0.14em] px-2.5 pt-2.5 pb-1.5">
-          Workspace
-        </div>
+      <div className="px-2.5 pb-3 shrink-0">
+        <OpenCallSlot active={activePath === '/call'} />
+      </div>
+
+      <ul className="flex-1 px-2.5 flex flex-col gap-1">
         {NAV_ITEMS.map((item) => (
-          <NavItem
-            key={item.path}
-            label={item.label}
-            icon={NAV_ICONS[item.path]}
-            active={activePath === item.path}
-            onClick={() => onNavigate(item.path)}
-          />
+          <li key={item.path}>
+            <NavItem
+              label={item.label}
+              icon={NAV_ICONS[item.path]}
+              active={activePath === item.path}
+              onClick={() => onNavigate(item.path)}
+            />
+          </li>
         ))}
-      </div>
+      </ul>
 
-      {/* 세션 배지 — 활성 세션 시에만 표시 */}
-      <SessionBadge />
-
-      {/* 하단 — PRO 뱃지 + 버전 */}
-      <div className="mt-auto px-3 py-2.5 border-t border-border-subtle flex flex-col gap-1.5 shrink-0">
-        <span
-          className="inline-flex items-center gap-1.5 self-start px-2 py-[3px] rounded-sm text-[10px] font-semibold uppercase tracking-[0.12em] bg-accent-500/10 text-accent-400 border border-accent-500/25"
-        >
-          <span className="w-1 h-1 rounded-full bg-accent-400" />
-          PRO
-        </span>
-        <span className="num text-[10px] text-text-disabled tracking-[0.08em]">
-          v1.0.0
-        </span>
-      </div>
+      <ShellStatus onOpenSettings={() => onNavigate('/settings')} />
     </nav>
   )
 }
@@ -135,24 +101,19 @@ interface NavItemProps {
 }
 
 function NavItem({ label, icon, active, onClick }: NavItemProps) {
-  const base =
-    'flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] font-medium whitespace-nowrap w-full transition-colors duration-100 cursor-pointer'
-  const stateClass = active
-    ? 'bg-surface-2 text-text-primary'
-    : 'text-text-tertiary hover:bg-surface-2 hover:text-text-primary'
-
   return (
-    <button type="button" className={`${base} ${stateClass}`} onClick={onClick}>
-      <span
-        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-full text-[14px] transition-[color,transform] duration-200 ease-spring active:scale-[0.97]
+        ${
           active
-            ? 'bg-accent-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]'
-            : 'bg-border-strong'
+            ? 'glass rim rim-float text-ink-1 font-semibold on-glass'
+            : 'text-ink-3 font-medium hover:text-ink-1 hover:bg-white/[0.04]'
         }`}
-      />
-      <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center opacity-85">
-        {icon}
-      </span>
+    >
+      <span className="w-[18px] h-[18px] shrink-0 [&>svg]:w-full [&>svg]:h-full">{icon}</span>
       <span>{label}</span>
     </button>
   )

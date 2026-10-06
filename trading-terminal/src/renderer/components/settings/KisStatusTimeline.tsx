@@ -37,19 +37,19 @@ function TimelineStep({
 }) {
   const iconStyles = {
     done: {
-      bg: 'rgba(16,185,129,0.12)',
-      border: 'rgba(16,185,129,0.35)',
-      color: '#34d399',
+      bg: 'rgba(var(--ok-rgb),0.12)',
+      border: 'rgba(var(--ok-rgb),0.35)',
+      color: 'var(--ok)',
     },
     pending: {
-      bg: 'rgba(245,158,11,0.12)',
-      border: 'rgba(245,158,11,0.35)',
-      color: '#f59e0b',
+      bg: 'rgba(var(--caution-rgb),0.12)',
+      border: 'rgba(var(--caution-rgb),0.35)',
+      color: 'var(--caution)',
     },
     error: {
-      bg: 'rgba(239,68,68,0.12)',
-      border: 'rgba(239,68,68,0.35)',
-      color: '#ef4444',
+      bg: 'rgba(var(--danger-rgb),0.12)',
+      border: 'rgba(var(--danger-rgb),0.35)',
+      color: 'var(--danger)',
     },
   }[step.status]
 
@@ -66,7 +66,7 @@ function TimelineStep({
             left: '15px',
             top: '-6px',
             height: '12px',
-            borderLeft: '1px dashed #242e3f',
+            borderLeft: '1px dashed #35363b',
           }}
           aria-hidden
         />

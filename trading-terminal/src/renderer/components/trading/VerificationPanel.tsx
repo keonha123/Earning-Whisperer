@@ -14,18 +14,18 @@ import type {
  * "반박됨" 보다 "사실과 다름" 이 무슨 뜻인지 설명이 필요 없다.
  */
 const VERDICT_META: Record<FactCheckVerdict, { label: string; color: string; bg: string }> = {
-  SUPPORTED:             { label: '사실 확인',   color: '#10b981', bg: 'rgba(16,185,129,0.12)'  },
-  CONTRADICTED:          { label: '사실과 다름', color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   },
-  INSUFFICIENT_EVIDENCE: { label: '근거 부족',   color: '#64748b', bg: 'rgba(100,116,139,0.12)' },
+  SUPPORTED:             { label: '사실 확인',   color: 'var(--ok)', bg: 'rgba(var(--ok-rgb),0.12)'  },
+  CONTRADICTED:          { label: '사실과 다름', color: 'var(--danger)', bg: 'rgba(var(--danger-rgb),0.12)'   },
+  INSUFFICIENT_EVIDENCE: { label: '근거 부족',   color: 'var(--ink-4)', bg: 'rgba(var(--ink-rgb),0.12)' },
 }
 
 /** 변화 유형별 표기. 엔진의 5종을 그대로 쓴다. */
 const CHANGE_META: Record<TranscriptDiffChangeType, { label: string; color: string; bg: string }> = {
-  improved:  { label: '개선',      color: '#10b981', bg: 'rgba(16,185,129,0.12)'  },
-  weakened:  { label: '후퇴',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   },
-  unchanged: { label: '변화 없음', color: '#64748b', bg: 'rgba(100,116,139,0.12)' },
-  mixed:     { label: '혼재',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  },
-  new_claim: { label: '새 언급',   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)'  },
+  improved:  { label: '개선',      color: 'var(--ok)',   bg: 'rgba(var(--ink-rgb),0.06)'  },
+  weakened:  { label: '후퇴',      color: 'rgb(var(--porphyra))', bg: 'rgba(var(--ink-rgb),0.06)' },
+  unchanged: { label: '변화 없음', color: 'var(--ink-3)', bg: 'rgba(var(--ink-rgb),0.06)' },
+  mixed:     { label: '혼재',      color: 'var(--ink-2)', bg: 'rgba(var(--ink-rgb),0.08)' },
+  new_claim: { label: '새 언급',   color: 'var(--ink-3)', bg: 'rgba(var(--ink-rgb),0.06)' },
 }
 
 /** 주제 라벨. 엔진의 7축을 한국어로 옮긴다. 목록에 없으면 원값을 그대로 쓴다. */
@@ -41,8 +41,8 @@ const TOPIC_LABELS: Record<string, string> = {
 
 /** 근거 종류 뱃지. 같은 흐름에 섞이므로 무엇과 대조한 판단인지 먼저 보여야 한다. */
 const KIND_META = {
-  news:  { label: '뉴스 대조',     color: '#94a3b8' },
-  prior: { label: '지난 분기 대비', color: '#3b82f6' },
+  news:  { label: '뉴스 대조',     color: 'var(--ink-3)' },
+  prior: { label: '지난 분기 대비', color: 'var(--ink-2)' },
 } as const
 
 type VerificationEntry =
@@ -121,7 +121,7 @@ export default function VerificationPanel({
       {/* 헤더 */}
       <div className="h-10 px-3.5 flex items-center justify-between border-b border-border-subtle shrink-0 gap-2">
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-[0.14em] inline-flex items-center gap-2">
-          <span className="w-2 h-2 rounded-sm bg-buy shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+          <span className="w-2 h-2 rounded-sm bg-ink-2" />
           발언 검증
         </span>
         <span className="num text-[10px] text-text-tertiary tabular-nums">
@@ -201,7 +201,7 @@ function NewsCard({ claim }: { claim: FactCheckClaim }) {
         <KindBadge kind="news" />
         <span
           className="shrink-0 px-1.5 py-px rounded text-[9px] font-bold tracking-[0.06em] border whitespace-nowrap"
-          style={{ color: v.color, background: v.bg, borderColor: `${v.color}55` }}
+          style={{ color: v.color, background: v.bg, borderColor: `color-mix(in srgb, ${v.color} 33%, transparent)` }}
         >
           {v.label}
         </span>
@@ -248,7 +248,7 @@ function PriorCard({ item }: { item: TranscriptDiffItem }) {
         </span>
         <span
           className="shrink-0 px-1.5 py-px rounded text-[9px] font-bold tracking-[0.06em] border whitespace-nowrap"
-          style={{ color: meta.color, background: meta.bg, borderColor: `${meta.color}55` }}
+          style={{ color: meta.color, background: meta.bg, borderColor: `color-mix(in srgb, ${meta.color} 33%, transparent)` }}
         >
           {meta.label}
         </span>

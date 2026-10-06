@@ -293,11 +293,8 @@ export default function OrderBar({
             onClick={handleSubmit}
             disabled={isLoading || !ticker || qty <= 0 || (!isMarket && effectivePrice == null)}
             className={
-              'h-9 px-4 rounded-md text-xs font-bold tracking-[0.04em] inline-flex items-center gap-1.5 ' +
-              'disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-100 ' +
-              (side === 'BUY'
-                ? 'bg-accent-500 hover:bg-accent-600 text-accent-foreground'
-                : 'bg-sell hover:bg-sell-hover text-white')
+              // 매수 · 매도는 가격 방향과 이어지므로 라피스가 아닌 맑은 유리 + 가격색 글자로 둔다
+              'gbtn gbtn-sm font-bold ' + (side === 'BUY' ? 'text-up' : 'text-down')
             }
             aria-label={`${side} ${qty}주 주문`}
           >
@@ -329,8 +326,8 @@ interface SideButtonProps {
 function SideButton({ active, onClick, disabled, tone, label }: SideButtonProps) {
   const activeClass =
     tone === 'buy'
-      ? 'bg-buy/[0.14] text-buy shadow-[inset_0_0_0_1px_rgba(16,185,129,0.35)]'
-      : 'bg-sell/[0.14] text-sell shadow-[inset_0_0_0_1px_rgba(239,68,68,0.35)]'
+      ? 'bg-white/[0.06] text-buy shadow-[inset_0_0_0_1px_rgba(255,90,95,0.4)]'
+      : 'bg-white/[0.06] text-sell shadow-[inset_0_0_0_1px_rgba(91,155,255,0.4)]'
   return (
     <button
       type="button"

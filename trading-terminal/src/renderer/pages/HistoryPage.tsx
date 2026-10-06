@@ -407,7 +407,7 @@ export default function HistoryPage() {
         {/* Footer */}
         <div className="h-12 min-h-[48px] flex items-center justify-between
                         px-3.5 gap-3 border-t border-border-subtle"
-             style={{ backgroundColor: '#0f1622' /* surface-0b — 디자인 캔버스 한정 */ }}>
+             style={{ backgroundColor: '#212226' /* surface-0b — 디자인 캔버스 한정 */ }}>
           <div className="text-[11px] text-text-tertiary whitespace-nowrap">
             총 <b className="num text-text-primary">{summary.totalCount}</b>건 중{' '}
             <b className="num text-text-primary">
@@ -462,7 +462,7 @@ function SummaryChip({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 테이블 헤더 셀. 배경은 surface-0b (#0f1622) — 디자인 캔버스 한정 색으로
+ * 테이블 헤더 셀. 배경은 surface-0b (#212226) — 디자인 캔버스 한정 색으로
  * tailwind.config 토큰에 미승격, HistoryPage 의 table header/footer 에서만 사용.
  * (footer 의 동일 색과 정합 유지.)
  */
@@ -475,7 +475,7 @@ function Th({
 }) {
   return (
     <th
-      className={`bg-[#0f1622] /* surface-0b — HistoryPage 캔버스 한정 */
+      className={`bg-[#212226] /* surface-0b — HistoryPage 캔버스 한정 */
                   text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.12em]
                   px-2 h-10 whitespace-nowrap border-b border-border-subtle sticky top-0 z-[1]
                   ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}
@@ -507,7 +507,7 @@ function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
     >
       <td className="px-2 align-middle border-b border-border-subtle text-[11px]
                      num text-text-secondary tracking-[0.01em]
-                     group-hover:shadow-[inset_3px_0_0_var(--color-accent-500,#10b981)]">
+                     group-hover:shadow-[inset_3px_0_0_rgba(var(--ink-rgb),0.5)]">
         {formatDateTime(row.createdAt)}
       </td>
       <td className="px-2 align-middle border-b border-border-subtle">
@@ -554,7 +554,7 @@ function DirBadge({ side }: { side: 'BUY' | 'SELL' }) {
   return (
     <span
       className={`num inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold tracking-[0.04em] ${
-        side === 'BUY' ? 'bg-buy/10 text-buy' : 'bg-sell/10 text-sell'
+        side === 'BUY' ? 'bg-white/[0.06] text-buy' : 'bg-white/[0.06] text-sell'
       }`}
     >
       {side === 'BUY' ? '▲' : '▼'} {side}
@@ -583,7 +583,7 @@ function StatusBadge({ status, reason }: { status: HistoryStatus; reason?: strin
   }
   return (
     <span
-      className="inline-flex items-center gap-1 text-[11px] font-semibold text-sell"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold text-danger"
       title={reason ? `거부 사유: ${reason}` : undefined}
     >
       <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
