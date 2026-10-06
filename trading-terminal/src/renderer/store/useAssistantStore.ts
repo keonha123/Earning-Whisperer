@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { useTranscriptStore } from './useTranscriptStore'
 import { isIpcError } from '../../lib/types/ipcError'
+import { showIpcErrorToast } from '../components/common/Toast'
 import type {
   AssistantAskRequest,
   AssistantHistoryTurn,
@@ -75,7 +76,7 @@ export interface AssistantConversation {
   turns: AssistantTurn[]
 }
 
-interface AssistantState {
+export interface AssistantState {
   conversation: AssistantConversation | null
   /** 진행 중인 턴의 id. 없으면 null. */
   activeTurnId: string | null
@@ -94,6 +95,13 @@ let unsubscribe: (() => void) | null = null
 
 function ensureSubscribed(handle: (event: unknown) => void) {
   if (unsubscribe === null) unsubscribe = ipc.on(IPC_CHANNELS.ASSISTANT_EVENT, handle)
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unsubscribe?.()
+    unsubscribe = null
+  })
 }
 
 export const useAssistantStore = create<AssistantState>((set, get) => ({
@@ -115,7 +123,16 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     ensureSubscribed(get().handleEvent)
     if (get().activeTurnId) await get().cancel()
 
-    const current = get().conversation as AssistantConversation
+    // 취소를 기다리는 사이 범위 전환·초기화·다른 질문이 끼어들 수 있다.
+    const current = get().conversation
+    if (
+      !current ||
+      current.ticker !== conversation.ticker ||
+      current.callId !== conversation.callId ||
+      current.anchorSequence !== conversation.anchorSequence ||
+      get().activeTurnId !== null ||
+      countedQuestions(current) >= MAX_QUESTIONS_PER_CONVERSATION
+    ) return
     const requestId = crypto.randomUUID()
     const suggested = suggestedQuestionId && SUGGESTED_IDS.has(suggestedQuestionId) ? suggestedQuestionId : null
     const request: AssistantAskRequest = {
@@ -136,6 +153,8 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
       await ipc.invoke(IPC_CHANNELS.ASSISTANT_ASK, request)
     } catch (e) {
       if (get().activeTurnId !== requestId) return
+      // 로그인 만료는 오류 턴만으로 끝나지 않고 기존 재로그인 흐름(전역 핸들러)으로 이어져야 한다.
+      if (isIpcError(e) && e.code === 'AUTH_EXPIRED') showIpcErrorToast(e)
       const rejection = rejectionOf(e)
       updateTurn(set, get, requestId, (turn) =>
         rejection.code === 'cancelled'
@@ -158,7 +177,10 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     }
   },
 
-  reset: () => set({ conversation: null, activeTurnId: null }),
+  reset: () => {
+    void get().cancel()
+    set({ conversation: null, activeTurnId: null })
+  },
 
   handleEvent: (event) => {
     if (!isStreamEvent(event)) return
@@ -260,7 +282,11 @@ function lastSequence(ticker: string, callId: string): number {
 function rejectionOf(e: unknown): { code: string; message: string; resetAt: string | null } {
   if (isIpcError(e)) {
     const details = (e.details ?? null) as Partial<AssistantRejection> | null
-    const code = details?.code ?? (e.code === 'AUTH_EXPIRED' ? 'auth_expired' : e.code === 'VALIDATION' ? 'validation' : e.code === 'NETWORK' ? 'network' : 'internal')
+    // 로그인 만료는 backend 401 본문의 code 와 무관하게 auth_expired 로 맞춘다(화면 계약).
+    const code =
+      e.code === 'AUTH_EXPIRED'
+        ? 'auth_expired'
+        : details?.code ?? (e.code === 'VALIDATION' ? 'validation' : e.code === 'NETWORK' ? 'network' : 'internal')
     return { code, message: ASSISTANT_ERROR_MESSAGES[code] ?? details?.message ?? e.message, resetAt: details?.resetAt ?? null }
   }
   return { code: 'internal', message: ASSISTANT_ERROR_MESSAGES.internal, resetAt: null }

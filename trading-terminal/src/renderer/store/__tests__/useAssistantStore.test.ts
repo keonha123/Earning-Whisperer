@@ -16,6 +16,9 @@ vi.mock('../../lib/ipc', async () => {
   }
 })
 
+const showIpcErrorToast = vi.fn()
+vi.mock('../../components/common/Toast', () => ({ showIpcErrorToast: (...args: unknown[]) => showIpcErrorToast(...args) }))
+
 import { useAssistantStore, selectCanAsk, selectIsStreaming, selectRemainingQuestions } from '../useAssistantStore'
 import { useTranscriptStore } from '../useTranscriptStore'
 import { IPC_CHANNELS } from '../../../lib/ipcChannels'
@@ -37,9 +40,10 @@ function lastAskPayload() {
 }
 
 beforeEach(() => {
-  invoke.mockReset()
-  invoke.mockImplementation(async (_channel: string, payload: { requestId?: string }) => ({ requestId: payload?.requestId }))
   useAssistantStore.getState().reset()
+  invoke.mockReset()
+  showIpcErrorToast.mockReset()
+  invoke.mockImplementation(async (_channel: string, payload: { requestId?: string }) => ({ requestId: payload?.requestId }))
   useTranscriptStore.getState().clearTicker('WMT')
   for (const s of [1, 2, 3]) useTranscriptStore.getState().upsertSegment(segment(s))
 })
@@ -109,6 +113,22 @@ describe('useAssistantStore', () => {
     })
   })
 
+  it('로그인 만료는 backend 401 본문의 code 와 무관하게 auth_expired 턴이 된다', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) {
+        throw new IpcError('AUTH_EXPIRED', '로그인이 만료됐습니다.', { status: 401, code: 'unauthorized', message: 'x', resetAt: null })
+      }
+      return true
+    })
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+
+    expect(useAssistantStore.getState().conversation!.turns[0]).toMatchObject({
+      status: 'error', error: { code: 'auth_expired', message: ASSISTANT_ERROR_MESSAGES.auth_expired },
+    })
+  })
+
   it('스트림 전 거절(429)은 reset_at 과 함께 오류 턴이 된다', async () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === IPC_CHANNELS.ASSISTANT_ASK) {
@@ -124,6 +144,31 @@ describe('useAssistantStore', () => {
       status: 'error', error: { code: 'daily_limit_exceeded', message: ASSISTANT_ERROR_MESSAGES.daily_limit_exceeded }, resetAt: '2026-10-07T15:00:00Z',
     })
     expect(useAssistantStore.getState().activeTurnId).toBeNull()
+  })
+
+  it('로그인 만료는 오류 턴과 함께 재로그인 흐름(토스트)으로 알리고, 429 는 알리지 않는다', async () => {
+    const expired = new IpcError('AUTH_EXPIRED', '로그인이 만료됐습니다.', { status: 401, code: null, message: '로그인이 만료됐습니다.', resetAt: null })
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) throw expired
+      return true
+    })
+    useAssistantStore.getState().open({ ticker: 'WMT', callId: 'call-1' })
+    await useAssistantStore.getState().ask({ question: 'q' })
+
+    expect(showIpcErrorToast).toHaveBeenCalledWith(expired)
+    expect(useAssistantStore.getState().conversation!.turns[0].status).toBe('error')
+
+    showIpcErrorToast.mockReset()
+    useAssistantStore.getState().reset()
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) {
+        throw new IpcError('BUSINESS_RULE', 'x', { status: 429, code: 'daily_limit_exceeded', message: 'x', resetAt: null })
+      }
+      return true
+    })
+    useAssistantStore.getState().open({ ticker: 'WMT', callId: 'call-1' })
+    await useAssistantStore.getState().ask({ question: 'q' })
+    expect(showIpcErrorToast).not.toHaveBeenCalled()
   })
 
   it('후속 질문에는 직전 답변까지의 대화를 최대 3쌍 싣고, 질문은 대화당 4개까지다', async () => {
@@ -224,5 +269,78 @@ describe('useAssistantStore', () => {
     emit({ requestId: id, type: 'citations', data: 'x' })
 
     expect(useAssistantStore.getState().conversation!.turns[0]).toMatchObject({ text: '', citations: [] })
+  })
+
+  it('스트리밍 중 연달아 질문해도 새 턴은 하나만 열린다', async () => {
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q0' })
+    invoke.mockClear()
+    const p1 = useAssistantStore.getState().ask({ question: 'qA' })
+    const p2 = useAssistantStore.getState().ask({ question: 'qB' })
+    await Promise.all([p1, p2])
+
+    const turns = useAssistantStore.getState().conversation!.turns
+    expect(turns.filter((t) => t.status === 'pending')).toHaveLength(1)
+    expect(turns.map((t) => t.question)).toEqual(['q0', 'qB'])
+    expect(invoke.mock.calls.filter((c) => c[0] === IPC_CHANNELS.ASSISTANT_ASK)).toHaveLength(1)
+    expect(useAssistantStore.getState().activeTurnId).toBe(turns[1].id)
+  })
+
+  it('취소를 기다리는 사이 범위가 바뀌면 질문을 보내지 않는다', async () => {
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q0' })
+    invoke.mockClear()
+    const p = useAssistantStore.getState().ask({ question: 'q1' })
+    useAssistantStore.getState().open({ ticker: 'WMT', callId: 'call-1', anchorSequence: 2 })
+    await p
+
+    expect(useAssistantStore.getState().conversation!.turns).toEqual([])
+    expect(invoke.mock.calls.filter((c) => c[0] === IPC_CHANNELS.ASSISTANT_ASK)).toHaveLength(0)
+  })
+
+  it('초기화하면 진행 중인 요청을 취소한다', async () => {
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+    const id = lastAskPayload().requestId
+    useAssistantStore.getState().reset()
+
+    expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.ASSISTANT_CANCEL, { requestId: id })
+    expect(useAssistantStore.getState().conversation).toBeNull()
+    expect(useAssistantStore.getState().activeTurnId).toBeNull()
+  })
+
+  it('invoke 가 cancelled 로 거절되면 턴은 cancelled 가 된다', async () => {
+    invoke.mockImplementation(async () => {
+      throw new IpcError('UNKNOWN', 'cancelled', { status: 0, code: 'cancelled', message: 'cancelled', resetAt: null })
+    })
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+
+    expect(useAssistantStore.getState().conversation!.turns[0].status).toBe('cancelled')
+    expect(useAssistantStore.getState().activeTurnId).toBeNull()
+  })
+
+  it('done 의 no_evidence 는 그대로 상태가 된다', async () => {
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+    emit({ requestId: lastAskPayload().requestId, type: 'done', data: { status: 'no_evidence', suggested_question_ids: [], warnings: [] } })
+
+    expect(useAssistantStore.getState().conversation!.turns[0].status).toBe('no_evidence')
+  })
+
+  it('모르는 error code 는 서버 메시지를 쓴다', async () => {
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+    emit({ requestId: lastAskPayload().requestId, type: 'error', data: { code: 'weird_code', message: 'server text' } })
+
+    expect(useAssistantStore.getState().conversation!.turns[0]).toMatchObject({
+      status: 'error', error: { code: 'weird_code', message: 'server text' },
+    })
   })
 })

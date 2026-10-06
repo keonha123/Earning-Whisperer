@@ -11,6 +11,7 @@ vi.mock('../../services/SubscriptionManager', () => ({ SubscriptionManager: { re
 vi.mock('../../services/KisWebSocketService', () => ({
   KisWebSocketService: { connectWithStoredKey: vi.fn(), disconnect: vi.fn() },
 }))
+vi.mock('../../services/AssistantStreamService', () => ({ assistantStreamService: { cancel: vi.fn() } }))
 vi.mock('../../services/OAuthService', () => ({ OAuthService: { start: vi.fn() } }))
 
 import { registerAuthHandlers, completeLogin } from '../authHandlers'
@@ -19,6 +20,7 @@ import { mainState } from '../../store/mainState'
 import { BackendClient } from '../../services/BackendClient'
 import { kisHttpMock } from '../../../test/setup'
 import { KisService } from '../../services/KisService'
+import { assistantStreamService } from '../../services/AssistantStreamService'
 
 type IpcInvokeHandler = (event: unknown, ...args: unknown[]) => unknown | Promise<unknown>
 
@@ -110,6 +112,17 @@ describe('AUTH_LOGOUT', () => {
     await getRegisteredHandler(IPC_CHANNELS.AUTH_LOGOUT)({} as never, undefined)
 
     expect(order).toEqual(['logout', 'teardown'])
+  })
+
+  it('로그아웃하면 진행 중인 질의응답 스트림을 끊는다', async () => {
+    vi.spyOn(BackendClient, 'logout').mockResolvedValue(undefined)
+    vi.spyOn(KisService, 'invalidateRuntime').mockImplementation(() => {})
+    const cancelSpy = vi.spyOn(assistantStreamService, 'cancel')
+
+    registerAuthHandlers()
+    await getRegisteredHandler(IPC_CHANNELS.AUTH_LOGOUT)({} as never, undefined)
+
+    expect(cancelSpy).toHaveBeenCalledTimes(1)
   })
 
   it('서버측 폐기가 실패해도 로컬 세션은 정리한다', async () => {
