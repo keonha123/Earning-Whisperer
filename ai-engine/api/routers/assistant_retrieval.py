@@ -65,11 +65,15 @@ def prior_call_statements(
     repository = request.app.state.transcript_repository
     if not hasattr(repository, "find_latest_transcript"):
         return PriorCallStatementsResponse(available=False, ticker=symbol, warnings=["prior_call_lookup_unsupported"])
-    latest = repository.find_latest_transcript(ticker=symbol, before=datetime.fromtimestamp(before_epoch, tz=UTC))
-    if not latest:
-        return PriorCallStatementsResponse(available=False, ticker=symbol, warnings=["prior_call_not_found"])
-    document_id = str(latest.get("document_id") or "")
-    statements = sorted(request.app.state.transcript_statement_service.list(document_id), key=lambda s: s.order)
+    try:
+        latest = repository.find_latest_transcript(ticker=symbol, before=datetime.fromtimestamp(before_epoch, tz=UTC))
+        if not latest:
+            return PriorCallStatementsResponse(available=False, ticker=symbol, warnings=["prior_call_not_found"])
+        document_id = str(latest.get("document_id") or "")
+        statements = sorted(request.app.state.transcript_statement_service.list(document_id), key=lambda s: s.order)
+    except Exception:
+        logger.exception("직전 콜 조회 실패 ticker=%s before_epoch=%s", symbol, before_epoch)
+        return PriorCallStatementsResponse(available=False, ticker=symbol, warnings=["prior_call_lookup_failed"])
     return PriorCallStatementsResponse(
         available=True,
         ticker=symbol,

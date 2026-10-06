@@ -206,3 +206,20 @@ def test_직전_콜_조회를_지원하지_않는_저장소면_available_false()
 
     assert body["available"] is False
     assert body["warnings"] == ["prior_call_lookup_unsupported"]
+
+
+def test_직전_콜_조회가_예외를_내면_200_과_경고로_돌려준다() -> None:
+    class _Broken:
+        def find_latest_transcript(self, **kwargs):
+            raise RuntimeError("db down")
+
+    client = _client(repository=_Broken(), statements=[])
+
+    response = client.get(
+        "/v1/engine/assistant/prior-call-statements", params={"ticker": "WMT", "before_epoch": AS_OF}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["available"] is False
+    assert body["warnings"] == ["prior_call_lookup_failed"]
