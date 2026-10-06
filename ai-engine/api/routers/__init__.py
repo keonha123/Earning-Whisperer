@@ -1,6 +1,7 @@
 """Router registry for the AI engine API surface."""
 
 from .analysis import router as analysis_router
+from .assistant_retrieval import router as assistant_retrieval_router
 from .calibration import router as calibration_router
 from .control import router as control_router
 from .earnings_intelligence import router as earnings_intelligence_router
@@ -24,6 +25,7 @@ ALL_ROUTERS = [
     live_fact_check_router,
     integration_router,
     analysis_router,
+    assistant_retrieval_router,
     query_router,
     control_router,
     calibration_router,
@@ -35,6 +37,7 @@ ALL_ROUTERS = [
 __all__ = [
     "ALL_ROUTERS",
     "analysis_router",
+    "assistant_retrieval_router",
     "calibration_router",
     "control_router",
     "earnings_intelligence_router",
