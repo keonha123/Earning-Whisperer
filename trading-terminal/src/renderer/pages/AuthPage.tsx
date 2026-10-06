@@ -16,6 +16,7 @@ import SegmentedControl from '../components/common/SegmentedControl'
 import Modal from '../components/common/Modal'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
+import { decideAfterLogin, saveOfferedKey } from '../lib/kisOnboarding'
 
 // vault = 첫 로그인 직후 KIS 키 등록 권유
 type Step = 'login' | 'vault'
@@ -42,13 +43,12 @@ export default function AuthPage() {
     try {
       hasCredentials = await ipc.invoke<VaultHasResponse>(IPC_CHANNELS.VAULT_HAS)
     } catch (err: unknown) {
-      // 조회에 실패하면 등록 여부를 모른다. 권유 화면은 늘 신규 등록이라 이미 있는 키를 덮어쓸 수 있으므로
-      // 홈으로 보내고, 등록은 설정에 맡긴다.
+      // 조회에 실패하면 등록 여부를 모른다 — 이동은 decideAfterLogin 이 홈으로 정한다.
       showIpcErrorToast(err)
     }
     setHasCredentials(hasCredentials ?? { paper: false, real: false })
     setAuthenticated(true)
-    if (hasCredentials === null || hasCredentials.paper || hasCredentials.real) {
+    if (decideAfterLogin(hasCredentials, accountType) === 'home') {
       navigate('/home')
     } else {
       setStep('vault')
@@ -310,19 +310,7 @@ function KisKeyOffer({ onSaved, onSkip }: { onSaved: () => Promise<void>; onSkip
   }
 
   async function handleSubmit(payload: VaultSavePayload) {
-    // 활성 모드를 먼저 정해 두면 VAULT_SAVE 가 같은 모드일 때 저장 직후 토큰을 발급한다.
-    // SETTINGS_SET_PAPER_TRADING 은 런타임을 무효화하므로 VAULT_SAVE 보다 먼저 부른다.
-    const prev = await ipc.invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
-    await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: payload.isPaperTrading })
-    try {
-      await ipc.invoke(IPC_CHANNELS.VAULT_SAVE, payload)
-    } catch (err) {
-      // 저장이 실패하면 모드를 되돌린다 — 키 없는 실전 모드로 남은 채 `나중에` 로 들어가지 않게
-      if (typeof prev === 'boolean' && prev !== payload.isPaperTrading) {
-        await ipc.invoke(IPC_CHANNELS.SETTINGS_SET_PAPER_TRADING, { value: prev }).catch(() => {})
-      }
-      throw err
-    }
+    await saveOfferedKey(ipc.invoke, payload)
     await onSaved()
   }
 
@@ -341,7 +329,7 @@ function KisKeyOffer({ onSaved, onSkip }: { onSaved: () => Promise<void>; onSkip
         <fieldset disabled={saving} className="contents">
           <SegmentedControl items={MODE_ITEMS} activeId={mode} onChange={handleModeChange} className="self-start" />
         </fieldset>
-        <p className={`text-[12.5px] leading-snug ${mode === 'real' ? 'text-warning' : 'text-ink-3'}`} aria-live="polite">
+        <p className={`text-[12.5px] leading-snug ${mode === 'real' ? 'text-[color:var(--caution)]' : 'text-ink-3'}`} aria-live="polite">
           {mode === 'real'
             ? '실제 돈으로 주문하는 계좌입니다. 체결되면 되돌릴 수 없습니다.'
             : '모의투자 서버로 주문합니다. 실제 돈은 움직이지 않습니다.'}

@@ -298,7 +298,7 @@ function KisPanel() {
             <SegmentedControl items={MODE_ITEMS} activeId={activeMode} onChange={requestSwitch} />
           </fieldset>
           {modeKnown && activeMode === 'real' && (
-            <span className="text-warning text-[13px] font-semibold">실제 돈으로 주문합니다</span>
+            <span className="text-[color:var(--caution)] text-[13px] font-semibold">실제 돈으로 주문합니다</span>
           )}
         </div>
         <p id="kis-mode-help" className="text-ink-3 text-[12.5px] empty:hidden" aria-live="polite">
@@ -320,7 +320,9 @@ function KisPanel() {
               registered={hasCredentials[mode]}
               masked={maskedCreds[mode]}
               editing={editing === mode}
-              disabled={busy || !modeKnown}
+              disabled={busy}
+              // 활성 모드를 모르면 삭제 결과(자동 전환 여부)를 판단할 수 없어 삭제만 막는다
+              deleteDisabled={busy || !modeKnown}
               onEdit={() => setEditing(mode)}
               onCancel={() => setEditing(null)}
               onDelete={() => requestDelete(mode)}
@@ -371,6 +373,7 @@ function KisKeyRow({
   masked,
   editing,
   disabled,
+  deleteDisabled,
   onEdit,
   onCancel,
   onDelete,
@@ -382,6 +385,7 @@ function KisKeyRow({
   masked: MaskedKisKey | null
   editing: boolean
   disabled: boolean
+  deleteDisabled: boolean
   onEdit: () => void
   onCancel: () => void
   onDelete: () => void
@@ -420,14 +424,15 @@ function KisKeyRow({
           )}
         </div>
 
-        {!editing && (
+        {/* 폼이 실제로 펼쳐졌을 때만 버튼을 숨긴다 — 가린 값을 못 받아 폼이 안 열리면 버튼을 남긴다 */}
+        {!(editing && canEdit) && (
           <div className="ml-auto flex items-center gap-2 flex-none">
             {registered ? (
               <>
                 <button type="button" onClick={onEdit} disabled={disabled || !canEdit} className="gbtn gbtn-sm">
                   수정
                 </button>
-                <button type="button" onClick={onDelete} disabled={disabled} className="gbtn gbtn-sm">
+                <button type="button" onClick={onDelete} disabled={deleteDisabled} className="gbtn gbtn-sm">
                   삭제
                 </button>
               </>

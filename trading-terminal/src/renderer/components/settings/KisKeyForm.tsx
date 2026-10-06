@@ -102,13 +102,14 @@ export default function KisKeyForm({
   const [values, setValues] = useState<KisKeyValues>({ ...EMPTY, htsId: existing?.htsId ?? '' })
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-
-  // 취소 · 저장 뒤에는 입력값을 비운다 — 비밀값이 state 에 남아 있는 시간을 줄인다.
-  // 언마운트되면 state 는 함께 사라진다.
+  // 저장 전 확인 창이 떠 있는 동안 — 다시 제출되지 않게 막는다
+  const [confirming, setConfirming] = useState(false)
 
   const set = (key: keyof KisKeyValues) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setValues((v) => ({ ...v, [key]: e.target.value }))
 
+  // 취소 · 저장 뒤에는 입력값을 비운다 — 비밀값이 state 에 남아 있는 시간을 줄인다.
+  // 언마운트되면 state 는 함께 사라진다.
   function handleSecondary() {
     setValues(EMPTY)
     onSecondary?.()
@@ -116,13 +117,18 @@ export default function KisKeyForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (saving || confirming) return
     setError(null)
     const invalid = validateKisKeyInput(values, existing === null)
     if (invalid) {
       setError(invalid)
       return
     }
-    if (confirmSubmit && !(await confirmSubmit())) return
+    if (confirmSubmit) {
+      setConfirming(true)
+      const ok = await confirmSubmit().finally(() => setConfirming(false))
+      if (!ok) return
+    }
     setSaving(true)
     onSavingChange?.(true)
     try {
@@ -195,7 +201,7 @@ export default function KisKeyForm({
             {secondaryLabel}
           </button>
         )}
-        <button type="submit" disabled={saving} className={`gbtn gbtn-olive${btnSize}`}>
+        <button type="submit" disabled={saving || confirming} className={`gbtn gbtn-olive${btnSize}`}>
           {saving ? '저장 중' : submitLabel}
         </button>
       </div>
