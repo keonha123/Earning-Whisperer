@@ -138,9 +138,10 @@ export function applyRefraction(el: HTMLElement, bezel: number): () => void {
   filter.append(feImage, feDisp)
   filterDefs().appendChild(filter)
 
-  // 색상 유리 버튼은 채도 · 밝기를 더 올린다 (tokens.css --tint-filter)
+  // 색상 유리 버튼은 채도 · 밝기를 더 올리고, 서리 유리는 원래의 짙은 흐림을 지킨다 (tokens.css)
   const tinted = /\bgbtn-(lapis|olive|porphyra)\b/.test(el.className)
-  const base = tinted ? 'var(--tint-filter)' : 'var(--glass-filter)'
+  const frosted = /\bfrost\b/.test(el.className)
+  const base = frosted ? 'var(--frost-filter)' : tinted ? 'var(--tint-filter)' : 'var(--glass-filter)'
   el.style.backdropFilter = `url(#${id}) ${base}`
 
   return () => {

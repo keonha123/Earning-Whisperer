@@ -22,7 +22,7 @@ interface SpeakerProfileModalProps {
  *
  * 좌측 참가자 탭 + 우측 상세. 상세에 뜨는 값은 두 종류뿐이다:
  *  - 트랜스크립트에 적힌 사실 (이름 · 직책 · 소속 · 경영진/애널리스트)
- *  - 이번 회차에 실제로 도착한 데이터로 계산한 집계 (발언량 · 팩트체크 판정)
+ *  - 이번 회차에 실제로 도착한 데이터로 계산한 집계 (발언량)
  *
  * 화법 성향이나 과거 가이던스 달성률처럼 원문에서 확인할 수 없는 항목은 표시하지 않는다.
  */
@@ -200,29 +200,10 @@ export default function SpeakerProfileModal({
               )}
             </div>
 
-            {/* 팩트체크 귀속 */}
-            <div className="flex flex-col gap-2">
-              <div className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.1em]">
-                발언 구간 팩트체크
-              </div>
-              {stat.supported + stat.contradicted + stat.insufficient === 0 ? (
-                <div className="text-[12px] text-text-disabled">
-                  이 참가자의 구간에 내려진 판정이 아직 없습니다.
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    <StatBox label="근거 일치" value={`${stat.supported}`} tone="buy" />
-                    <StatBox label="근거 상충" value={`${stat.contradicted}`} tone="sell" />
-                    <StatBox label="근거 부족" value={`${stat.insufficient}`} tone="muted" />
-                  </div>
-                  <p className="text-[10px] text-text-tertiary leading-relaxed">
-                    판정은 3문장 묶음 단위라, 한 묶음에 두 사람의 발언이 섞이면 양쪽에 모두
-                    계상됩니다. 참가자 개인의 정확도가 아니라 그 구간의 검증 결과입니다.
-                  </p>
-                </>
-              )}
-            </div>
+            {/*
+              발언 구간 팩트체크 집계는 그리지 않는다. 뉴스 대조 팩트체크는 제품 범위에서 빠졌다
+              (docs/product.md). 집계 계산과 데이터 수신 코드 제거는 별도 작업이다.
+            */}
 
             <p className="text-[10px] text-text-disabled leading-relaxed border-t border-border-subtle pt-3">
               이름 · 직책 · 소속은 어닝콜 원문 트랜스크립트에서 그대로 옮긴 값이고, 나머지

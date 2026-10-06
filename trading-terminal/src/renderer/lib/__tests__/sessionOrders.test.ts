@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyTradeRecords, type TradeRecord } from '../sessionOrders'
-import type { SessionOrder } from '../../components/trading/PositionOrderPanel'
+import { applyTradeRecords, type SessionOrder, type TradeRecord } from '../sessionOrders'
 
 function order(overrides: Partial<SessionOrder> = {}): SessionOrder {
   return {
