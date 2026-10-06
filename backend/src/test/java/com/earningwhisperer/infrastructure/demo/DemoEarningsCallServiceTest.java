@@ -651,7 +651,7 @@ class DemoEarningsCallServiceTest {
     /** 모든 인입을 거부한다. 스크립트 결함으로 세그먼트가 하나도 안 나가는 상황을 흉내낸다. */
     private static final class RejectingTranscriptService extends TranscriptService {
         RejectingTranscriptService() {
-            super(new TranscriptSessionRegistry(), null, null);
+            super(new TranscriptSessionRegistry(), null, null, null);
         }
 
         @Override
@@ -664,7 +664,7 @@ class DemoEarningsCallServiceTest {
         final List<TranscriptSegment> accepted = new CopyOnWriteArrayList<>();
 
         RecordingTranscriptService() {
-            super(new TranscriptSessionRegistry(), null, null);
+            super(new TranscriptSessionRegistry(), null, null, null);
         }
 
         @Override

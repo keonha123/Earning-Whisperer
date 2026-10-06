@@ -103,6 +103,10 @@ app:
     # 미설정 시 dev 로컬 호스트(3000/5173) 만 허용.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
 
+  assistant:
+    # 질의응답(#112)이 근거로 쓰는 콜 단위 세그먼트 기록의 보관 시간. 마지막 세그먼트 기준으로 갱신된다.
+    segment-ttl-hours: ${ASSISTANT_SEGMENT_TTL_HOURS:48}
+
   trade:
     # 수동 주문 PENDING 의 유효시간(초). 증권사에 실제로 들어가 체결을 기다리는
     # 주문이므로 이 시간이 지나면 scheduler 가 EXPIRED 로 전환한다.
