@@ -814,7 +814,7 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 바인딩되어 같은 호스트에서만 닿습니다. backend 의 `/api/v1/internal/assistant/**` 는 Cloudflare Tunnel 이
 `api.logothea.com` 전체를 backend 로 넘기므로 공개 호스트에서도 닿는 경로이고, 보호는 `X-Internal-Secret` 헤더로
 합니다. 근거 시점(`as_of`)은 backend 가 확정해 넘기며, 아래 API 는
-그 시점 이후의 정보를 돌려주지 않습니다.
+그 시점 이후의 정보를 돌려주지 않습니다. 10.6 은 반대 방향으로 backend 가 logothea-assistant 에 질문을 넘기는 계약입니다.
 
 ### 10.1. 콜 세그먼트 (`GET /api/v1/internal/assistant/calls/{callId}/segments?until_sequence=`)
 
@@ -888,3 +888,34 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 - 저장소가 직전 콜 조회를 지원하지 않으면 `available: false`, `warnings: ["prior_call_lookup_unsupported"]`, 조회 중
   예외가 나면 `200` 에 `available: false`, `warnings: ["prior_call_lookup_failed"]` 입니다.
 - 요청 검증에 실패하면(`ticker` 누락, 0 이하 `before_epoch` 등) `422` 입니다.
+
+### 10.6. 질의응답 요청 (`POST /v1/assistant/ask`, Backend ➔ logothea-assistant)
+
+- logothea-assistant 는 `127.0.0.1:8100` 에만 바인딩되며, `X-Internal-Secret` 이 backend 의 `INTERNAL_SECRET` 과 같아야 합니다.
+  다르거나 값이 설정되지 않았으면 `401`, 본문 검증에 실패하면 `422` 입니다.
+- 본문은 외부 요청에 backend 가 확정한 `user_id`, `as_of_sequence`, `as_of_epoch` 를 더한 것입니다.
+
+```json
+{ "user_id": "42", "ticker": "WMT", "call_id": "demo-wmt-q2fy27-1787227200000-1",
+  "as_of_sequence": 17, "as_of_epoch": 1787227218, "anchor_sequence": 3,
+  "question": "가이던스가 바뀌었어?", "suggested_question_id": null,
+  "history": [ { "role": "user", "text": "..." }, { "role": "assistant", "text": "..." } ] }
+```
+
+- `question` 은 앞뒤 공백을 뺀 1~500자, `history` 는 최대 6개(후속 질문 3회), `anchor_sequence` 는 `as_of_sequence` 이하입니다.
+  `suggested_question_id` 는 `summary`, `vs_last_quarter`, `guidance`, `vs_expectations`, `risks` 중 하나이며, 값이 있으면 질문 분류를 건너뜁니다.
+- 응답은 `text/event-stream` 입니다. 생성하는 답은 `meta` → `delta`(여러 번) → `citations` → `done` 순서이고, 거절과 용어 사전 답은
+  `citations` 없이 `meta` → `delta` → `done` 입니다. 실패하면 그 자리에서 `error` 를 보내고 끝납니다. 이미 보낸 `delta` 는 거두지 않습니다.
+
+| 이벤트 | 데이터 |
+|---|---|
+| `meta` | `{scope: "anchor"\|"call", as_of_sequence, as_of_time, anchor_sequence, missing_sources[]}` — `as_of_sequence` 는 생성한 답에서는 실제로 근거에 쓴 마지막 세그먼트이고, 거절과 용어 사전 답에서는 요청 값입니다. `missing_sources` 는 `news`, `prior_call`, `estimates`, `segments_incomplete` 중 불러오지 못한 것입니다 |
+| `delta` | `{text}` — 본문에 근거 표시 `[S12]`(세그먼트 sequence), `[N3]`(뉴스), `[P2]`(직전 콜 문장), `[E1]`(실적 추정치)가 들어 있습니다 |
+| `citations` | `[{marker, type: "segment"\|"news"\|"prior_statement"\|"estimate"\|null, ref, title, source, published_at, start_ms, speaker, quote, verified}]` — 답에 처음 나온 순서입니다. 근거 목록에 없는 표시이거나 인용 문장의 수치가 원문과 맞지 않으면 `verified: false` 입니다 |
+| `done` | `{status: "answered"\|"refused"\|"no_evidence", refusal_reason, suggested_question_ids[], warnings[], usage{input_tokens, output_tokens, cached_tokens}, latency_ms}` |
+| `error` | `{code, message}` — `code` 는 `segments_not_found`, `context_unavailable`, `llm_timeout`, `llm_failed`, `llm_unparsable`, `internal` 입니다 |
+
+- `refusal_reason` 은 `investment_advice`, `price_prediction`, `out_of_scope` 이며, `suggested_question_ids` 로 대신 볼 만한 추천 질문을 알려 줍니다.
+- `warnings` 는 `uncited_number`(근거 표시 없이 수치를 말한 문장), `number_mismatch`, `unknown_marker:<표시>` 입니다.
+- 근거 수집은 정보원마다 3초, OpenAI 호출은 1회 30초가 상한입니다. 세그먼트를 읽지 못하면 `error` 이고, 나머지 정보원은 빼고 답합니다.
+- 연결이 끊기면 진행 중인 생성 호출도 닫습니다.
