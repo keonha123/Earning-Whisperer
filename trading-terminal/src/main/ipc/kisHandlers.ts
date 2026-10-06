@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { KisService } from '../services/KisService'
+import type { FillNotice } from '../services/KisWebSocketService'
 import { BackendClient, type AssetHistoryPoint } from '../services/BackendClient'
 import { mainState } from '../store/mainState'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
@@ -209,6 +210,54 @@ async function runReconcile(): Promise<ReconcileResult> {
   return { checked: pending.length, reconciled, failed }
 }
 
+/**
+ * 최근에 받은 체결통보의 주문번호(앞자리 0 을 뗀 값). 수동 주문 기록과 통보의 순서 역전을
+ * 메우는 데 쓴다.
+ *
+ * 즉시 체결 의도의 지정가는 주문 → 0.5초 뒤 체결조회 → 백엔드 기록 순으로 처리되는데,
+ * 체결통보는 그 사이에 먼저 올 수 있다. 그때의 재확인은 백엔드에 아직 PENDING 행이 없어
+ * 아무것도 고치지 못하고, 통보는 다시 오지 않는다. 그래서 PENDING 기록이 끝난 직후 이
+ * 목록에 그 주문번호가 있으면 재확인을 한 번 더 돌린다.
+ */
+const RECENT_NOTICE_MAX = 50
+const recentNoticeOrderIds = new Set<string>()
+
+function normalizeOdno(orderId: string): string {
+  return orderId.replace(/^0+/, '')
+}
+
+function rememberNotice(orderId: string): void {
+  recentNoticeOrderIds.add(normalizeOdno(orderId))
+  if (recentNoticeOrderIds.size > RECENT_NOTICE_MAX) {
+    const oldest = recentNoticeOrderIds.values().next().value
+    if (oldest !== undefined) recentNoticeOrderIds.delete(oldest)
+  }
+}
+
+/** 테스트 전용 — 모듈 상태를 비운다. */
+export function __resetRecentNoticesForTest(): void {
+  recentNoticeOrderIds.clear()
+}
+
+/**
+ * KIS 실시간 체결통보 핸들러. 통보 자체에는 백엔드 tradeId 가 없으므로, ODNO 로 PENDING 을
+ * 찾아 확정하는 재확인 경로를 재사용한다. 끝나면 화면에 알려 Trading Room 주문 패널이 바뀐
+ * 기록을 다시 읽게 한다.
+ *
+ * reconciled 가 0 이어도 알린다. 같은 주문을 거래내역 화면의 재확인이 먼저 확정했으면 이번
+ * 재확인은 0 건이지만, 패널은 여전히 접수로 남아 있을 수 있다.
+ */
+export async function onFillNotice(fill: FillNotice): Promise<void> {
+  console.info(`[kisHandlers] 체결통보 수신 — ODNO=${fill.orderId}`)
+  rememberNotice(fill.orderId)
+  try {
+    const { reconciled } = await reconcilePendingTrades()
+    pushToRenderer(IPC_CHANNELS.TRADES_RECONCILED, { reconciled })
+  } catch (e) {
+    console.warn(`[kisHandlers] 체결통보 반영 실패 — ODNO=${fill.orderId}:`, e)
+  }
+}
+
 function toKisError(e: unknown, fallbackMessage: string): IpcError {
   if (e instanceof IpcError) return e
   const message = e instanceof Error ? e.message : fallbackMessage
@@ -297,9 +346,23 @@ export function registerKisHandlers() {
         status: orderResult.executedQty > 0 ? ('EXECUTED' as const) : ('PENDING' as const),
         error_message: null,
       }
-      BackendClient.recordManualTrade(payload).catch((e) =>
+      const recorded = BackendClient.recordManualTrade(payload).catch((e) =>
         console.error('[kisHandlers] 수동 주문 기록 실패:', e),
       )
+      // 체결통보가 이 기록보다 먼저 왔다면 그때의 재확인은 이 주문을 찾지 못했다.
+      // 기록이 끝난 뒤 다시 돌려 패널까지 반영한다 (recentNoticeOrderIds 주석 참고).
+      const pendingOrderId = payload.status === 'PENDING' ? payload.broker_order_id : null
+      if (pendingOrderId) {
+        void recorded.then(() => {
+          if (!recentNoticeOrderIds.has(normalizeOdno(pendingOrderId))) return
+          void onFillNotice({
+            orderId: pendingOrderId,
+            ticker: req.ticker,
+            executedQty: 0,
+            executedPrice: null,
+          })
+        })
+      }
 
       // 포트폴리오 동기화 (비동기)
       KisService.getBalance()
