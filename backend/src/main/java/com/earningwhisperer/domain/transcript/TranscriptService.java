@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
  * <ul>
  *   <li>{@link TranscriptSessionRegistry} 에 위임해 sequence 단조성 / 세션 종료 여부 검증</li>
  *   <li>검증 통과 시에만 {@link TranscriptPublisher} 로 STOMP fan-out</li>
+ *   <li>발행한 세그먼트를 {@link TranscriptSegmentStore} 에 저장(질의응답 근거)</li>
  *   <li>발행한 세그먼트를 {@link TranscriptTranslationService} 에 넘겨 번역을 예약(비동기)</li>
  * </ul>
  *
@@ -27,6 +28,7 @@ public class TranscriptService {
     private final TranscriptSessionRegistry registry;
     private final TranscriptPublisher publisher;
     private final TranscriptTranslationService translationService;
+    private final TranscriptSegmentStore segmentStore;
 
     /**
      * 세그먼트 인입을 처리한다.
@@ -37,12 +39,26 @@ public class TranscriptService {
         TranscriptSessionRegistry.Result result = registry.validateAndAccept(segment);
         if (result == TranscriptSessionRegistry.Result.OK) {
             publisher.publish(segment);
+            store(segment);
             submitForTranslation(segment);
         } else {
             log.warn("[Transcript] 인입 거부 - ticker={} call_id={} sequence={} reason={}",
                     segment.ticker(), segment.callId(), segment.sequence(), result);
         }
         return result;
+    }
+
+    /** 질의응답 근거용 기록이다. 저장이 실패해도 자막 발행과 번역에는 영향을 주지 않는다. */
+    private void store(TranscriptSegment segment) {
+        if (segmentStore == null) {
+            return;
+        }
+        try {
+            segmentStore.append(segment);
+        } catch (Exception e) {
+            log.error("[Transcript] 세그먼트 저장 실패 - ticker={} call_id={} sequence={}",
+                    segment.ticker(), segment.callId(), segment.sequence(), e);
+        }
     }
 
     /** 번역은 부가 기능이다. 여기서 실패해도 인입 응답과 자막 발행에는 영향을 주지 않는다. */
