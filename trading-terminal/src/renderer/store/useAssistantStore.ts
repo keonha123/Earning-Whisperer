@@ -75,7 +75,7 @@ export interface AssistantConversation {
   turns: AssistantTurn[]
 }
 
-interface AssistantState {
+export interface AssistantState {
   conversation: AssistantConversation | null
   /** 진행 중인 턴의 id. 없으면 null. */
   activeTurnId: string | null
@@ -94,6 +94,13 @@ let unsubscribe: (() => void) | null = null
 
 function ensureSubscribed(handle: (event: unknown) => void) {
   if (unsubscribe === null) unsubscribe = ipc.on(IPC_CHANNELS.ASSISTANT_EVENT, handle)
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unsubscribe?.()
+    unsubscribe = null
+  })
 }
 
 export const useAssistantStore = create<AssistantState>((set, get) => ({
@@ -115,7 +122,16 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     ensureSubscribed(get().handleEvent)
     if (get().activeTurnId) await get().cancel()
 
-    const current = get().conversation as AssistantConversation
+    // 취소를 기다리는 사이 범위 전환·초기화·다른 질문이 끼어들 수 있다.
+    const current = get().conversation
+    if (
+      !current ||
+      current.ticker !== conversation.ticker ||
+      current.callId !== conversation.callId ||
+      current.anchorSequence !== conversation.anchorSequence ||
+      get().activeTurnId !== null ||
+      countedQuestions(current) >= MAX_QUESTIONS_PER_CONVERSATION
+    ) return
     const requestId = crypto.randomUUID()
     const suggested = suggestedQuestionId && SUGGESTED_IDS.has(suggestedQuestionId) ? suggestedQuestionId : null
     const request: AssistantAskRequest = {
@@ -158,7 +174,10 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     }
   },
 
-  reset: () => set({ conversation: null, activeTurnId: null }),
+  reset: () => {
+    void get().cancel()
+    set({ conversation: null, activeTurnId: null })
+  },
 
   handleEvent: (event) => {
     if (!isStreamEvent(event)) return
