@@ -56,6 +56,11 @@ describe('parseFillNotice', () => {
     expect(parseFillNotice(notice({ ODER_NO: '   ' }))).toBeNull()
   })
 
+  it('소수점 없는 단가는 소수 4자리로 읽는다 (모의투자 실측: 3330900 → 333.09)', () => {
+    expect(parseFillNotice(notice({ CNTG_UNPR: '3330900' }))?.executedPrice).toBe(333.09)
+    expect(parseFillNotice(notice({ CNTG_UNPR: '000001072500' }))?.executedPrice).toBe(107.25)
+  })
+
   it('단가가 0/비정상이면 수량만 살리고 단가는 null', () => {
     const parsed = parseFillNotice(notice({ CNTG_UNPR: '0' }))
     expect(parsed).not.toBeNull()

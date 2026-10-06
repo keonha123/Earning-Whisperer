@@ -9,6 +9,7 @@ import { showIpcErrorToast } from '../components/common/Toast'
 import { isIpcError } from '../../lib/types/ipcError'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
+import { parseServerTime } from '../lib/serverTime'
 
 /**
  * HistoryPage — 체결 내역.
@@ -178,7 +179,7 @@ export default function HistoryPage() {
       headers.join(','),
       ...rows.map((r) =>
         [
-          r.createdAt,
+          formatCsvDateTime(r.createdAt),
           r.ticker,
           r.side,
           r.orderQty ?? '',
@@ -641,13 +642,20 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => vo
   )
 }
 
-/** ISO → "MM-DD HH:mm:ss" (KST 가정 — fixture 의 +09:00 시간대 준수). */
+/** CSV 용 로컬 시각 "YYYY-MM-DD HH:mm:ss". 화면 일시와 같은 시간대로 맞춘다. */
+function formatCsvDateTime(value: string): string {
+  const d = parseServerTime(value)
+  if (Number.isNaN(d.getTime())) return value
+  return `${d.getFullYear()}-${formatDateTime(d.getTime())}`
+}
+
+/** ISO → 로컬 시각 "MM-DD HH:mm:ss". 시간대 표기 없는 백엔드 시각은 UTC 로 읽는다. */
 /**
  * 목록의 일시 컬럼과 헤더의 "마지막 업데이트" 가 같은 형식이어야 하므로 한 함수로 둔다.
  * ISO 문자열(백엔드 응답)과 timestamp(Date.now()) 를 모두 받는다.
  */
 function formatDateTime(value: string | number): string {
-  const d = new Date(value)
+  const d = parseServerTime(value)
   if (Number.isNaN(d.getTime())) return String(value)
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
