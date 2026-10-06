@@ -449,6 +449,16 @@ export const BackendClient = {
   },
 
   /**
+   * 어닝콜 용어 사전 조회 — GET /api/v1/glossary (Contract 7.9), JWT 필요.
+   * 응답은 snake_case 그대로 넘긴다. 검증 · 변환은 renderer 의 useGlossaryStore 에서 한다.
+   * 실패 시 throw — 호출 측(glossaryHandlers)이 catch 해 null 로 돌려준다.
+   */
+  async getGlossary(): Promise<unknown> {
+    const { data } = await http.get<unknown>('/api/v1/glossary')
+    return data
+  },
+
+  /**
    * 관심종목 ticker 목록 조회.
    * GET /api/v1/watchlist — JWT 인증 (interceptor 가 mainState.backendToken 자동 첨부).
    * 실패 시 throw — 호출 측(watchlistHandlers)이 catch 해 캐시 유지 + 빈 배열 fallback.
