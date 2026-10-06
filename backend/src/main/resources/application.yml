@@ -69,6 +69,19 @@ ai-engine:
   # 팩트체크가 조용히 사라진다. AI Engine 기본값 합(5+8초)과 시연 권장값(20+25초)
   # 사이에서, 시연 설정을 기준으로 잡는다.
   timeout-ms: ${AI_ENGINE_TIMEOUT_MS:50000}
+  # 자막 한국어 번역(Contract 9.10). false 면 번역 요청과 발행을 하지 않는다.
+  translation-enabled: ${AI_ENGINE_TRANSLATION_ENABLED:true}
+  # 번역 호출 읽기 타임아웃. 번역은 한 줄로 차례로 부르므로 공용 timeout-ms 보다 짧게 둔다.
+  translation-timeout-ms: ${AI_ENGINE_TRANSLATION_TIMEOUT_MS:15000}
+
+# 자막 번역 묶음 단위 (TranscriptTranslationService). 분당 Gemini 호출 수를 줄이려고 묶는다.
+transcript-translation:
+  batch-max-segments: ${TRANSCRIPT_TRANSLATION_BATCH_MAX_SEGMENTS:3}
+  batch-max-chars: ${TRANSCRIPT_TRANSLATION_BATCH_MAX_CHARS:1200}
+  # 묶음의 첫 세그먼트가 들어온 뒤 이 시간이 지나면 덜 찼어도 보낸다.
+  batch-max-wait-ms: ${TRANSCRIPT_TRANSLATION_BATCH_MAX_WAIT_MS:10000}
+  # 대기열에 들어간 뒤 이보다 오래 밀린 묶음은 보내지 않고 버린다.
+  max-age-ms: ${TRANSCRIPT_TRANSLATION_MAX_AGE_MS:30000}
 
 demo:
   earnings-call:

@@ -208,6 +208,27 @@
 
 ---
 
+### 4.8. Transcript Translation Broadcast (어닝콜 자막 한국어 번역)
+
+- **Topic:** `/topic/transcript-translation/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5와 동일 정책.
+- **설명:** 4.5로 나간 자막 세그먼트의 한국어 번역입니다(#110). 백엔드가 세그먼트를 몇 개씩 묶어 AI Engine(Contract 9.10)에 번역을 요청하고, 결과를 이 채널로 발행합니다. 용어 사전(7.9)에 있는 용어는 사전의 번역어로 고정됩니다.
+- **발행 시점:** 세그먼트 3개가 모이거나, 묶음의 첫 세그먼트가 들어온 지 10초가 지나거나, 글자 수 상한(1,200자)에 닿거나, 세션 종료 세그먼트(`is_session_end=true`)가 들어왔을 때 묶음을 보냅니다. 번역은 AI Engine 응답(LLM) 시간만큼 더 늦게 도착합니다. 값은 `transcript-translation.*` 설정으로 바꿀 수 있습니다.
+- **발행되지 않는 경우:** 번역이 꺼져 있을 때(`ai-engine.translation-enabled=false`), AI Engine 호출 실패, 번역 실패(`available=false`), 대기열에서 30초(`transcript-translation.max-age-ms`) 넘게 밀린 묶음. 원문을 번역 대신 보내지 않습니다. 사유는 백엔드 로그에 남습니다.
+- **트랜스크립트 채널과의 관계:** 4.5 원문은 번역을 기다리지 않고 먼저 나갑니다. 클라이언트는 `sequences` 로 어느 세그먼트들의 번역인지 짝짓습니다. 묶음 단위로 한 문단이 오므로 세그먼트별로 나뉘어 있지 않습니다.
+
+| 필드명       | 타입          | 필수 | 설명                                                                 |
+| :----------- | :------------ | :--: | :------------------------------------------------------------------- |
+| `ticker`     | String        |  Y   | 종목 심볼                                                            |
+| `call_id`    | String        |  Y   | 어닝콜 세션 식별자 (4.5와 동일 값)                                   |
+| `sequences`  | Array<Integer> |  Y   | 이 번역이 담은 4.5 세그먼트의 `sequence`. 오름차순, 1개 이상         |
+| `text_ko`    | String        |  Y   | 한국어 번역문                                                        |
+| `terms_used` | Array<String> |  Y   | 사전 번역어가 번역문에 실제로 들어간 용어 (원문 표기). 없으면 빈 배열 |
+
+> **구독 예시:** `stompClient.subscribe('/topic/transcript-translation/WMT', handler)`
+
+---
+
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
 Trading Terminal이 사용자의 수동 주문 결과와 실제 계좌 상태를 백엔드에 기록하기 위해 호출하는 REST API입니다.
@@ -784,4 +805,5 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 - **`terms_used`는 코드가 판정한다.** `terms` 중 `ko`가 번역문에 실제로 들어간 용어만 담는다. LLM의 자기 보고를 쓰지 않는다. 긴 번역어부터 찾으므로 "기존점 매출"만 쓰인 번역문에서 "매출"이 함께 잡히지 않는다.
 - **실패한 세그먼트는 재시도하면 다시 호출된다.** 엔진의 Gemini 응답 캐시는 호출 실패 시의 폴백 응답도 저장하는데, 번역 경로는 그 항목을 지운다. 성공한 번역은 캐시에 남아 같은 세그먼트를 다시 재생하면 할당량을 쓰지 않는다.
 - **타임아웃 뒤에도 Gemini 호출은 끝까지 진행된다.** 응답을 기다리지 않을 뿐 호출 자체는 취소되지 않으므로 할당량을 쓴다.
+- **백엔드 호출 방식.** 백엔드는 세그먼트를 묶어(4.8 발행 시점 참고) 원문을 공백으로 이어 붙여 `text`로 보내고, 묶음의 첫 `sequence`를 `sequence`로 쓴다. `terms`의 `term`은 원문에 나온 표기 그대로이며, 겹치는 용어는 긴 표기만 담는다.
 - **할당량 주의.** 무료 등급 Gemini는 모델별로 **분당 15요청**이다(`gemini-3.1-flash-lite` 실측, 429 `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`). 번역은 팩트체크(§9.1)와 같은 모델을 쓰므로 할당량을 함께 쓴다. 세그먼트마다 번역을 부르면 시연(6초 간격 24세그먼트) 기준 분당 약 10회가 더해져, 팩트체크와 합쳐 한도를 넘는다.
