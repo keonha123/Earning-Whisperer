@@ -122,10 +122,10 @@ export default function AssetsView() {
     const totalAsset = totalCash + stockValue
     const costBasis = holdings.reduce((sum, h) => sum + h.qty * h.avgPrice, 0)
     const unrealizedPnl = stockValue - costBasis
-    const withPrevClose = priced.filter((p) => p.prevClose > 0)
+    // 홈과 같은 규칙: 전일 종가를 모르는 종목이 하나라도 있으면 합계를 내지 않는다 (일부 합이 전체로 읽히지 않게)
     const dailyPnl =
-      withPrevClose.length > 0
-        ? withPrevClose.reduce((sum, p) => sum + (p.current - p.prevClose) * p.h.qty, 0)
+      priced.length > 0 && priced.every((p) => p.prevClose > 0)
+        ? priced.reduce((sum, p) => sum + (p.current - p.prevClose) * p.h.qty, 0)
         : null
 
     const rows: HoldingRow[] = priced.map(({ h, current, prevClose, value }) => {
@@ -164,7 +164,7 @@ export default function AssetsView() {
   const failedWithoutBalance = !hasBalance && balanceFetchError != null && !isSyncing
 
   const retryButton = (
-    <button type="button" className="gbtn gbtn-sm" onClick={() => void syncBalance()} disabled={isSyncing}>
+    <button type="button" className="gbtn rim gbtn-sm" onClick={() => void syncBalance()} disabled={isSyncing}>
       {isSyncing ? '조회 중' : '다시 조회'}
     </button>
   )
@@ -187,7 +187,7 @@ export default function AssetsView() {
             </div>
             <button
               type="button"
-              className="gbtn gbtn-sm shrink-0"
+              className="gbtn rim gbtn-sm shrink-0"
               onClick={() => void syncBalance()}
               disabled={isSyncing}
             >

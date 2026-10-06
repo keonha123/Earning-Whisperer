@@ -7,7 +7,7 @@ interface AssetSummaryProps {
   stockValue: number
   unrealizedPnl: number
   unrealizedPct: number
-  /** 전일 종가를 아는 종목이 하나도 없으면 null. */
+  /** 보유 종목 중 하나라도 전일 종가를 모르면 null. */
   dailyPnl: number | null
 }
 

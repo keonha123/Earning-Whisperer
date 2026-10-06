@@ -286,7 +286,7 @@ export default function HistoryPage() {
               마지막 업데이트 <span className="num">{formatDateTime(lastUpdatedAt)}</span>
             </span>
           )}
-          <button type="button" onClick={reload} disabled={loading} className="gbtn gbtn-sm">
+          <button type="button" onClick={reload} disabled={loading} className="gbtn rim gbtn-sm">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
               <path d="M2 6a4 4 0 017-2.5M10 6a4 4 0 01-7 2.5M9 2v2h-2M3 10V8h2" />
             </svg>
@@ -343,7 +343,7 @@ export default function HistoryPage() {
           />
         </label>
 
-        <button type="button" onClick={handleCsvExport} disabled={filtered.length === 0} className="gbtn gbtn-sm">
+        <button type="button" onClick={handleCsvExport} disabled={filtered.length === 0} className="gbtn rim gbtn-sm">
           CSV 내보내기
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="M5 1v6M2 5l3 3 3-3M1.5 9h7" />
@@ -359,7 +359,7 @@ export default function HistoryPage() {
             거래 내역을 새로 불러오지 못했습니다. 아래는 마지막으로 받은 목록입니다
             {lastUpdatedAt && <> · <span className="num">{formatDateTime(lastUpdatedAt)}</span></>}
           </span>
-          <button type="button" onClick={reload} className="gbtn gbtn-sm ml-auto">
+          <button type="button" onClick={reload} className="gbtn rim gbtn-sm ml-auto">
             다시 시도
           </button>
         </div>
@@ -401,7 +401,7 @@ export default function HistoryPage() {
                     <EmptyState
                       message="거래 내역을 불러오지 못했습니다."
                       action={
-                        <button type="button" onClick={reload} className="gbtn gbtn-sm">
+                        <button type="button" onClick={reload} className="gbtn rim gbtn-sm">
                           다시 시도
                         </button>
                       }
@@ -605,7 +605,7 @@ function TradeDetailModal({ row, onClose }: { row: HistoryRow | null; onClose: (
       <div className="w-[420px] max-w-[90vw] max-h-[80vh] overflow-y-auto p-7">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-[18px] font-semibold text-ink-1">거래 상세</h3>
-          <button type="button" onClick={onClose} aria-label="닫기" className="gbtn gbtn-icon gbtn-sm">
+          <button type="button" onClick={onClose} aria-label="닫기" className="gbtn rim gbtn-icon gbtn-sm">
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M3 3l6 6M9 3l-6 6" />
             </svg>

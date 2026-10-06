@@ -65,7 +65,7 @@ export default function AssetTrendCard() {
                   ? '추이를 새로 불러오지 못했습니다. 아래는 마지막으로 받은 값입니다'
                   : `${range}일 추이를 불러오지 못했습니다. 아래는 ${loaded.range}일 추이입니다`}
               </span>
-              <button type="button" className="gbtn gbtn-sm ml-auto shrink-0" onClick={() => setAttempt((n) => n + 1)}>
+              <button type="button" className="gbtn rim gbtn-sm ml-auto shrink-0" onClick={() => setAttempt((n) => n + 1)}>
                 다시 시도
               </button>
             </div>
@@ -75,7 +75,7 @@ export default function AssetTrendCard() {
           <EmptyState
             message="자산 추이를 불러오지 못했습니다."
             action={
-              <button type="button" className="gbtn gbtn-sm" onClick={() => setAttempt((n) => n + 1)}>
+              <button type="button" className="gbtn rim gbtn-sm" onClick={() => setAttempt((n) => n + 1)}>
                 다시 시도
               </button>
             }

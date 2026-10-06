@@ -48,7 +48,7 @@ export default function HoldingsTable({ rows, onRowClick, callStatus, onRetryCal
         {callStatus === 'error' && (
           <span className="flex items-center gap-2 text-[12.5px] text-ink-3">
             <span className="text-danger">콜 일정을 불러오지 못했습니다</span>
-            <button type="button" className="gbtn gbtn-sm" onClick={onRetryCalls}>
+            <button type="button" className="gbtn rim gbtn-sm" onClick={onRetryCalls}>
               다시 시도
             </button>
           </span>
