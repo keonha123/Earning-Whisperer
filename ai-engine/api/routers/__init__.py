@@ -13,6 +13,7 @@ from .live_fact_check import router as live_fact_check_router
 from .query import router as query_router
 from .regression import router as regression_router
 from .transcript_diff import router as transcript_diff_router
+from .transcript_translation import router as transcript_translation_router
 
 ALL_ROUTERS = [
     health_router,
@@ -28,6 +29,7 @@ ALL_ROUTERS = [
     calibration_router,
     regression_router,
     transcript_diff_router,
+    transcript_translation_router,
 ]
 
 __all__ = [
@@ -45,4 +47,5 @@ __all__ = [
     "query_router",
     "regression_router",
     "transcript_diff_router",
+    "transcript_translation_router",
 ]

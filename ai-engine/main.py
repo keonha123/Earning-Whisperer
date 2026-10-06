@@ -19,6 +19,7 @@ try:
     from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
+    from services.transcript_translation_service import TranscriptTranslationService
     from repositories.transcript_statement_repository import InMemoryTranscriptStatementRepository, QdrantTranscriptStatementRepository
     from services.transcript_statement_extraction_service import TranscriptStatementExtractionService
     from services.transcript_statement_service import TranscriptStatementService
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover
     from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
+    from .services.transcript_translation_service import TranscriptTranslationService
     from .repositories.transcript_statement_repository import InMemoryTranscriptStatementRepository, QdrantTranscriptStatementRepository
     from .services.transcript_statement_extraction_service import TranscriptStatementExtractionService
     from .services.transcript_statement_service import TranscriptStatementService
@@ -161,6 +163,7 @@ def create_app() -> FastAPI:
     app.state.transcript_repository = _build_transcript_repository(settings)
     app.state.evidence_service = EvidenceRetrievalService(repository=app.state.evidence_repository)
     app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
+    app.state.transcript_translation_service = TranscriptTranslationService(settings=settings)
     app.state.transcript_statement_service = TranscriptStatementService(
         extractor=TranscriptStatementExtractionService(settings=settings),
         repository=_build_transcript_statement_repository(app.state.transcript_repository),
