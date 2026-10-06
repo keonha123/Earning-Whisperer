@@ -20,7 +20,9 @@ export function registerStockListHandlers(): void {
       return list
     } catch (e) {
       console.warn('[StockListHandlers] SP500 리스트 조회 실패:', e)
-      return sp500Cache ?? []
+      // 캐시가 없으면 실패를 알린다 — 빈 목록으로 돌려주면 화면이 실패와 "목록 없음" 을 구분하지 못한다.
+      if (!sp500Cache) throw e
+      return sp500Cache
     }
   })
 
