@@ -24,6 +24,16 @@ from assistant.schemas import AskRequest
 logger = logging.getLogger(__name__)
 
 
+class _ClosingStreamingResponse(StreamingResponse):
+    """응답이 어떻게 끝나든 생성기를 닫는다. Starlette 는 연결이 끊겨도 body_iterator 를 닫지 않아, 닫히는 시점이 GC 에 맡겨진다."""
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await self.body_iterator.aclose()
+
+
 def format_sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -69,7 +79,7 @@ def create_app(settings: Settings | None = None, pipeline: AnswerPipeline | None
 
     @app.post("/v1/assistant/ask", dependencies=[Depends(require_internal_secret)])
     async def ask(body: AskRequest) -> StreamingResponse:
-        return StreamingResponse(_sse_stream(pipeline, body), media_type="text/event-stream",
+        return _ClosingStreamingResponse(_sse_stream(pipeline, body), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     return app

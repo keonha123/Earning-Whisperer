@@ -1,9 +1,15 @@
+import asyncio
+import contextlib
 import json
 
 from fastapi.testclient import TestClient
 
 from assistant.app import create_app, format_sse
+from assistant.classifier import Classification, GlossaryProvider
 from assistant.config import Settings
+from assistant.context import ContextAssembler
+from assistant.pipeline import AnswerPipeline
+from tests.fakes import FakeBackend, FakeEngine, FakeLLM
 
 _BODY = {"user_id": "u1", "ticker": "WMT", "call_id": "c1", "as_of_sequence": 3, "as_of_epoch": 1787227218,
          "question": "요약해 줘"}
@@ -85,3 +91,36 @@ def test_unexpected_pipeline_failure_ends_with_internal_error_event():
 
 def test_health():
     assert _client(StubPipeline()).get("/health").json() == {"status": "ok"}
+
+
+async def test_client_disconnect_closes_the_llm_stream_without_gc():
+    backend = FakeBackend()
+    llm = FakeLLM(deltas=["하나", "둘", "셋"],
+                  parsed=Classification(category="answer", glossary_term=None, search_query="q"))
+    assembler = ContextAssembler(backend, FakeEngine(), timeout_seconds=0.2, news_top_k=6, news_lookback_days=30)
+    pipeline = AnswerPipeline(llm=llm, assembler=assembler, glossary=GlossaryProvider(backend.glossary))
+    settings = Settings(_env_file=None, internal_secret="s3cret", openai_api_key="")
+    app = create_app(settings=settings, pipeline=pipeline)
+
+    body = json.dumps(_BODY).encode()
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST",
+             "path": "/v1/assistant/ask", "raw_path": b"/v1/assistant/ask", "query_string": b"", "root_path": "",
+             "scheme": "http", "server": ("test", 80), "client": ("test", 1),
+             "headers": [(b"x-internal-secret", b"s3cret"), (b"content-type", b"application/json"),
+                         (b"content-length", str(len(body)).encode())]}
+    sent_body = False
+
+    async def receive():
+        nonlocal sent_body
+        if not sent_body:
+            sent_body = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await asyncio.Event().wait()
+
+    async def send(message):
+        if message["type"] == "http.response.body" and b"event: delta" in message.get("body", b""):
+            raise OSError("client disconnected")
+
+    with contextlib.suppress(OSError, Exception):
+        await app(scope, receive, send)
+    assert llm.stream_closed is True
