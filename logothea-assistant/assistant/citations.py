@@ -27,14 +27,20 @@ _SCALES = {
     "조": 1e12, "억": 1e8, "만": 1e4,
 }
 # 단위가 붙은 수치만 본다. 단위 없는 숫자(연도, 분기, 표시 번호)는 오탐이 많다.
+_USD_SCALE = r"(?:\s*(?P<scale>trillion|billion|million|thousand|tn|bn|mn|[TBMK])(?![A-Za-z]))?"
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("usd", re.compile(r"\$\s*" + _NUM
-                       + r"(?:\s*(?P<scale>trillion|billion|million|thousand|tn|bn|mn|[TBMK])(?![A-Za-z]))?",
+    ("usd", re.compile(r"\$\s*" + _NUM + _USD_SCALE, re.IGNORECASE)),
+    ("usd", re.compile(r"(?:USD|US\$)\s*" + _NUM + _USD_SCALE, re.IGNORECASE)),
+    ("usd", re.compile(_NUM + r"\s*(?P<scale>trillion|billion|million|thousand)\s+(?:US\s+)?dollars?(?![A-Za-z])",
                        re.IGNORECASE)),
     ("usd", re.compile(_NUM + r"\s*(?P<scale>조|억|만)?\s*달러")),
-    ("pct", re.compile(_NUM + r"\s*(?:%|퍼센트|percent(?![A-Za-z]))", re.IGNORECASE)),
+    # bp 가 pp 보다 먼저여야 "basis points" 가 bp 로 잡힌다.
     ("bp", re.compile(_NUM + r"\s*(?:bps?|basis\s+points?|베이시스\s*포인트)(?![A-Za-z])", re.IGNORECASE)),
-    ("mult", re.compile(_NUM + r"\s*(?:x(?![A-Za-z])|배(?!당))", re.IGNORECASE)),
+    # 퍼센트포인트는 퍼센트와 같은 단위로 비교한다. pct 보다 먼저여야 "%p" 가 통째로 잡힌다.
+    ("pct", re.compile(_NUM + r"\s*(?:%\s*p(?![A-Za-z])|%\s*포인트|퍼센트\s*포인트|포인트"
+                       r"|percentage\s+points?|points?(?![A-Za-z]))", re.IGNORECASE)),
+    ("pct", re.compile(_NUM + r"\s*(?:%|퍼센트|percent(?![A-Za-z]))", re.IGNORECASE)),
+    ("mult", re.compile(_NUM + r"\s*(?:x(?![A-Za-z])|times(?![A-Za-z])|배(?!당))", re.IGNORECASE)),
 )
 
 

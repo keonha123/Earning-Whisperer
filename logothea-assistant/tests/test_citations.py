@@ -29,6 +29,13 @@ EVIDENCE = {
         ("50bp", "pct", 0.5),
         ("3x", "mult", 3.0),
         ("1.5배", "mult", 1.5),
+        ("USD 1.2 billion", "usd", 1.2e9),
+        ("1.2 billion dollars", "usd", 1.2e9),
+        ("2.6 percentage points", "pct", 2.6),
+        ("2.6%p", "pct", 2.6),
+        ("2.6%포인트", "pct", 2.6),
+        ("2.6 points", "pct", 2.6),
+        ("2.5 times", "mult", 2.5),
     ],
 )
 def test_extract_quantities_normalizes_units(text, kind, value):
@@ -112,3 +119,18 @@ def test_estimate_and_news_citations():
     result = verify_citations("시장은 EPS 0.74달러를 예상했습니다 [E1]. 주가는 장부가의 3배입니다 [N1].", EVIDENCE)
     assert [(c["marker"], c["type"], c["verified"]) for c in result.citations] == [
         ("E1", "estimate", True), ("N1", "news", True)]
+
+
+def test_percentage_point_claim_matches_source_wording():
+    evidence = {"S1": Evidence("S1", "segment", "1", "Operating margin expanded 2.6 percentage points.")}
+    assert verify_citations("영업이익률이 2.6%p 개선됐습니다 [S1].", evidence).citations[0]["verified"]
+
+
+def test_dollar_wording_variants_match():
+    evidence = {"S1": Evidence("S1", "segment", "1", "We reported revenue of 1.2 billion dollars.")}
+    assert verify_citations("매출은 $1.2B 입니다 [S1].", evidence).citations[0]["verified"]
+
+
+def test_integer_claim_rounds_within_half_unit():
+    evidence = {"S1": Evidence("S1", "segment", "1", "Comp sales grew 2.6%.")}
+    assert verify_citations("기존점 매출은 3% 늘었습니다 [S1].", evidence).citations[0]["verified"]
