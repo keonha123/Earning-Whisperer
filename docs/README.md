@@ -9,7 +9,7 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 |---|---|---|
 | 앱 사용자 | [빠른 시작](overview/quick-start.md) | [요구사항](install/requirements.md), [데스크톱 앱 설치](install/desktop-app.md), [기능](features/), [FAQ](overview/faq.md) |
 | 기여자 | [기여 안내](../CONTRIBUTING.md) | [로컬 실행](developer/setup.md), [폴더 구성](developer/directories.md), [테스트](developer/testing.md) |
-| 설계를 보려는 사람 | [아키텍처](developer/architecture.md) | [설계 결정 기록(ADR)](adr/), [모듈 간 계약](api-spec.md) |
+| 설계를 보려는 사람 | [제품 정의](product.md) | [아키텍처](developer/architecture.md), [설계 결정 기록(ADR)](adr/), [모듈 간 계약](api-spec.md) |
 
 ## 문서 목록
 
@@ -26,6 +26,21 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`features/earnings-summary.md`](features/earnings-summary.md) | 종합 판단(회피 탐지, 관련 종목 영향, 손절·익절 계획) |
 | [`features/trading.md`](features/trading.md) | 사용자가 직접 내는 KIS 주문(모의·실전) |
 | [`features/market.md`](features/market.md) | 대시보드와 마켓 |
+
+### 제품·디자인 문서
+
+| 경로 | 내용 |
+|---|---|
+| [`product.md`](product.md) | 제품 정의. 목표, 대상 사용자, 해결하려는 일, 기능 범위와 제외 범위 |
+
+디자인 문서는 `design/` 에 둡니다. 정해 둔 이름은 아래와 같고, 파일이 생기면 이 표에 추가합니다.
+
+| 경로 | 내용 |
+|---|---|
+| `design/ux.md` | 설계 원칙, 정보 구조, 핵심 유저플로우, 인터랙션 규칙 |
+| `design/design-system.md` | 토큰 체계, 의미 색, 컴포넌트 사용 규칙, 상태 패턴, 문구 규칙 |
+| `design/brand.md` | 로고, 앱 아이콘, 이름 표기, 톤 |
+| `design/screens/<화면>.md` | 화면마다 하나. 역할, 영역 구성, 표시 데이터, 상태, 동작. 픽셀 수치는 쓰지 않습니다 |
 
 ### 개발자 문서
 
@@ -55,7 +70,8 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`../.github/pull_request_template.md`](../.github/pull_request_template.md) | PR 본문 양식 |
 | [`../backend/`](../backend/), [`../trading-terminal/`](../trading-terminal/), [`../ai-engine/`](../ai-engine/), [`../data_pipeline/`](../data_pipeline/) | 각 모듈의 README |
 
-날짜를 붙인 설계 계획 문서는 `docs/plans/` 에 `YYYY-MM-DD-<주제>.md` 형식으로 둡니다.
+날짜를 붙인 계획·작업 문서는 저장소에 넣지 않습니다. 설계 문서는 날짜 없이 주제 이름으로 두고 내용을 갱신해
+관리합니다.
 
 ## 운영 규칙
 
@@ -63,6 +79,9 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 
 - 코드를 바꾸는 PR 에서 그 코드를 설명하는 문서도 함께 고칩니다. PR 템플릿의 "문서 갱신 여부" 항목에
   바꾼 문서를 적습니다.
+- 이 규칙의 예외가 두 가지 있습니다. 디자인 문서(`design/`)는 코드 PR 마다 고치지 않고 디자인 작업 단위가
+  끝날 때 몰아서 갱신합니다. 화면 재설계로 바뀌는 사용자 문서(`features/` 등)의 화면 설명은 릴리스 전까지
+  맞춥니다.
 - `api-spec.md` 의 각 절은 해당 계약을 바꾸는 사람이 같은 PR 에서 고칩니다.
 - 새 문서는 필요가 생겼을 때만 만듭니다.
 - 현행과 맞지 않는 문서는 고치거나 지웁니다. 보관용 `archive/` 폴더는 두지 않으며 지운 문서는 git 이력으로
