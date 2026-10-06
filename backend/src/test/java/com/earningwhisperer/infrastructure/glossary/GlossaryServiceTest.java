@@ -35,6 +35,25 @@ class GlossaryServiceTest {
     }
 
     @Test
+    @DisplayName("패키징된 사전은 정의와 '왜 중요한가' 를 짝으로 갖고, 시연 콜 용어에 정의가 있다")
+    void 실제_사전_정의() {
+        Glossary glossary = new GlossaryService(objectMapper, "data/glossary_ko.json").glossary();
+
+        // 정의만 있고 이유가 없거나 그 반대면 팝오버가 반쪽으로 뜬다.
+        assertThat(glossary.terms()).allSatisfy(t ->
+                assertThat(isBlank(t.definitionKo())).as(t.term()).isEqualTo(isBlank(t.whyKo())));
+        assertThat(glossary.terms())
+                .filteredOn(t -> List.of("comp sales", "guidance", "constant currency", "adjusted EPS", "basis points")
+                        .contains(t.term()))
+                .hasSize(5)
+                .allSatisfy(t -> assertThat(t.definitionKo()).as(t.term()).isNotBlank());
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    @Test
     @DisplayName("없는 파일이면 기동을 실패시킨다")
     void 파일_없음() {
         assertThatThrownBy(() -> new GlossaryService(objectMapper, "data/no-such-glossary.json"))
