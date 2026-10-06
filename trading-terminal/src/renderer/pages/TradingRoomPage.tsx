@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams, Navigate } from "react-router-dom";
 import { useTradingStore } from "../store/useTradingStore";
 import { usePortfolioStore } from "../store/usePortfolioStore";
 import { useConnectionStore } from "../store/useConnectionStore";
-import { useUserStore } from "../store/useUserStore";
 import { useDrawerStore } from "../store/useDrawerStore";
 import { useTranscriptStore } from "../store/useTranscriptStore";
 import { ipc, IPC_CHANNELS } from "../lib/ipc";
@@ -14,7 +13,9 @@ import TranscriptStream from "../components/call/TranscriptStream";
 import CallSideTabs from "../components/call/CallSideTabs";
 import CallVerdict from "../components/call/CallVerdict";
 import PriceCard from "../components/call/PriceCard";
-import OrderSheet, { type OrderAccount, type OrderSubmitPayload } from "../components/call/OrderSheet";
+import OrderSheet, { type OrderSubmitPayload } from "../components/call/OrderSheet";
+import { useOrderAccount } from "../hooks/useOrderAccount";
+import { DEMO_START_PARAM, DEMO_START_VALUE } from "../constants/demo";
 import { showIpcErrorToast } from "../components/common/Toast";
 import { applyTradeRecords, type SessionOrder, type TradeRecord } from "../lib/sessionOrders";
 import {
@@ -55,10 +56,9 @@ export default function TradingRoomPage() {
   // 잔고를 한 번이라도 불러왔는지. 0주 보유와 "아직 안 불러왔다" 를 구분해야 한다.
   const balanceLoaded = usePortfolioStore((s) => s.lastSyncedAt) != null;
   const hasCredentials = useConnectionStore((s) => s.hasCredentials);
-  const accountType = useUserStore((s) => s.accountType);
   const openDrawer = useDrawerStore((s) => s.open);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ticker 는 ?ticker= 쿼리 파라미터로만 정한다. 없으면 종목 화면으로 보낸다.
   const ticker = searchParams.get("ticker") || null;
@@ -208,30 +208,7 @@ export default function TradingRoomPage() {
   const holding = ticker ? holdings.find((h) => h.ticker === ticker) : undefined;
 
   // ── 주문 계좌 ────────────────────────────────────────────────────────────────
-  // 페이퍼 계정은 KIS 를 거치지 않는다. KIS 계좌면 모의 · 실전 설정을 main 에 묻는다.
-  const [isPaperTrading, setIsPaperTrading] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    ipc
-      .invoke<boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING)
-      .then((v) => {
-        if (!cancelled) setIsPaperTrading(v !== false);
-      })
-      .catch(() => {
-        // 모르는 채로 주문을 보내지 않는다 — 계좌 표시가 "확인 중" 으로 남고 전송이 막힌다.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const orderAccount: OrderAccount | null =
-    accountType === "SELF_PAPER"
-      ? "SELF_PAPER"
-      : accountType == null || isPaperTrading === null
-        ? null
-        : isPaperTrading
-          ? "KIS_PAPER"
-          : "KIS_REAL";
+  const orderAccount = useOrderAccount();
   const hasKey =
     orderAccount === "KIS_REAL" ? hasCredentials.real : hasCredentials.paper;
   const [orderOpen, setOrderOpen] = useState(false);
@@ -299,6 +276,22 @@ export default function TradingRoomPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // 홈의 `시연 재생` 으로 들어오면(?demo=start) 자막 구독을 건 뒤 재생을 시작한다.
+  // 구독보다 재생이 먼저 시작되면 첫 발언을 놓친다. 구독 요청은 응답을 기다리지 않으므로
+  // 잠깐 두고 시작한다. 시작할 때 표시를 지워 다시 마운트돼도 재생을 또 시작하지 않게 한다.
+  // 표시를 먼저 지우면 이 효과가 정리되면서 타이머가 취소되므로, 지우기는 타이머 안에서 한다.
+  const autoStartDemo = searchParams.get(DEMO_START_PARAM) === DEMO_START_VALUE;
+  useEffect(() => {
+    if (!ticker || !autoStartDemo) return;
+    const t = setTimeout(() => {
+      setSearchParams({ ticker }, { replace: true });
+      void runDemo(restartDemo);
+    }, 800);
+    return () => clearTimeout(t);
+    // runDemo · restartDemo 는 렌더마다 새로 만들어지지만 이 효과는 진입 때 한 번만 돈다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, autoStartDemo]);
+
   // ticker 없으면 종목 화면으로 — 모든 hooks 이후에 체크
   if (!ticker) return <Navigate to="/stocks" replace />;
 
@@ -325,6 +318,8 @@ export default function TradingRoomPage() {
       clearTranscriptDiff(ticker);
       // 이전 회차의 종합 판단이 남아 있으면 새 어닝콜이 시작됐는데도 지난 결론이 계속 떠 있게 된다.
       clearEarningsSummary(ticker);
+      // 세션 시작 응답이 늦게 와도 시연 표시가 꺼지지 않게, 세션 종목을 먼저 맞춘 뒤 표시를 켠다.
+      setSession(true, ticker);
       setDemo(true);
       return;
     }
@@ -447,7 +442,6 @@ export default function TradingRoomPage() {
           orderOpen={orderOpen}
           demo={{
             busy: demoBusy,
-            onStart: () => void runDemo(startDemo),
             onStop: () => void runDemo(stopDemo),
             onRestart: () => void runDemo(restartDemo),
           }}

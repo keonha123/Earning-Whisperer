@@ -206,10 +206,11 @@ BACKEND_URL=https://api.logothea.com
    적재할 때 ai-engine 이 Gemini 로 직전 콜의 핵심 문장을 추출하므로 `GEMINI_API_KEY` 가 필요합니다.
    콜 1건에 Gemini 약 6회를 동시에 호출하며, 추출에 10초 안팎이 더 걸립니다. 응답의
    `key_statement_counts` 가 저장된 문장 수입니다. 이 도구의 `--purge` 는 저장된 핵심 문장도 함께 지웁니다.
-3. 터미널에 로그인하고 Market 화면에서 WMT 를 골라 트레이딩룸으로 들어갑니다.
-4. 헤더의 "시연 시작" 버튼을 누릅니다. 터미널이 `POST /api/v1/demo/earnings-call/start` 를 호출하고 backend 의
-   `DemoEarningsCallService` 가 `backend/src/main/resources/data/demo-earnings-call.json`(월마트 2026-08-20 콜,
-   24개 세그먼트)을 6초 간격으로 재생합니다.
+3. 터미널에 로그인합니다.
+4. 홈 오른쪽 위의 "시연 재생" 버튼을 누릅니다. WMT 콜 화면이 열리면서 터미널이
+   `POST /api/v1/demo/earnings-call/start` 를 호출하고 backend 의 `DemoEarningsCallService` 가
+   `backend/src/main/resources/data/demo-earnings-call.json`(월마트 2026-08-20 콜, 24개 세그먼트)을 6초 간격으로
+   재생합니다.
 5. 트랜스크립트는 `/topic/transcript/{ticker}`, 팩트체크는 `/topic/factcheck/{ticker}`, 종합 판단은
    `/topic/evaluation/{ticker}` 로 화면에 들어옵니다.
 

@@ -6,7 +6,7 @@ import { usePortfolioStore } from './store/usePortfolioStore'
 import { useUserStore } from './store/useUserStore'
 
 import AuthPage from './pages/AuthPage'
-import DashboardPage from './pages/DashboardPage'
+import HomePage from './pages/HomePage'
 import TradingRoomPage from './pages/TradingRoomPage'
 import MarketPage from './pages/MarketPage'
 import PortfolioPage from './pages/PortfolioPage'
@@ -98,7 +98,7 @@ function AppRoutes() {
               <AppLayout>
                 <Routes>
                   <Route path="/" element={<Navigate to="/home" replace />} />
-                  <Route path="/home" element={<DashboardPage />} />
+                  <Route path="/home" element={<HomePage />} />
                   <Route path="/stocks" element={<MarketPage />} />
                   <Route path="/call" element={<TradingRoomPage />} />
                   <Route path="/portfolio" element={<PortfolioPage />} />

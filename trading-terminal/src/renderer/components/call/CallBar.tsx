@@ -21,7 +21,6 @@ interface CallBarProps {
   /** 시연 재생 제어. 지정하지 않으면 그리지 않는다. */
   demo?: {
     busy: boolean
-    onStart: () => void
     onStop: () => void
     onRestart: () => void
   }
@@ -104,7 +103,8 @@ export default function CallBar({
                 중지
               </button>
             ) : null}
-            {phase === 'LIVE' && !isDemo ? null : isDemo || phase === 'ENDED' ? (
+            {/* 시연 시작은 홈에서만 한다. 여기서는 시연 콜을 멈추거나 처음부터 다시 재생한다. */}
+            {isDemo && (
               <button
                 type="button"
                 className="gbtn gbtn-sm"
@@ -114,17 +114,6 @@ export default function CallBar({
               >
                 <RestartIcon />
                 처음부터
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="gbtn gbtn-sm"
-                onClick={demo.onStart}
-                disabled={demo.busy}
-                title="준비된 어닝콜 스크립트를 재생합니다"
-              >
-                <PlayIcon />
-                {demo.busy ? '시작하는 중' : '시연 재생'}
               </button>
             )}
           </>
@@ -162,14 +151,6 @@ function PhaseMark({ phase }: { phase: CallPhase }) {
     <span className="text-[12px] font-semibold text-ink-3" role="status">
       {PHASE_LABEL[phase]}
     </span>
-  )
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M5 3.5v9l7.5-4.5z" />
-    </svg>
   )
 }
 

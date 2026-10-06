@@ -42,6 +42,8 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`design/brand.md`](design/brand.md) | 로고, 앱 아이콘, 이름 표기, 톤 |
 | `design/screens/<화면>.md` | 화면마다 하나. 역할, 영역 구성, 표시 데이터, 상태, 동작. 픽셀 수치는 쓰지 않습니다 |
 | [`design/screens/call.md`](design/screens/call.md) | 콜 화면: 콜 상태별 구성, 콜 바, 자막과 직전 콜 대조, 종합 판단, 주문 시트 |
+| [`design/screens/home.md`](design/screens/home.md) | 홈: 내 종목의 다가오는 콜, 전체 일정, 시연 재생, 계좌 · 시장 요약 |
+| [`design/screens/stock-brief.md`](design/screens/stock-brief.md) | 종목 브리핑: 다음 콜, 최근 어닝 반응, 30일 종가, 콜 화면 열기 |
 
 ### 개발자 문서
 
