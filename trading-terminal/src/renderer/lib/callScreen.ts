@@ -129,3 +129,23 @@ export function countdownParts(
     seconds: total % 60,
   }
 }
+
+/**
+ * 번역 문단을 붙일 자리 — 문단에 담긴 마지막 원문 발언 번호 → 문단.
+ *
+ * 번역은 원문 몇 개를 묶어 몇 초 늦게 오므로, 묶음의 마지막 발언 아래에 붙여야 원문과 순서가 맞다.
+ * 지금 콜(callId)의 번역만 남긴다 — 다시 재생하면 지난 회차 번역이 발언 번호가 겹친 채 남아 있다.
+ */
+export function translationsByLastSequence<T extends { callId: string; sequences: readonly number[] }>(
+  items: readonly T[],
+  callId: string | null,
+): ReadonlyMap<number, T> {
+  const map = new Map<number, T>()
+  if (callId == null) return map
+  for (const item of items) {
+    if (item.callId !== callId || item.sequences.length === 0) continue
+    // sequences 는 store 가 오름차순으로 맞춰 둔다
+    map.set(item.sequences[item.sequences.length - 1], item)
+  }
+  return map
+}
