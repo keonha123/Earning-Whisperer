@@ -661,19 +661,21 @@ export const KisService = {
 
     const orderId = data.output?.ODNO ?? ''
 
-    // 시장가 주문 후 짧은 대기 → 체결조회로 실제 executedQty/executedPrice 채움.
-    // 체결조회 실패 시 fallback: executedQty=qty 가정(기존 동작) — 정확성은 떨어지지만 회귀는 없음.
-    // 후속 portfolio sync 가 KIS 잔고 재조회로 보정한다.
+    // 주문 후 짧은 대기 → 체결조회로 실제 executedQty/executedPrice 채움.
+    // 체결 여부를 확인하지 못하면 executedQty=0 으로 돌려 호출 측이 PENDING 으로 기록하게 한다.
+    // 체결로 가정하면 미체결 주문이 체결로 남는다. PENDING 은 체결통보·거래내역 진입·새로고침
+    // 때 reconcilePendingTrades 가 다시 확인한다.
     if (!orderId) {
-      console.warn('[KisService] ODNO 미반환 — 체결조회 skip, fallback 사용')
-      return { orderId: '', executedPrice: null, executedQty: qty }
+      // ODNO 가 없으면 재확인으로도 찾을 수 없어 PENDING 으로 남는다.
+      console.warn('[KisService] ODNO 미반환 — 체결조회 skip, 미확인(PENDING) 처리')
+      return { orderId: '', executedPrice: null, executedQty: 0 }
     }
 
     await sleep(ORDER_FILL_INQUIRE_WAIT_MS)
     const fill = await inquireOrderFill(appKey, appSecret, accountNo, ticker, orderId)
     if (fill === null) {
-      console.warn(`[KisService] 체결조회 실패 — fallback (qty=${qty} 가정) orderId=${orderId}`)
-      return { orderId, executedPrice: null, executedQty: qty }
+      console.warn(`[KisService] 체결조회 실패 — 미확인(PENDING) 처리 orderId=${orderId}`)
+      return { orderId, executedPrice: null, executedQty: 0 }
     }
     return {
       orderId,

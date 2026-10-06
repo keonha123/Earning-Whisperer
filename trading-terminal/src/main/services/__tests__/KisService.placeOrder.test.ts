@@ -119,7 +119,8 @@ describe('KisService.placeOrder', () => {
 
     expect(result.orderId).toBe('K-987654')
     expect(result.executedPrice).toBeNull()
-    expect(result.executedQty).toBe(1)
+    // 체결조회 mock 없음 → 미확인 → 0
+    expect(result.executedQty).toBe(0)
   })
 
   it('응답에 ODNO 없을 때 빈 문자열 fallback', async () => {
@@ -230,14 +231,14 @@ describe('KisService.placeOrder — KIS rt_cd 비즈니스 실패 처리', () =>
     const result = await KisService.placeOrder('BUY', 'TSLA', 1)
 
     expect(result.orderId).toBe('OD-OK')
-    expect(result.executedQty).toBe(1)
+    expect(result.executedQty).toBe(0)
     expect(result.executedPrice).toBeNull()
   })
 
   it('주문 + 체결조회 각각 acquire(HIGH) 호출 (총 2회)', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-LIM') })
-    // inquireOrderFill 의 GET 도 HIGH 토큰 1개 사용. mock 안 하면 fallback 으로 빠지지만
+    // inquireOrderFill 의 GET 도 HIGH 토큰 1개 사용. mock 안 하면 미확인 처리로 빠지지만
     // 그 전에 acquire 는 호출됨.
     kisHttpMock.get.mockRejectedValueOnce(new Error('inquire skip'))
 
@@ -338,7 +339,7 @@ describe('KisService.placeOrder — 체결조회로 executedQty 정확화', () =
     expect(result.executedPrice).toBeNull()
   })
 
-  it('inquire-ccnl rt_cd 실패 → fallback (executedQty=qty 가정, 회귀 없음)', async () => {
+  it('inquire-ccnl rt_cd 실패 → 체결로 가정하지 않고 executedQty=0 (PENDING 기록)', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-FB1') })
     kisHttpMock.get.mockResolvedValueOnce({
@@ -347,18 +348,18 @@ describe('KisService.placeOrder — 체결조회로 executedQty 정확화', () =
 
     const result = await KisService.placeOrder('BUY', 'TSLA', 10)
 
-    expect(result.executedQty).toBe(10) // fallback
+    expect(result.executedQty).toBe(0)
     expect(result.executedPrice).toBeNull()
   })
 
-  it('inquire-ccnl 네트워크 오류 → fallback', async () => {
+  it('inquire-ccnl 네트워크 오류 → executedQty=0', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: orderSuccessResponse('OD-FB2') })
     kisHttpMock.get.mockRejectedValueOnce(new Error('network down'))
 
     const result = await KisService.placeOrder('BUY', 'TSLA', 5)
 
-    expect(result.executedQty).toBe(5)
+    expect(result.executedQty).toBe(0)
     expect(result.executedPrice).toBeNull()
   })
 
@@ -373,14 +374,14 @@ describe('KisService.placeOrder — 체결조회로 executedQty 정확화', () =
     expect(result.executedPrice).toBeNull()
   })
 
-  it('ODNO 빈 문자열 → 체결조회 skip + fallback (호출 자체 안 함)', async () => {
+  it('ODNO 빈 문자열 → 체결조회 skip + executedQty=0 (호출 자체 안 함)', async () => {
     await seedCredentials()
     kisHttpMock.post.mockResolvedValueOnce({ data: { rt_cd: '0', output: {} } })
 
     const result = await KisService.placeOrder('BUY', 'TSLA', 3)
 
     expect(result.orderId).toBe('')
-    expect(result.executedQty).toBe(3)
+    expect(result.executedQty).toBe(0)
     expect(kisHttpMock.get).not.toHaveBeenCalled()
   })
 
