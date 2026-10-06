@@ -63,6 +63,11 @@ def test_as_of_epoch_must_be_positive():
         AskRequest(**_body(as_of_epoch=0))
 
 
+def test_call_ended_defaults_to_false():
+    assert AskRequest(**_body()).call_ended is False
+    assert AskRequest(**_body(call_ended=True)).call_ended is True
+
+
 def test_settings_defaults_and_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("INTERNAL_SECRET", "s3cret")

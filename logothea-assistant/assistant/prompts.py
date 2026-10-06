@@ -92,6 +92,10 @@ def _render_question(request: AskRequest, bundle: ContextBundle, category: str) 
     else:
         first, last = bundle.segments[0].marker, bundle.segments[-1].marker
         lines.append(f"질문 범위: 질문 시점까지 나온 콜 전체([{first}]~[{last}]).")
+    if request.call_ended:
+        lines.append("콜은 끝났습니다. 근거가 없을 때 \"아직 콜에서 언급되지 않았습니다.\" 는 쓰지 않는다.")
+    else:
+        lines.append("콜은 아직 진행 중입니다. 질문 시점 뒤에 나올 수 있는 내용이면 \"아직 콜에서 언급되지 않았습니다.\" 를 덧붙인다.")
     if category == "facts_only":
         lines.append("이 질문에는 판단(비싸다·싸다, 사라·팔라) 없이 사실과 수치만 답한다.")
     if bundle.missing_sources:

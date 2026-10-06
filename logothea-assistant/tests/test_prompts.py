@@ -87,3 +87,12 @@ def test_refusal_texts_and_suggestions():
     assert REFUSAL_SUGGESTIONS["price_prediction"] == ["guidance", "vs_expectations"]
     assert REFUSAL_SUGGESTIONS["out_of_scope"] == ["summary"]
     assert NO_EVIDENCE_PHRASE == "찾지 못했습니다"
+
+
+def test_question_states_whether_the_call_has_ended():
+    ongoing = build_generation_messages(_request(), _bundle(), "answer")[-1].text
+    assert "콜은 아직 진행 중입니다" in ongoing
+
+    ended = build_generation_messages(_request(call_ended=True), _bundle(), "answer")[-1].text
+    assert "콜은 끝났습니다" in ended
+    assert "아직 콜에서 언급되지 않았습니다" in ended
