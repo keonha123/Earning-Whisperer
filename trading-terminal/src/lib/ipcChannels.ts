@@ -264,6 +264,16 @@ export const IPC_CHANNELS = {
   GLOSSARY_GET: 'terminal:glossary:get',
 
   /**
+   * 어닝콜 질의응답(#112, Contract 7.10). invoke 는 backend 가 스트림을 연 뒤 { requestId } 로 응답하고,
+   * 스트림 전 거절(429·409·404 등)은 IpcError(details: AssistantRejection)로 reject 한다.
+   */
+  ASSISTANT_ASK: 'terminal:assistant:ask',
+  /** 진행 중인 질문 취소. backend 연결을 닫아 assistant 의 생성까지 멈춘다. payload: { requestId } */
+  ASSISTANT_CANCEL: 'terminal:assistant:cancel',
+  /** Main → Renderer: AssistantStreamEvent (meta · delta · citations · done · error) */
+  ASSISTANT_EVENT: 'terminal:assistant:event',
+
+  /**
    * 어닝콜 시연 재생 제어 (Renderer → Main, invoke).
    * Backend Contract 7.8. payload: { ticker }
    * DEMO_START 응답: { ok: true, callId, segmentCount, intervalMs }
