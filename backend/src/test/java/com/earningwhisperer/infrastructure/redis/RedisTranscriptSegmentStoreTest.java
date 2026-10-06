@@ -31,7 +31,7 @@ class RedisTranscriptSegmentStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new RedisTranscriptSegmentStore(redisTemplate, objectMapper, 48);
+        store = new RedisTranscriptSegmentStore(redisTemplate, objectMapper, 48, (java.util.concurrent.Executor) Runnable::run);
     }
 
     private static TranscriptSegment segment(int sequence) {
@@ -84,5 +84,61 @@ class RedisTranscriptSegmentStoreTest {
                 "{not json", objectMapper.writeValueAsString(segment(1))));
 
         assertThat(store.findUntil("call-1", 5)).extracting(TranscriptSegment::sequence).containsExactly(1);
+    }
+
+    @Test
+    @DisplayName("Redis 호출이 막혀 있어도 append 는 바로 돌아온다")
+    void append_returnsWhileRedisBlocked() throws Exception {
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(redisTemplate.opsForList()).thenAnswer(inv -> {
+            entered.countDown();
+            release.await();
+            return listOps;
+        });
+        RedisTranscriptSegmentStore real = new RedisTranscriptSegmentStore(redisTemplate, objectMapper, 48, 10);
+        try {
+            long start = System.nanoTime();
+            real.append(segment(1));
+            real.append(segment(2));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+            assertThat(entered.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(elapsedMs).isLessThan(500);
+        } finally {
+            release.countDown();
+            real.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("대기열이 가득 차면 버리고 예외를 던지지 않는다")
+    void append_dropsWhenQueueFull() throws Exception {
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        when(redisTemplate.opsForList()).thenAnswer(inv -> {
+            entered.countDown();
+            release.await();
+            return listOps;
+        });
+        RedisTranscriptSegmentStore real = new RedisTranscriptSegmentStore(redisTemplate, objectMapper, 48, 2);
+        try {
+            real.append(segment(0));
+            assertThat(entered.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            for (int i = 1; i <= 10; i++) {
+                real.append(segment(i)); // 큐 2개를 넘는 분은 버려진다
+            }
+        } finally {
+            release.countDown();
+            real.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("Redis 쓰기가 실패해도 예외가 밖으로 나가지 않는다")
+    void append_swallowsRedisFailure() {
+        when(redisTemplate.opsForList()).thenThrow(new IllegalStateException("redis down"));
+
+        store.append(segment(1));
     }
 }
