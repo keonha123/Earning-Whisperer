@@ -19,6 +19,9 @@ try:
     from services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from services.redis_signal_publisher import RedisSignalPublisher
     from services.runtime_dispatch_service import dispatch_analysis
+    from repositories.transcript_statement_repository import InMemoryTranscriptStatementRepository, QdrantTranscriptStatementRepository
+    from services.transcript_statement_extraction_service import TranscriptStatementExtractionService
+    from services.transcript_statement_service import TranscriptStatementService
 except ImportError:  # pragma: no cover
     from .api.routers import ALL_ROUTERS
     from .config import Settings, get_settings
@@ -32,6 +35,9 @@ except ImportError:  # pragma: no cover
     from .services import CalibrationService, ControlPlaneService, EarningsIntelligenceService, EquityResearchReportService, EvidenceRetrievalService, LiveNewsFactCheckService, NewsIngestionService, RegressionService, TranscriptDiffService, TranscriptIngestionService
     from .services.redis_signal_publisher import RedisSignalPublisher
     from .services.runtime_dispatch_service import dispatch_analysis
+    from .repositories.transcript_statement_repository import InMemoryTranscriptStatementRepository, QdrantTranscriptStatementRepository
+    from .services.transcript_statement_extraction_service import TranscriptStatementExtractionService
+    from .services.transcript_statement_service import TranscriptStatementService
 
 
 class HealthResponse(BaseModel):
@@ -99,6 +105,12 @@ def _build_transcript_repository(settings: Settings):
     return EvidenceStoreRepository()
 
 
+def _build_transcript_statement_repository(transcript_repository):
+    if isinstance(transcript_repository, QdrantEvidenceRepository):
+        return QdrantTranscriptStatementRepository.sharing(transcript_repository)
+    return InMemoryTranscriptStatementRepository()
+
+
 def _get_control_service(fastapi_app: FastAPI | None) -> ControlPlaneService | None:
     if fastapi_app is None or not hasattr(fastapi_app.state, "event_store_repository"):
         return None
@@ -150,6 +162,10 @@ def create_app() -> FastAPI:
     app.state.evidence_service = EvidenceRetrievalService(repository=app.state.evidence_repository)
     app.state.transcript_diff_service = TranscriptDiffService(app.state.transcript_repository)
     app.state.transcript_ingestion_service = TranscriptIngestionService(app.state.transcript_repository)
+    app.state.transcript_statement_service = TranscriptStatementService(
+        extractor=TranscriptStatementExtractionService(settings=settings),
+        repository=_build_transcript_statement_repository(app.state.transcript_repository),
+    )
     app.state.analysis_service = AnalysisService(
         settings=settings,
         evidence_service=app.state.evidence_service,
