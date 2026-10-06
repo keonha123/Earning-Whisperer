@@ -1,12 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import SegmentedControl from '../common/SegmentedControl'
-import { ComingSoon, EmptyState } from '../common/StateView'
+import { EmptyState } from '../common/StateView'
 import type { TranscriptDiffItem } from '../../store/useTranscriptDiffStore'
 import { countDiffsByType } from '../../lib/callScreen'
 import { CHANGE_META, CHANGE_ORDER, topicLabel } from './diffMeta'
 import ScrollEdge from './ScrollEdge'
 
-type SideTab = 'diff' | 'ask' | 'price'
+export type SideTab = 'diff' | 'ask' | 'price'
 
 const TABS: { id: SideTab; label: string }[] = [
   { id: 'diff', label: '대조' },
@@ -20,6 +20,11 @@ interface CallSideTabsProps {
   onFocusSequence: (sequence: number) => void
   /** 가격 탭 내용 — 시작 전 옆 자리와 같은 카드를 쓴다. */
   price: ReactNode
+  /** 질문 탭 내용 — 질의응답 패널. */
+  ask: ReactNode
+  /** 자막에서 '이 대목 질문' 을 누르면 질문 탭으로 옮겨야 해서 탭은 화면이 쥔다. */
+  tab: SideTab
+  onTabChange: (tab: SideTab) => void
   topInset: number
 }
 
@@ -27,11 +32,10 @@ interface CallSideTabsProps {
  * 콜 진행 중의 옆 자리 — 대조 · 질문 · 가격 탭 (docs/design/ux.md 콜 시청).
  *
  *  - 대조: 변화 유형별 집계와 목록. 누르면 해당 발언으로 이동한다. 발언 아래 붙은 대조의 색인 역할이다.
- *  - 질문: 발언을 지정해 묻는 질의응답(#112) 자리. 동작이 정해지지 않아 자리만 둔다.
+ *  - 질문: 콜 전체나 고른 발언에 대해 묻는 질의응답(#112).
  *  - 가격: 가격 · 보유는 콜 중에는 보조 정보라 탭 하나로 내린다.
  */
-export default function CallSideTabs({ diffItems, onFocusSequence, price, topInset }: CallSideTabsProps) {
-  const [tab, setTab] = useState<SideTab>('diff')
+export default function CallSideTabs({ diffItems, onFocusSequence, price, ask, tab, onTabChange, topInset }: CallSideTabsProps) {
   const counts = useMemo(() => countDiffsByType(diffItems), [diffItems])
   // 발언 순서대로. 도착 순서로 두면 자막과 순서가 어긋난다.
   const ordered = useMemo(() => [...diffItems].sort((a, b) => a.sequence - b.sequence), [diffItems])
@@ -40,10 +44,13 @@ export default function CallSideTabs({ diffItems, onFocusSequence, price, topIns
     <section className="frost relative h-full rounded-[28px] overflow-hidden flex flex-col" style={{ paddingTop: topInset }}>
       <ScrollEdge height={topInset + 12} />
       <div className="px-5 pt-4 pb-3 shrink-0">
-        <SegmentedControl items={TABS} activeId={tab} onChange={setTab} />
+        <SegmentedControl items={TABS} activeId={tab} onChange={onTabChange} />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">
+      {/* 질문 탭은 대화 목록과 입력칸이 각자 자리를 나눠 써서 바깥 스크롤을 두지 않는다 */}
+      {tab === 'ask' && <div className="flex-1 min-h-0 px-5 pb-5 flex flex-col">{ask}</div>}
+
+      <div className={`flex-1 min-h-0 overflow-y-auto px-5 pb-6 ${tab === 'ask' ? 'hidden' : ''}`}>
         {tab === 'diff' && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[13px]" aria-label="변화 유형별 개수">
@@ -81,13 +88,6 @@ export default function CallSideTabs({ diffItems, onFocusSequence, price, topIns
               </ul>
             )}
           </div>
-        )}
-
-        {tab === 'ask' && (
-          <ComingSoon
-            title="이 발언에 대해 질문하기"
-            note="자막에서 발언을 골라 근거와 함께 묻는 기능은 준비 중입니다"
-          />
         )}
 
         {tab === 'price' && price}

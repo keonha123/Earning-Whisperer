@@ -25,6 +25,8 @@ interface TranscriptStreamProps {
   showTranslation: boolean
   onShowTranslationChange: (show: boolean) => void
   glossaryStatus: GlossaryStatus
+  /** 이 발언을 범위로 질의응답을 연다. 없으면 버튼을 두지 않는다. */
+  onAskAbout?: (sequence: number) => void
 }
 
 /**
@@ -47,6 +49,7 @@ export default function TranscriptStream({
   showTranslation,
   onShowTranslationChange,
   glossaryStatus,
+  onAskAbout,
 }: TranscriptStreamProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [stuck, setStuck] = useState(true)
@@ -123,7 +126,7 @@ export default function TranscriptStream({
                 <li
                   key={`${seg.callId}-${seg.sequence}`}
                   data-seq={seg.sequence}
-                  className={`flex flex-col gap-1.5 rounded-[14px] transition-colors duration-500 ${
+                  className={`group flex flex-col gap-1.5 rounded-[14px] transition-colors duration-500 ${
                     flash === seg.sequence ? 'bg-white/[0.06]' : ''
                   }`}
                 >
@@ -142,6 +145,16 @@ export default function TranscriptStream({
                       ) : (
                         <span>{seg.speaker}</span>
                       ))}
+                    {onAskAbout && (
+                      <button
+                        type="button"
+                        onClick={() => onAskAbout(seg.sequence)}
+                        className="ml-auto rounded-full px-2 py-0.5 text-ink-3 hover:text-ink-1 hover:bg-white/[0.06]
+                                   opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                      >
+                        이 대목 질문
+                      </button>
+                    )}
                   </div>
                   <p
                     className={`select-text leading-[1.6] ${

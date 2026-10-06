@@ -10,7 +10,9 @@ import SpeakerProfileModal from "../components/trading/SpeakerProfileModal";
 import CallBar from "../components/call/CallBar";
 import CallBriefing from "../components/call/CallBriefing";
 import TranscriptStream from "../components/call/TranscriptStream";
-import CallSideTabs from "../components/call/CallSideTabs";
+import CallSideTabs, { type SideTab } from "../components/call/CallSideTabs";
+import AssistantPanel from "../components/call/AssistantPanel";
+import SegmentedControl from "../components/common/SegmentedControl";
 import CallVerdict from "../components/call/CallVerdict";
 import PriceCard from "../components/call/PriceCard";
 import OrderSheet, { type OrderSubmitPayload } from "../components/call/OrderSheet";
@@ -49,6 +51,13 @@ const COLUMNS = {
 } as const;
 
 const EMPTY_PRICES: readonly PricePoint[] = [];
+
+/** 종료 후 오른쪽 판 위의 `판단 / 질문` 전환이 차지하는 높이(px). */
+const ENDED_SWITCH_HEIGHT = 56;
+const ENDED_VIEWS: { id: "verdict" | "ask"; label: string }[] = [
+  { id: "verdict", label: "판단" },
+  { id: "ask", label: "질문" },
+];
 
 export default function TradingRoomPage() {
   const { setSession, setDemo } = useTradingStore();
@@ -172,6 +181,21 @@ export default function TradingRoomPage() {
       transcriptDiffPreviousCall.documentId
     : null;
   const [focus, setFocus] = useState<{ sequence: number; nonce: number } | null>(null);
+  const focusSequence = (sequence: number) => setFocus({ sequence, nonce: Date.now() });
+
+  // ── 질의응답 (#112) — 진행 중에는 옆 탭, 종료 후에는 판단과 전환 ──────────────
+  const [sideTab, setSideTab] = useState<SideTab>("diff");
+  const [endedView, setEndedView] = useState<"verdict" | "ask">("verdict");
+  // 고른 대목. 없으면 콜 전체에 대해 묻는다. 대목은 콜 회차에 묶어 두어, 다른 콜로 바뀌면 지난 대목이
+  // 한 번이라도 새 콜의 범위로 쓰이지 않게 한다.
+  const [askAnchorState, setAskAnchorState] = useState<{ callId: string; sequence: number } | null>(null);
+  const askAnchor =
+    askAnchorState && askAnchorState.callId === lastCallId ? askAnchorState.sequence : null;
+  const askAbout = (sequence: number) => {
+    if (lastCallId) setAskAnchorState({ callId: lastCallId, sequence });
+    setSideTab("ask");
+    setEndedView("ask");
+  };
 
   // ── 발화자 프로필 ───────────────────────────────────────────────────────────
   // 명부는 사실 정보(이름/직책/소속)만 백엔드에서 오고, 발언량은 이 화면이 받아 둔 세그먼트로 계산한다.
@@ -316,6 +340,21 @@ export default function TradingRoomPage() {
 
   // ticker 없으면 종목 화면으로 — 모든 hooks 이후에 체크
   if (!ticker) return <Navigate to="/stocks" replace />;
+
+  // 질의응답은 콜 회차(callId)에 묶인다. 받은 자막이 없으면 물어볼 콜이 없다.
+  const assistant = lastCallId ? (
+    <AssistantPanel
+      ticker={ticker}
+      callId={lastCallId}
+      segments={segments}
+      anchorSequence={askAnchor}
+      onClearAnchor={() => setAskAnchorState(null)}
+      onFocusSequence={focusSequence}
+      isLive={isLive}
+    />
+  ) : (
+    <p className="py-10 text-center text-[13px] text-ink-3">받은 자막이 없어 질문할 콜 내용이 없습니다.</p>
+  );
 
   /**
    * 시연 재생 시작 (Contract 7.8).
@@ -502,12 +541,16 @@ export default function TradingRoomPage() {
               topInset={TOP_INSET}
               focus={focus}
               {...translationProps}
+              onAskAbout={askAbout}
               onSpeakerClick={speakerProfiles.length > 0 ? openSpeakerProfile : undefined}
             />
             <CallSideTabs
               diffItems={transcriptDiffItems}
-              onFocusSequence={(sequence) => setFocus({ sequence, nonce: Date.now() })}
+              onFocusSequence={focusSequence}
               price={priceCard}
+              ask={assistant}
+              tab={sideTab}
+              onTabChange={setSideTab}
               topInset={TOP_INSET}
             />
           </>
@@ -521,17 +564,35 @@ export default function TradingRoomPage() {
               isLive={false}
               compact
               topInset={TOP_INSET}
+              focus={focus}
               {...translationProps}
+              onAskAbout={askAbout}
               onSpeakerClick={speakerProfiles.length > 0 ? openSpeakerProfile : undefined}
             />
-            <CallVerdict
-              summary={currentSummary}
-              demoStopped={stoppedCallId != null && stoppedCallId === lastCallId}
-              diffCounts={diffCounts}
-              previousCallLabel={previousCallLabel}
-              onOpenTicker={(t) => openDrawer(t)}
-              topInset={TOP_INSET}
-            />
+            <div className="relative h-full min-h-0">
+              {/* 종료 후에는 판단이 주인공이고, 질문은 같은 자리에서 전환해 연다. 탭 순서상 내용보다 앞에 둔다 */}
+              <div className="absolute left-6 z-10" style={{ top: TOP_INSET + 8 }}>
+                <SegmentedControl items={ENDED_VIEWS} activeId={endedView} onChange={setEndedView} />
+              </div>
+              {endedView === "verdict" ? (
+                <CallVerdict
+                  summary={currentSummary}
+                  demoStopped={stoppedCallId != null && stoppedCallId === lastCallId}
+                  diffCounts={diffCounts}
+                  previousCallLabel={previousCallLabel}
+                  onOpenTicker={(t) => openDrawer(t)}
+                  topInset={TOP_INSET + ENDED_SWITCH_HEIGHT}
+                />
+              ) : (
+                <section
+                  className="frost h-full rounded-[28px] overflow-hidden flex flex-col px-6 pb-5"
+                  style={{ paddingTop: TOP_INSET + ENDED_SWITCH_HEIGHT }}
+                  aria-label="질문"
+                >
+                  {assistant}
+                </section>
+              )}
+            </div>
           </>
         )}
       </div>
