@@ -11,6 +11,7 @@ import { start as startEarnings, stop as stopEarnings } from './earningsHandlers
 import { start as startPricePoller, stop as stopPricePoller } from '../services/PricePoller'
 import { KisWebSocketService } from '../services/KisWebSocketService'
 import { SubscriptionManager } from '../services/SubscriptionManager'
+import { assistantStreamService } from '../services/AssistantStreamService'
 import { registerHandler } from './registerHandler'
 
 /**
@@ -34,6 +35,8 @@ export function teardownSession(): void {
   stopWatchlist()
   stopEarnings()
   stopPricePoller()
+  // 진행 중인 질의응답 스트림 종료 — 로그아웃 뒤에도 이전 사용자의 답변이 renderer 로 흐르지 않게 한다.
+  assistantStreamService.cancel()
   // 종목 상세 캐시 클리어 — 사용자 전환 시 이전 응답 노출 방지
   clearStockDetailCache()
   // KIS refreshTimer 취소 — 로그아웃 상태에서 타이머가 keytar 를 읽어 토큰을 재발급하는 것을 막는다.

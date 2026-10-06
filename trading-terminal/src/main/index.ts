@@ -13,6 +13,7 @@ import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerWsHandlers } from './ipc/wsHandlers'
 import { registerMarketHandlers } from './ipc/marketHandlers'
 import { registerGlossaryHandlers } from './ipc/glossaryHandlers'
+import { registerAssistantHandlers } from './ipc/assistantHandlers'
 import { registerWatchlistHandlers, stop as stopWatchlist } from './ipc/watchlistHandlers'
 import { registerPricesHandlers } from './ipc/pricesHandlers'
 import { registerStockDetailHandlers } from './ipc/stockDetailHandlers'
@@ -138,6 +139,7 @@ function registerAllHandlers() {
   registerWsHandlers()
   registerMarketHandlers()
   registerGlossaryHandlers()
+  registerAssistantHandlers()
   registerWatchlistHandlers()
   registerPricesHandlers()
   registerStockDetailHandlers()
