@@ -59,7 +59,10 @@ class OpenAIClient:
                 async for event in stream:
                     if event.type == "response.output_text.delta":
                         yield TextDelta(event.delta)
-                final = await stream.get_final_response()
+                try:
+                    final = await stream.get_final_response()
+                except RuntimeError as exc:
+                    raise LLMError("llm_failed", str(exc)) from exc
         except (openai.APITimeoutError, httpx.TimeoutException) as exc:
             raise LLMError("llm_timeout", str(exc)) from exc
         except (openai.APIError, httpx.HTTPError) as exc:

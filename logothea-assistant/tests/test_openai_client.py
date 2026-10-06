@@ -154,6 +154,21 @@ async def test_missing_usage_maps_to_zero():
     assert items == [StreamDone(Usage())]
 
 
+async def test_stream_maps_missing_completed_event():
+    class StreamWithoutCompletedEvent(FakeStream):
+        async def get_final_response(self):
+            raise RuntimeError("Didn't receive a `response.completed` event.")
+
+    events = [SimpleNamespace(type="response.output_text.delta", delta="데이터")]
+    stream = StreamWithoutCompletedEvent(events, SimpleNamespace(usage=None))
+    received = []
+    with pytest.raises(LLMError) as error:
+        async for item in _client(FakeResponses(stream=stream)).stream(_MESSAGES):
+            received.append(item)
+    assert received == [TextDelta("데이터")]
+    assert error.value.code == "llm_failed"
+
+
 def test_usage_add_and_as_dict():
     total = Usage(1, 2, 3)
     total.add(Usage(10, 20, 30))
