@@ -110,6 +110,12 @@ export const IPC_CHANNELS = {
   HOLDINGS_TICKERS_UPDATE: 'terminal:holdings:tickers-update',
 
   // Main → Renderer (send)
+  /**
+   * KIS 체결통보를 받아 미체결 주문 재확인(reconcilePendingTrades)을 마쳤다는 알림.
+   * Renderer 는 백엔드 거래 기록을 다시 받아 주문 패널의 접수 주문을 갱신한다.
+   * payload: { reconciled: number }
+   */
+  TRADES_RECONCILED: 'terminal:trades:reconciled',
   TRADE_EXECUTED: 'terminal:trade:executed',
   TRADE_FAILED: 'terminal:trade:failed',
   WS_STATUS_CHANGED: 'terminal:ws:status-changed',

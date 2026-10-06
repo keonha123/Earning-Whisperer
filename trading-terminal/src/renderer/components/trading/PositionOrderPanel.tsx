@@ -39,6 +39,10 @@ interface PositionOrderPanelProps {
   currentPrice: number | undefined
   /** 이 화면에서 낸 주문. 최근 것이 앞에 온다. */
   orders: readonly SessionOrder[]
+  /** 접수 주문의 체결 여부를 다시 확인한다. 없으면 새로고침 버튼을 그리지 않는다. */
+  onRefreshOrders?: () => void
+  /** 다시 확인하는 중인지. 버튼을 막고 문구를 바꾼다. */
+  refreshingOrders?: boolean
 }
 
 function formatUsd(value: number): string {
@@ -64,7 +68,10 @@ export default function PositionOrderPanel({
   balanceLoaded,
   currentPrice,
   orders,
+  onRefreshOrders,
+  refreshingOrders = false,
 }: PositionOrderPanelProps) {
+  const hasPending = orders.some((o) => o.status === 'PENDING')
   const qty = holding?.qty ?? 0
   const avgPrice = holding?.avgPrice ?? 0
   // 평가손익은 현재가가 있어야 계산된다. 없는 값을 0 으로 보여주면 손익이 없는 것처럼 읽힌다.
@@ -130,7 +137,24 @@ export default function PositionOrderPanel({
         <span className="text-[10px] text-text-tertiary uppercase tracking-[0.1em]">
           이번 세션 주문
         </span>
-        <span className="num text-[10px] text-text-disabled tabular-nums">{orders.length}건</span>
+        <span className="inline-flex items-center gap-2">
+          {/*
+            접수 주문이 있을 때만 보인다. 체결통보를 받으면 자동으로 바뀌지만, 통보를 못 받는
+            경우(HTS ID 미등록, 연결 끊김)가 있어 직접 확인하는 길을 둔다. 주기 폴링은 KIS
+            호출 제한 때문에 두지 않는다.
+          */}
+          {hasPending && onRefreshOrders && (
+            <button
+              type="button"
+              onClick={onRefreshOrders}
+              disabled={refreshingOrders}
+              className="text-[10px] text-text-tertiary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {refreshingOrders ? '확인 중…' : '새로고침'}
+            </button>
+          )}
+          <span className="num text-[10px] text-text-disabled tabular-nums">{orders.length}건</span>
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-2 py-1.5 flex flex-col gap-1">
@@ -140,7 +164,13 @@ export default function PositionOrderPanel({
           </div>
         ) : (
           orders.map((order) => {
-            const meta = STATUS_META[order.status]
+            // 일부만 체결되면 체결로 확정되지만(백엔드 콜백 규칙) 증권사에는 잔량이 남아 있을 수
+            // 있다. "체결" 만 보여주면 전량 체결로 읽힌다.
+            const isPartial =
+              order.status === 'EXECUTED' && order.executedQty > 0 && order.executedQty < order.qty
+            const meta = isPartial
+              ? { ...STATUS_META.EXECUTED, label: '부분 체결' }
+              : STATUS_META[order.status]
             const isBuy = order.side === 'BUY'
             return (
               <div
@@ -181,12 +211,12 @@ export default function PositionOrderPanel({
                 </div>
 
                 {/*
-                  접수 상태는 지정가가 걸려 체결을 기다리는 것이다. 지금은 이 화면에서
-                  체결 전이를 실시간으로 받지 못한다 — 거래내역 화면에서 대조된다.
+                  접수 상태는 지정가가 걸려 체결을 기다리는 것이다. 체결통보가 오면 자동으로
+                  바뀌고, 오지 않으면(HTS ID 미등록, 연결 끊김) 위 새로고침으로 확인한다.
                 */}
                 {order.status === 'PENDING' && (
                   <span className="text-[9px] text-text-disabled">
-                    체결 여부는 거래내역에서 확인됩니다.
+                    체결통보를 받으면 바뀝니다. 그대로면 새로고침으로 확인합니다.
                   </span>
                 )}
 

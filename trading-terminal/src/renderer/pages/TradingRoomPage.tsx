@@ -15,6 +15,7 @@ import TradingRoomHeader from "../components/trading/TradingRoomHeader";
 import VerificationPanel from "../components/trading/VerificationPanel";
 import EarningsSummaryPanel from "../components/trading/EarningsSummaryPanel";
 import { showIpcErrorToast } from "../components/common/Toast";
+import { applyTradeRecords, type TradeRecord } from "../lib/sessionOrders";
 import type { TranscriptLine } from "../types/transcript";
 import type { PricePoint } from "../types/priceSeries";
 import { useLiveTranscript } from "../hooks/useLiveTranscript";
@@ -205,6 +206,44 @@ export default function TradingRoomPage() {
   useEffect(() => {
     setSessionOrders([]);
   }, [ticker]);
+
+  // 접수 주문의 체결 반영. 체결 재확인은 백엔드 기록만 고치므로, 그 기록을 다시 받아
+  // 증권사 주문번호로 짝지어 패널에 옮긴다.
+  const syncSessionOrders = useCallback(async () => {
+    const page = await ipc.invoke<{ content?: TradeRecord[] } | null>(
+      IPC_CHANNELS.TRADES_GET,
+      { page: 0, size: 50 },
+    );
+    setSessionOrders((prev) => applyTradeRecords(prev, page?.content ?? []));
+  }, []);
+
+  // KIS 체결통보로 main 이 재확인을 마치면 알려 준다 — 버튼 없이 바뀌는 경로.
+  useEffect(
+    () =>
+      ipc.on(IPC_CHANNELS.TRADES_RECONCILED, () => {
+        void syncSessionOrders().catch((e) =>
+          console.warn("[TradingRoom] 체결 반영 실패:", e),
+        );
+      }),
+    [syncSessionOrders],
+  );
+
+  const [refreshingOrders, setRefreshingOrders] = useState(false);
+
+  async function handleRefreshOrders() {
+    if (refreshingOrders) return;
+    setRefreshingOrders(true);
+    try {
+      // 거래내역 화면과 같은 재확인이다. 진행 중이면 main 이 그 결과를 함께 기다린다.
+      // 실패해도 기록은 다시 읽는다 — 다른 경로(체결통보, 거래내역 화면)가 이미 고쳤을 수 있다.
+      await ipc.invoke(IPC_CHANNELS.TRADES_RECONCILE_PENDING).catch(showIpcErrorToast);
+      await syncSessionOrders();
+    } catch (e) {
+      showIpcErrorToast(e);
+    } finally {
+      setRefreshingOrders(false);
+    }
+  }
 
   // ── 타임프레임 (UI only — fixture 단일 시계열만 표시) ──────────────────────────
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
@@ -409,6 +448,8 @@ export default function TradingRoomPage() {
                 balanceLoaded={balanceLoaded}
                 currentPrice={currentPrice ?? undefined}
                 orders={sessionOrders}
+                onRefreshOrders={() => void handleRefreshOrders()}
+                refreshingOrders={refreshingOrders}
               />
             </div>
           </div>
