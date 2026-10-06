@@ -42,15 +42,15 @@ export default function MarketStrip({ items, className = '' }: MarketStripProps)
       {items.map((it, idx) => {
         const pipColor =
           it.trend === 'up'
-            ? 'bg-buy shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+            ? 'bg-buy'
             : it.trend === 'down'
-              ? 'bg-sell shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+              ? 'bg-sell'
               : 'bg-neutral'
         const chgColor =
           it.changePercent > 0
-            ? 'text-buy bg-buy/10'
+            ? 'text-buy bg-white/[0.06]'
             : it.changePercent < 0
-              ? 'text-sell bg-sell/10'
+              ? 'text-sell bg-white/[0.06]'
               : 'text-text-tertiary bg-surface-2'
         const sign = it.changePercent > 0 ? '+' : ''
         const chgLabel =

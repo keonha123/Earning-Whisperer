@@ -278,7 +278,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2.5">
             <div
               className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
-              style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
+              style={{ background: 'rgba(var(--ok-rgb),0.08)', border: '1px solid rgba(var(--ok-rgb),0.2)' }}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M8 1v14M1 8h14" strokeLinecap="round" />
@@ -287,9 +287,9 @@ export default function SettingsPage() {
             <div className="text-text-primary text-base font-semibold tracking-tight">페이퍼 트레이딩</div>
             <span
               className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider"
-              style={{ background: 'rgba(16,185,129,0.10)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)' }}
+              style={{ background: 'rgba(var(--ok-rgb),0.10)', color: 'var(--ok)', border: '1px solid rgba(var(--ok-rgb),0.25)' }}
             >
-              <span className="w-[5px] h-[5px] rounded-full bg-[#10b981]" />
+              <span className="w-[5px] h-[5px] rounded-full bg-[var(--ok)]" />
               준비됨
             </span>
           </div>
@@ -303,8 +303,8 @@ export default function SettingsPage() {
           <div
             className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
             style={{
-              background: 'rgba(16,185,129,0.08)',
-              border: '1px solid rgba(16,185,129,0.2)',
+              background: 'rgba(var(--ok-rgb),0.08)',
+              border: '1px solid rgba(var(--ok-rgb),0.2)',
             }}
           >
             <svg
@@ -325,17 +325,17 @@ export default function SettingsPage() {
             className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider whitespace-nowrap"
             style={{
               background: isKisHealthy
-                ? 'rgba(16,185,129,0.10)'
-                : 'rgba(245,158,11,0.10)',
-              color: isKisHealthy ? '#34d399' : '#f59e0b',
+                ? 'rgba(var(--ok-rgb),0.10)'
+                : 'rgba(var(--caution-rgb),0.10)',
+              color: isKisHealthy ? 'var(--ok)' : 'var(--caution)',
               border: isKisHealthy
-                ? '1px solid rgba(16,185,129,0.25)'
-                : '1px solid rgba(245,158,11,0.25)',
+                ? '1px solid rgba(var(--ok-rgb),0.25)'
+                : '1px solid rgba(var(--caution-rgb),0.25)',
             }}
           >
             <span
               className="w-[5px] h-[5px] rounded-full"
-              style={{ background: isKisHealthy ? '#10b981' : '#f59e0b' }}
+              style={{ background: isKisHealthy ? 'var(--ok)' : 'var(--caution)' }}
             />
             {isKisHealthy ? '연결 정상' : '연결 대기'}
           </span>
@@ -445,7 +445,7 @@ export default function SettingsPage() {
             type="button"
             onClick={handleIssueToken}
             className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent text-accent-400 hover:bg-accent-500/10 transition-colors"
-            style={{ border: '1px solid rgba(16,185,129,0.35)' }}
+            style={{ border: '1px solid rgba(var(--ok-rgb),0.35)' }}
           >
             토큰 재발급
           </button>
@@ -497,8 +497,8 @@ function KisCredentialCard({
   const title = mode === 'paper' ? 'KIS 모의투자' : 'KIS 실전투자'
   const tone =
     mode === 'paper'
-      ? { color: '#f59e0b', border: 'rgba(245,158,11,0.3)', bg: 'rgba(245,158,11,0.06)' }
-      : { color: '#ef4444', border: 'rgba(239,68,68,0.3)', bg: 'rgba(239,68,68,0.06)' }
+      ? { color: 'var(--caution)', border: 'rgba(var(--caution-rgb),0.3)', bg: 'rgba(var(--caution-rgb),0.06)' }
+      : { color: 'var(--danger)', border: 'rgba(var(--danger-rgb),0.3)', bg: 'rgba(var(--danger-rgb),0.06)' }
 
   return (
     <div
@@ -516,9 +516,9 @@ function KisCredentialCard({
           <span
             className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[10px] font-semibold tracking-wider whitespace-nowrap"
             style={{
-              background: 'rgba(16,185,129,0.10)',
-              color: '#34d399',
-              border: '1px solid rgba(16,185,129,0.25)',
+              background: 'rgba(var(--ok-rgb),0.10)',
+              color: 'var(--ok)',
+              border: '1px solid rgba(var(--ok-rgb),0.25)',
             }}
           >
             <span className="w-[5px] h-[5px] rounded-full bg-accent-500" />
@@ -591,7 +591,7 @@ function KisCredentialCard({
                 onClick={() => {
                   void onDelete()
                 }}
-                className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-transparent text-sell hover:bg-sell/10 transition-colors"
+                className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-transparent text-danger hover:bg-danger/10 transition-colors"
                 style={{ border: '1px solid #3f1d1d' }}
               >
                 삭제
@@ -601,7 +601,7 @@ function KisCredentialCard({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-accent-500 hover:bg-accent-600 text-accent-foreground transition-colors"
+              className="gbtn gbtn-sm"
             >
               등록
             </button>
@@ -737,12 +737,12 @@ function KisCredentialEditor({
         HTS ID 를 입력하면 주문 체결을 실시간으로 통보받습니다. 비워두면 체결 내역 화면에
         들어올 때와 새로고침 시에만 확인합니다.
       </p>
-      {error && <p className="text-sell text-xs">{error}</p>}
+      {error && <p className="text-danger text-xs">{error}</p>}
       <div className="flex items-center gap-2 pt-0.5">
         <button
           type="submit"
           disabled={saving}
-          className="h-[28px] px-2.5 rounded-md text-xs font-semibold bg-accent-500 hover:bg-accent-600 text-accent-foreground disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          className="gbtn gbtn-olive gbtn-sm"
         >
           {saving ? '저장 중...' : '저장'}
         </button>

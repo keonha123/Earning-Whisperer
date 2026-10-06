@@ -66,7 +66,7 @@ export default function SpeakerProfileModal({
           <div className="flex items-center gap-2.5">
             <span
               className="w-2 h-2 rounded-sm"
-              style={{ background: '#a78bfa', boxShadow: '0 0 8px rgba(167,139,250,0.5)' }}
+              style={{ background: 'var(--ink-2)' }}
             />
             <span className="text-[13px] font-semibold text-text-primary">발화자 프로필</span>
             <span className="num text-[11px] text-text-tertiary">
@@ -122,7 +122,7 @@ export default function SpeakerProfileModal({
                         className={
                           'text-left px-3.5 py-2.5 border-b border-border-subtle transition-colors duration-100 flex flex-col gap-0.5 ' +
                           'focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent-500 ' +
-                          (isActive ? 'bg-surface-2 border-l-2 border-l-[#a78bfa]' : 'hover:bg-surface-2')
+                          (isActive ? 'bg-surface-2 border-l-2 border-l-ink-1' : 'hover:bg-surface-2')
                         }
                       >
                         <div className="flex items-center gap-1.5">
@@ -136,7 +136,7 @@ export default function SpeakerProfileModal({
                           </span>
                           {isSpeaking && (
                             <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-buy shrink-0" aria-hidden="true" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-ok shrink-0" aria-hidden="true" />
                               <span className="sr-only">발화 중</span>
                             </>
                           )}

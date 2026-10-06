@@ -9,7 +9,7 @@ import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
 import TradingRoomPage from './pages/TradingRoomPage'
 import MarketPage from './pages/MarketPage'
-import HistoryPage from './pages/HistoryPage'
+import PortfolioPage from './pages/PortfolioPage'
 import SettingsPage from './pages/SettingsPage'
 import AppLayout from './components/layout/AppLayout'
 import { AppToaster, setAuthExpiredHandler } from './components/common/Toast'
@@ -97,12 +97,13 @@ function AppRoutes() {
             <RequireAuth>
               <AppLayout>
                 <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/market" element={<MarketPage />} />
-                  <Route path="/trading-room" element={<TradingRoomPage />} />
-                  <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/" element={<Navigate to="/home" replace />} />
+                  <Route path="/home" element={<DashboardPage />} />
+                  <Route path="/stocks" element={<MarketPage />} />
+                  <Route path="/call" element={<TradingRoomPage />} />
+                  <Route path="/portfolio" element={<PortfolioPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="*" element={<Navigate to="/home" replace />} />
                 </Routes>
               </AppLayout>
             </RequireAuth>

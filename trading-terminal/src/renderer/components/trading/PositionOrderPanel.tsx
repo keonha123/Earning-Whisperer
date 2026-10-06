@@ -21,9 +21,9 @@ export interface SessionOrder {
 }
 
 const STATUS_META: Record<SessionOrder['status'], { label: string; color: string; bg: string }> = {
-  PENDING:  { label: '접수',     color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  },
-  EXECUTED: { label: '체결',     color: '#10b981', bg: 'rgba(16,185,129,0.12)'  },
-  FAILED:   { label: '실패',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   },
+  PENDING:  { label: '접수',     color: 'var(--caution)', bg: 'rgba(var(--caution-rgb),0.12)'  },
+  EXECUTED: { label: '체결',     color: 'var(--ok)', bg: 'rgba(var(--ok-rgb),0.12)'  },
+  FAILED:   { label: '실패',     color: 'var(--danger)', bg: 'rgba(var(--danger-rgb),0.12)'   },
 }
 
 interface PositionOrderPanelProps {
@@ -116,7 +116,7 @@ export default function PositionOrderPanel({
               ) : (
                 <span
                   className="num text-[11px] tabular-nums"
-                  style={{ color: pnl >= 0 ? '#10b981' : '#ef4444' }}
+                  style={{ color: pnl >= 0 ? 'var(--up)' : 'var(--down)' }}
                 >
                   {pnl >= 0 ? '+' : '−'}${formatUsd(Math.abs(pnl))}
                   {pnlPercent != null && (
@@ -181,7 +181,7 @@ export default function PositionOrderPanel({
                   <span className="inline-flex items-center gap-1.5">
                     <span
                       className="text-[9.5px] font-semibold"
-                      style={{ color: isBuy ? '#10b981' : '#ef4444' }}
+                      style={{ color: isBuy ? 'var(--up)' : 'var(--down)' }}
                     >
                       {isBuy ? '매수' : '매도'}
                     </span>
@@ -221,7 +221,7 @@ export default function PositionOrderPanel({
                 )}
 
                 {order.errorMessage && (
-                  <span className="text-[9px] leading-snug" style={{ color: '#ef4444' }}>
+                  <span className="text-[9px] leading-snug" style={{ color: 'var(--danger)' }}>
                     {order.errorMessage}
                   </span>
                 )}

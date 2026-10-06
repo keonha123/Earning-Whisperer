@@ -1,0 +1,82 @@
+/*
+ * Logothea 디자인 토큰 — 값의 기준은 이 파일이다.
+ * 쓰는 규칙과 이유는 docs/design/design-system.md 에 있다.
+ * tailwind.config.js 는 같은 값을 클래스 이름으로 노출한다. 값을 바꾸면 두 곳을 함께 고친다.
+ * 지금은 다크 한 벌만 정의한다. 라이트를 더할 때는 [data-theme="light"] 로 이 블록만 덮어쓴다.
+ */
+
+@font-face {
+  font-family: 'Pretendard Variable';
+  src: url('../assets/fonts/PretendardVariable.woff2') format('woff2-variations');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/JetBrainsMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* 바탕과 글자 */
+  --bg: #1d1e22;
+  --ink-1: #fbfaf6;
+  --ink-2: rgba(251, 250, 246, 0.82);
+  --ink-3: rgba(251, 250, 246, 0.58);
+  --ink-4: rgba(251, 250, 246, 0.4);
+  --line: rgba(251, 250, 246, 0.1);
+  --line-strong: rgba(251, 250, 246, 0.16);
+
+  /* 금 — 금테와 포커스 테두리에만 */
+  --gold-hi: #fff1c4;
+  --gold: #e2bd62;
+  --gold-lo: #8a6420;
+
+  /* 색상 유리 — 버튼 면에만. rgba(var(--lapis), a) 로 쓴다 */
+  --lapis: 92, 140, 255;
+  --olive: 176, 204, 82;
+  --porphyra: 232, 102, 192;
+
+  /* 가격 — 상승 빨강 · 하락 파랑, 글자에만 */
+  --up: #ff5a5f;
+  --down: #5b9bff;
+
+  /* 상태 글자 — 정상 · 오류 · 주의 */
+  --ok: #b0cc52;
+  --danger: #ff8a5c;
+  --caution: #e2bd62;
+
+  /* 같은 색의 RGB 삼원색 — rgba(var(--ok-rgb), 0.12) 처럼 옅은 면 · 테두리에 쓴다 */
+  --ink-rgb: 251, 250, 246;
+  --ok-rgb: 176, 204, 82;
+  --danger-rgb: 255, 138, 92;
+  --caution-rgb: 226, 189, 98;
+  --up-rgb: 255, 90, 95;
+  --down-rgb: 91, 155, 255;
+
+  /* 글꼴 */
+  --font-sans: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  /* 반경 — 동심 반경 */
+  --radius-panel: 28px;
+  --radius-sheet: 30px;
+  --radius-field: 16px;
+  --radius-pill: 999px;
+
+  /* 움직임 */
+  --spring: cubic-bezier(0.3, 1.35, 0.5, 1);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-spring: 380ms;
+
+  /* 유리 배경 처리 — 굴절 맵은 lib/refraction.ts 가 앞에 덧붙인다 */
+  --glass-filter: blur(1.5px) saturate(1.6) brightness(1.06);
+  --tint-filter: blur(1.5px) saturate(1.9) brightness(1.12);
+  --frost-filter: blur(22px) saturate(1.2);
+}

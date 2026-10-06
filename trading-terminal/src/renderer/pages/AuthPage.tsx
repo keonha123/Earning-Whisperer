@@ -40,7 +40,7 @@ export default function AuthPage() {
     setHasCredentials(hasCredentials)
     setAuthenticated(true)
     if (anyRegistered) {
-      navigate('/dashboard')
+      navigate('/home')
     } else {
       setStep('vault')
     }
@@ -55,7 +55,7 @@ export default function AuthPage() {
       // 조회 실패 시 최소한 현재 저장한 흐름이 있다는 사실을 반영해 양쪽 true 처리는 하지 않음.
       // 다음 SettingsPage 마운트 시 재조회로 보정.
     }
-    navigate('/dashboard')
+    navigate('/home')
   }
 
   return (
@@ -74,9 +74,8 @@ export default function AuthPage() {
         aria-hidden
         style={{
           background:
-            'radial-gradient(circle at 50% 15%, rgba(16,185,129,0.10), transparent 55%),' +
-            'radial-gradient(circle at 15% 90%, rgba(16,185,129,0.04), transparent 45%),' +
-            'radial-gradient(circle at 85% 85%, rgba(59,130,246,0.03), transparent 45%)',
+            // 바탕은 단색 — 빛 번짐 장식은 두지 않는다
+            'none',
         }}
       />
       <div
@@ -301,7 +300,7 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string)
                     height="9"
                     viewBox="0 0 12 12"
                     fill="none"
-                    stroke="#0b1017"
+                    stroke="#212226"
                     strokeWidth="2.6"
                   >
                     <path d="M2.5 6.2l2.3 2.3L9.5 3.7" />
@@ -316,17 +315,13 @@ function LoginForm({ onSuccess }: { onSuccess: (user: any, accountType?: string)
 
           {/* 에러 영역 — 디자인은 비워두지만 공간 확보 */}
           <div className={`min-h-[16px] mt-2 transition-opacity ${error ? 'opacity-100' : 'opacity-0'}`}>
-            {error && <p className="text-sell text-sm">{error}</p>}
+            {error && <p className="text-danger text-sm">{error}</p>}
           </div>
 
           <button
             type="submit"
             disabled={loading || oauthLoading !== null}
-            className="w-full h-[38px] rounded-lg bg-accent-500 hover:bg-accent-600 text-accent-foreground font-semibold text-base inline-flex items-center justify-center gap-2 mt-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            style={{
-              boxShadow:
-                '0 10px 28px -10px rgba(16,185,129,.7), inset 0 1px 0 rgba(255,255,255,.2)',
-            }}
+            className="gbtn gbtn-lapis w-full mt-2"
           >
             {loading ? '로그인 중...' : '로그인'}
             {!loading && (
@@ -610,16 +605,12 @@ function KisVaultDualForm({ onSuccess }: { onSuccess: () => void }) {
           autoActivated={realFilled && !paperFilled}
         />
 
-        {error && <p className="text-sell text-sm">{error}</p>}
+        {error && <p className="text-danger text-sm">{error}</p>}
 
         <button
           type="submit"
           disabled={loading || !canSubmit}
-          className="w-full h-[38px] rounded-lg bg-accent-500 hover:bg-accent-600 text-accent-foreground font-semibold text-base inline-flex items-center justify-center gap-2 mt-1 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          style={{
-            boxShadow:
-              '0 10px 28px -10px rgba(16,185,129,.7), inset 0 1px 0 rgba(255,255,255,.2)',
-          }}
+          className="gbtn gbtn-olive w-full mt-1"
         >
           {loading ? '저장 중...' : '저장하고 시작'}
         </button>
@@ -654,8 +645,8 @@ function VaultCard({
 }) {
   const tone =
     accentTone === 'paper'
-      ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.3)' }
-      : { color: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.3)' }
+      ? { color: 'var(--caution)', bg: 'rgba(var(--caution-rgb),0.06)', border: 'rgba(var(--caution-rgb),0.3)' }
+      : { color: 'var(--danger)', bg: 'rgba(var(--danger-rgb),0.06)', border: 'rgba(var(--danger-rgb),0.3)' }
 
   return (
     <div
@@ -673,9 +664,9 @@ function VaultCard({
           <span
             className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[10px] font-semibold tracking-wider whitespace-nowrap"
             style={{
-              background: 'rgba(16,185,129,0.10)',
-              color: '#34d399',
-              border: '1px solid rgba(16,185,129,0.25)',
+              background: 'rgba(var(--ok-rgb),0.10)',
+              color: 'var(--ok)',
+              border: '1px solid rgba(var(--ok-rgb),0.25)',
             }}
           >
             기본 모드

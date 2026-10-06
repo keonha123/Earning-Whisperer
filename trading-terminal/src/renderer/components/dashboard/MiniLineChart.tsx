@@ -15,9 +15,9 @@ interface MiniLineChartProps {
 }
 
 const COLOR_MAP = {
-  accent: { line: '#10b981', area: 'rgba(16,185,129,0.1)', dot: '#10b981' },
-  sell: { line: '#ef4444', area: 'rgba(239,68,68,0.08)', dot: '#ef4444' },
-  neutral: { line: '#94a3b8', area: 'rgba(148,163,184,0.08)', dot: '#94a3b8' },
+  accent: { line: 'var(--up)', area: 'rgba(var(--up-rgb),0.1)', dot: 'var(--up)' },
+  sell: { line: 'var(--down)', area: 'rgba(var(--down-rgb),0.08)', dot: 'var(--down)' },
+  neutral: { line: 'var(--ink-3)', area: 'rgba(var(--ink-rgb),0.08)', dot: 'var(--ink-3)' },
 }
 
 /**
@@ -116,7 +116,7 @@ export default function MiniLineChart({
             y1={y}
             x2={viewWidth}
             y2={y}
-            stroke="#1e2738"
+            stroke="rgba(251,250,246,0.08)"
             strokeWidth={1}
           />
         )
@@ -139,7 +139,7 @@ export default function MiniLineChart({
             cy={lastY}
             r={3}
             fill={colors.dot}
-            stroke="#0b1017"
+            stroke="#212226"
             strokeWidth={1.5}
           />
         </>

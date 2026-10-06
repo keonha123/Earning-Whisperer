@@ -12,8 +12,8 @@ import type {
  */
 type EarningsGroupBlockKind = Exclude<EarningsGroupKind, 'live'>
 const DOT_BY_KIND: Record<EarningsGroupBlockKind, string> = {
-  today: 'bg-warning shadow-[0_0_0_3px_rgba(245,158,11,0.15)]',
-  tomorrow: 'bg-info shadow-[0_0_0_3px_rgba(59,130,246,0.15)]',
+  today: 'bg-warning shadow-[0_0_0_3px_rgba(226,189,98,0.15)]',
+  tomorrow: 'bg-info shadow-[0_0_0_3px_rgba(201,200,197,0.15)]',
   week: 'bg-neutral',
   nextWeek: 'bg-neutral',
   later: 'bg-border-strong',
@@ -84,15 +84,15 @@ function LiveRow({
       className="relative border-b border-border-subtle"
       style={{
         backgroundImage:
-          'linear-gradient(90deg, rgba(239,68,68,0.06), transparent 60%)',
+          'linear-gradient(90deg, rgba(251,250,246,0.05), transparent 60%)',
       }}
     >
-      <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-sell" aria-hidden="true" />
+      <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-ink-1" aria-hidden="true" />
       <div className="flex items-center gap-3 px-4 py-3">
         <span
           aria-hidden="true"
-          className="w-2.5 h-2.5 rounded-full bg-sell flex-none"
-          style={{ boxShadow: '0 0 0 4px rgba(239,68,68,0.2)' }}
+          className="w-2.5 h-2.5 rounded-full bg-ink-1 flex-none"
+          style={{ boxShadow: '0 0 0 4px rgba(251,250,246,0.14)' }}
         />
         <button
           type="button"
@@ -105,13 +105,13 @@ function LiveRow({
             <span
               className="num text-[9px] font-bold tracking-[0.06em] inline-flex items-center gap-1
                          px-1.5 py-0.5 rounded-[3px]
-                         bg-sell/10 border border-sell/30 text-sell"
+                         bg-white/[0.06] border border-border-strong text-ink-1"
             >
-              <span className="w-1 h-1 rounded-full bg-sell" /> LIVE
+              <span className="w-1 h-1 rounded-full bg-ink-1" /> LIVE
             </span>
           </div>
           <div className="text-[11px] text-text-tertiary mt-0.5">
-            <span className="text-sell">{event.timeLabel}</span>
+            <span className="text-ink-1">{event.timeLabel}</span>
             {' · '}
             <span className="num text-text-secondary">{event.elapsed}</span>
             {' 경과 · '}
@@ -121,8 +121,7 @@ function LiveRow({
         <button
           type="button"
           onClick={() => onEnter?.(event.ticker)}
-          className="h-[30px] px-3.5 rounded-md bg-sell hover:bg-sell-hover
-                     text-white text-[11px] font-bold tracking-[0.04em] shrink-0"
+          className="gbtn gbtn-lapis gbtn-sm shrink-0"
         >
           입장 →
         </button>

@@ -11,7 +11,7 @@ interface LiveIndicatorProps {
  * LiveIndicator — 헤더용 LIVE 상태 뱃지.
  *
  * 디자인 매칭: TradingRoomPage.html `.live-pulse` + `.live-dot`.
- *  - active: rgba(239,68,68,.1) 배경 + 빨간 펄스 닷 + sell 컬러 라벨.
+ *  - active: rgba(var(--danger-rgb),.1) 배경 + 빨간 펄스 닷 + sell 컬러 라벨.
  *  - idle: 투명 배경 + 회색 닷 + tertiary 라벨.
  *
  * 사용처: TradingRoomHeader (활성 어닝콜 트랜스크립트 수신 중 ↔ 비수신).
@@ -25,15 +25,15 @@ export default function LiveIndicator({
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2 py-[3px] rounded
-                   bg-sell/10 border border-sell/30 text-sell
+                   bg-white/[0.06] border border-border-strong text-ink-1
                    text-[10px] font-bold tracking-[0.14em]"
         role="status"
         aria-label="LIVE 진행 중"
       >
         <span className="relative w-1.5 h-1.5">
           {/* 펄스 (ping) — 디자인 캔버스의 box-shadow expand 와 동일 효과 */}
-          <span className="absolute inset-0 rounded-full bg-sell opacity-60 animate-ping" />
-          <span className="absolute inset-0 rounded-full bg-sell" />
+          <span className="absolute inset-0 rounded-full bg-ink-1 opacity-60 animate-ping" />
+          <span className="absolute inset-0 rounded-full bg-ink-1" />
         </span>
         {label}
       </span>

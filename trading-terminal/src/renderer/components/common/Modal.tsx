@@ -65,17 +65,18 @@ export default function Modal({
       <div
         aria-hidden="true"
         onClick={() => closeOnOverlay && onClose()}
-        className="absolute inset-0 bg-bg-base/60"
-        style={{ backdropFilter: 'blur(2px) brightness(0.8)' }}
+        className="absolute inset-0 bg-bg-base/50"
+        style={{ backdropFilter: 'blur(6px) brightness(0.85)' }}
       />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className="relative z-10 bg-surface-0 border border-border-strong rounded-lg
-                   shadow-[0_24px_80px_rgba(0,0,0,0.7)] flex flex-col"
-        style={{ animation: 'modal-pop-in 200ms ease-out' }}
+        // 대화상자는 읽을 내용이 있어 서리 유리 + 금테로 둔다
+        className="frost rim rim-float relative z-10 rounded-[30px]
+                   shadow-[0_24px_60px_-16px_rgba(0,0,0,0.7)] flex flex-col"
+        style={{ animation: 'modal-pop-in 380ms cubic-bezier(0.3, 1.35, 0.5, 1)' }}
       >
         {children}
       </div>

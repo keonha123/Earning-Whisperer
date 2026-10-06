@@ -97,10 +97,9 @@ export default function Dropdown<V extends string = string>({
         aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={handleKey}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 h-[30px] rounded-md
-                   bg-surface-3 border border-border-strong text-text-secondary text-[11px]
-                   hover:bg-surface-2 hover:text-text-primary transition-colors duration-100
-                   whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+        className="glass rim inline-flex items-center gap-1.5 px-3.5 h-[32px] rounded-full
+                   text-text-secondary text-[12px] hover:text-text-primary transition-colors duration-100
+                   whitespace-nowrap"
       >
         {prefix && <span className="text-text-tertiary">{prefix}</span>}
         <span className="text-text-primary font-medium">{selectedLabel}</span>
@@ -127,9 +126,9 @@ export default function Dropdown<V extends string = string>({
             // 열릴 때 자동 포커스 (키보드 접근성)
             if (el) el.focus()
           }}
-          className="absolute top-full left-0 mt-1 min-w-full z-50
-                     rounded-md bg-surface-2 border border-border-strong shadow-lg
-                     py-1 max-h-64 overflow-y-auto focus:outline-none"
+          className="frost absolute top-full left-0 mt-1.5 min-w-full z-50
+                     rounded-[16px] shadow-lg
+                     p-1 max-h-64 overflow-y-auto focus:outline-none"
         >
           {options.map((opt, idx) => {
             const isSelected = opt.value === value
@@ -146,8 +145,8 @@ export default function Dropdown<V extends string = string>({
                   onChange(opt.value)
                   setOpen(false)
                 }}
-                className={`px-3 py-1.5 text-[11px] whitespace-nowrap cursor-pointer
-                            ${isHighlighted ? 'bg-surface-3 text-text-primary' : 'text-text-secondary'}
+                className={`px-3 py-2 rounded-[12px] text-[12px] whitespace-nowrap cursor-pointer
+                            ${isHighlighted ? 'bg-white/[0.08] text-text-primary' : 'text-text-secondary'}
                             ${isSelected ? 'font-semibold text-text-primary' : ''}`}
               >
                 {opt.label}

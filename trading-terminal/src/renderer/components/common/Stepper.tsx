@@ -72,7 +72,7 @@ export default function Stepper({
 
   return (
     <div
-      className={`flex items-center bg-surface-3 border border-border-strong rounded-md overflow-hidden h-8 focus-within:ring-2 focus-within:ring-accent-500/40 ${disabled ? 'opacity-40' : ''}`}
+      className={`flex items-center bg-surface-1 border border-border-strong rounded-full overflow-hidden h-8 focus-within:border-gold ${disabled ? 'opacity-40' : ''}`}
       aria-disabled={disabled || undefined}
     >
       <button
