@@ -55,6 +55,8 @@ class EarningsTranscriptIngestResponse(BaseModel):
     skipped_count: int = 0
     document_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    #: document_id → 직전 콜 대조용으로 저장한 핵심 문장 수
+    key_statement_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class CollectorNewsIngestItem(BaseModel):
