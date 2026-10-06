@@ -1,7 +1,8 @@
 """근거 수집과 조립.
 
-모든 근거는 질문 시점(as_of)까지로 제한한다. backend·ai-engine 도 같은 조건으로 거르지만,
-어느 한쪽이 실수해도 미래 정보가 답에 섞이지 않도록 여기서 한 번 더 거른다.
+모든 근거는 질문 시점(as_of)까지로 제한한다. 콜 대목과 뉴스는 backend·ai-engine 이 거른 뒤에도
+여기서 한 번 더 걸러 미래 정보가 섞이지 않게 한다. 지난 분기 콜과 실적 추정치는 이 모듈에서 다시 거르지 않고,
+backend·ai-engine 에 넘기는 요청 상한(before_epoch, as_of_epoch)에 맡긴다.
 """
 
 from __future__ import annotations

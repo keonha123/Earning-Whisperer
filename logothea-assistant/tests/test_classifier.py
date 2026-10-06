@@ -71,6 +71,7 @@ def test_glossary_lookup_matches_term_and_aliases_case_insensitively():
     assert glossary.lookup("Comp Sales")["ko"] == "기존점 매출"
     assert glossary.lookup(" comps ")["ko"] == "기존점 매출"
     assert glossary.lookup("comparable  sales")["ko"] == "기존점 매출"
+    assert glossary.lookup("기존점 매출")["term"] == "comp sales"
 
 
 def test_glossary_lookup_ignores_terms_without_definition_and_unknown_terms():

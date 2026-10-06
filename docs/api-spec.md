@@ -909,7 +909,7 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 
 | 이벤트 | 데이터 |
 |---|---|
-| `meta` | `{scope: "anchor"\|"call", as_of_sequence, as_of_time, anchor_sequence, missing_sources[]}` — `as_of_sequence` 는 실제로 근거에 쓴 마지막 세그먼트입니다. `missing_sources` 는 `news`, `prior_call`, `estimates`, `segments_incomplete` 중 불러오지 못한 것입니다 |
+| `meta` | `{scope: "anchor"\|"call", as_of_sequence, as_of_time, anchor_sequence, missing_sources[]}` — `as_of_sequence` 는 생성한 답에서는 실제로 근거에 쓴 마지막 세그먼트이고, 거절과 용어 사전 답에서는 요청 값입니다. `missing_sources` 는 `news`, `prior_call`, `estimates`, `segments_incomplete` 중 불러오지 못한 것입니다 |
 | `delta` | `{text}` — 본문에 근거 표시 `[S12]`(세그먼트 sequence), `[N3]`(뉴스), `[P2]`(직전 콜 문장), `[E1]`(실적 추정치)가 들어 있습니다 |
 | `citations` | `[{marker, type: "segment"\|"news"\|"prior_statement"\|"estimate"\|null, ref, title, source, published_at, start_ms, speaker, quote, verified}]` — 답에 처음 나온 순서입니다. 근거 목록에 없는 표시이거나 인용 문장의 수치가 원문과 맞지 않으면 `verified: false` 입니다 |
 | `done` | `{status: "answered"\|"refused"\|"no_evidence", refusal_reason, suggested_question_ids[], warnings[], usage{input_tokens, output_tokens, cached_tokens}, latency_ms}` |

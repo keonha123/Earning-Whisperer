@@ -119,6 +119,13 @@ async def test_classification_failure_is_an_error():
     assert events[0][1]["code"] == "llm_timeout"
 
 
+async def test_failure_is_logged_as_warning(caplog):
+    llm = FakeLLM(parse_error=LLMError("llm_timeout", "slow"))
+    with caplog.at_level("WARNING", logger="assistant.pipeline"):
+        await _collect(_pipeline(llm), _request())
+    assert any(r.levelname == "WARNING" and "llm_timeout" in r.getMessage() for r in caplog.records)
+
+
 async def test_stream_failure_keeps_sent_deltas_then_errors():
     llm = FakeLLM(parsed=_answer(), deltas=["앞부분", "뒷부분"], stream_error=LLMError("llm_failed", "x"), fail_after=1)
     events = await _collect(_pipeline(llm), _request())

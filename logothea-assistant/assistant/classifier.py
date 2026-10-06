@@ -73,7 +73,7 @@ class Glossary:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._index: dict[str, dict[str, Any]] = {}
         for entry in payload.get("terms", []):
-            for name in [entry.get("term", ""), *entry.get("aliases", [])]:
+            for name in [entry.get("term", ""), entry.get("ko", ""), *entry.get("aliases", [])]:
                 key = _normalize(name)
                 if key:
                     self._index.setdefault(key, entry)

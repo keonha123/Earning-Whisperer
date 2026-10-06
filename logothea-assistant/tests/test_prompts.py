@@ -31,6 +31,22 @@ def test_message_order_is_system_evidence_history_question():
     assert messages[-1].text.endswith("질문: 가이던스가 바뀌었어?")
 
 
+def test_assistant_history_turns_drop_citation_markers():
+    request = _request(history=[{"role": "user", "text": "앞 질문 [S1]"},
+                                {"role": "assistant", "text": "앞 답 [S3][N2]. 다음 [N1, S4]"}])
+    messages = build_generation_messages(request, _bundle(), "answer")
+    assistant = next(m for m in messages if m.role == "assistant").text
+    assert "[" not in assistant and "앞 답" in assistant and "다음" in assistant
+    assert next(m for m in messages[2:] if m.role == "user").text == "앞 질문 [S1]"
+
+
+def test_evidence_order_puts_news_last_for_prompt_caching():
+    bundle = _bundle(prior=[Evidence("P1", "prior_statement", "p", "지난 분기", title="Q1")],
+                     estimates=[Evidence("E1", "estimate", "e", "EPS 0.6")])
+    ids = [line.split('"')[1] for line in render_evidence(bundle).splitlines()[1:-1]]
+    assert ids == ["S3", "S12", "P1", "E1", "N1"]
+
+
 def test_evidence_items_carry_markers_and_metadata():
     rendered = render_evidence(_bundle())
     assert '<item id="S3" type="segment" speaker="John Furner" time="00:03:18">Comp sales grew 4.5%.</item>' in rendered

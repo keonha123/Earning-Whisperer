@@ -1,13 +1,15 @@
 """생성 프롬프트와 고정 문구.
 
-메시지 순서는 [규칙, 근거, 앞선 대화, 질문] 이다. 바뀌지 않는 규칙과 같은 시점의 근거를 앞에 두어야
+메시지 순서는 [규칙, 근거, 앞선 대화, 질문] 이고, 근거 안은 콜 대목, 지난 분기, 추정치, 뉴스 순서다. 바뀌지 않는 규칙과 같은 시점의 근거를 앞에 두어야
 후속 질문에서 앞부분이 그대로 반복되어 공급자의 프롬프트 캐시가 맞는다.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
+from assistant.citations import MARKER_RE
 from assistant.classifier import history_messages
 from assistant.context import ContextBundle, Evidence
 from assistant.llm import Message
@@ -49,10 +51,14 @@ GENERATE_SYSTEM_PROMPT = f"""너는 Logothea 의 어닝콜 질의응답 도우�
 
 
 def build_generation_messages(request: AskRequest, bundle: ContextBundle, category: str) -> list[Message]:
+    # 뉴스 표시(N1…)는 질문마다 다시 매겨진다. 앞선 답의 표시를 그대로 보내면 모델이 지금은 다른 기사를 가리키는
+    # 표시를 재사용할 수 있으므로, 앞선 답에서는 표시를 지운다.
+    history = [Message(m.role, _strip_markers(m.text)) if m.role == "assistant" else m
+               for m in history_messages(request)]
     return [
         Message("system", GENERATE_SYSTEM_PROMPT.format(ticker=request.ticker)),
         Message("user", render_evidence(bundle)),
-        *history_messages(request),
+        *history,
         Message("user", _render_question(request, bundle, category)),
     ]
 
@@ -64,14 +70,19 @@ def render_evidence(bundle: ContextBundle) -> str:
         if item.marker == f"S{bundle.anchor_sequence}":
             attrs["anchor"] = "true"
         lines.append(_item(item, attrs))
-    for item in bundle.news:
-        lines.append(_item(item, {"title": item.title, "source": item.source, "published": _date(item.published_at)}))
     for item in bundle.prior:
         lines.append(_item(item, {"quarter": item.title, "speaker": item.speaker}))
     for item in bundle.estimates:
         lines.append(_item(item, {}))
+    # 뉴스는 질문마다 달라지므로 맨 뒤에 둔다. 앞부분이 같으면 프롬프트 캐시가 맞는다.
+    for item in bundle.news:
+        lines.append(_item(item, {"title": item.title, "source": item.source, "published": _date(item.published_at)}))
     lines.append("</evidence>")
     return "\n".join(lines)
+
+
+def _strip_markers(text: str) -> str:
+    return re.sub(r" {2,}", " ", MARKER_RE.sub("", text)).strip()
 
 
 def _render_question(request: AskRequest, bundle: ContextBundle, category: str) -> str:

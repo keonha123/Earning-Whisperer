@@ -55,6 +55,7 @@ class AnswerPipeline:
             try:
                 classification, classify_usage = await classify(self._llm, request)
             except LLMError as exc:
+                logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
                 yield error_event(exc.code)
                 return
             usage.add(classify_usage)
@@ -81,6 +82,7 @@ class AnswerPipeline:
                 news_hits, news_missing = await self._assembler.gather_news(request, classification.search_query)
                 bundle = self._assembler.build(request, base, news_hits, news_missing)
             except ContextError as exc:
+                logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
                 yield error_event(exc.code)
                 return
 
@@ -96,6 +98,7 @@ class AnswerPipeline:
                         elif isinstance(item, StreamDone):
                             usage.add(item.usage)
             except LLMError as exc:
+                logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
                 yield error_event(exc.code)
                 return
 

@@ -62,6 +62,16 @@ def test_split_sentences_attaches_leading_markers_to_previous_sentence():
     ]
 
 
+def test_split_sentences_attaches_comma_separated_leading_markers():
+    assert split_sentences("기존점 매출은 늘었습니다. [S3, S12] 다음 문장입니다.") == [
+        "기존점 매출은 늘었습니다. [S3, S12]", "다음 문장입니다."]
+
+
+def test_comma_separated_markers_are_expanded_in_order():
+    result = verify_citations("매출은 4.5% 늘었습니다 [S3, S12].", EVIDENCE)
+    assert [c["marker"] for c in result.citations] == ["S3", "S12"]
+
+
 def test_verified_citations_in_order_of_first_use_with_metadata():
     result = verify_citations("기존점 매출은 4.5% 늘었습니다 [S3]. 영업이익은 매출보다 0.5%p 더 빨리 늘었습니다 [S12][S3].", EVIDENCE)
 

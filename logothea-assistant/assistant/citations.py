@@ -14,8 +14,9 @@ from assistant.context import Evidence
 
 QUOTE_CHARS = 300
 
-MARKER_RE = re.compile(r"\[([SNPE]\d+)\]")
-_LEADING_MARKERS_RE = re.compile(r"^\s*((?:\[[SNPE]\d+\]\s*)+)")
+# "[S3]" 와 "[S3, S4]" 두 가지 표기를 모두 받는다.
+MARKER_RE = re.compile(r"\[([SNPE]\d+(?:\s*,\s*[SNPE]\d+)*)\]")
+_LEADING_MARKERS_RE = re.compile(r"^\s*((?:\[[SNPE]\d+(?:\s*,\s*[SNPE]\d+)*\]\s*)+)")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。])\s+|\n+")
 
 _NUM = r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
@@ -87,6 +88,11 @@ def _matches(claim: Quantity, source: Quantity) -> bool:
     return claim.kind == source.kind and abs(claim.value - source.value) <= max(claim.tolerance, source.tolerance) + 1e-9
 
 
+def find_markers(text: str) -> list[str]:
+    """문장에서 근거 표시를 나타난 순서대로 꺼낸다. "[S3, S4]" 는 S3, S4 로 풀어 준다."""
+    return [marker.strip() for group in MARKER_RE.findall(text) for marker in group.split(",")]
+
+
 def split_sentences(answer: str) -> list[str]:
     sentences: list[str] = []
     for piece in _SENTENCE_SPLIT_RE.split(answer):
@@ -108,7 +114,7 @@ def verify_citations(answer: str, evidence: dict[str, Evidence]) -> Verification
     warnings: list[str] = []
 
     for sentence in split_sentences(answer):
-        markers = MARKER_RE.findall(sentence)
+        markers = find_markers(sentence)
         for marker in markers:
             if marker not in order:
                 order.append(marker)
