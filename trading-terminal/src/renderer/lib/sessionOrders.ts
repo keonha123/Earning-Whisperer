@@ -1,4 +1,22 @@
-import type { SessionOrder } from '../components/trading/PositionOrderPanel'
+/**
+ * 이 화면에서 낸 주문 1건. 재시작하면 사라지는 세션 한정 기록이다.
+ *
+ * 전체 이력은 거래내역 화면이 담당한다. 여기는 "방금 낸 주문이 어떻게 됐는지" 만 본다.
+ */
+export interface SessionOrder {
+  /** 렌더러가 만드는 키. 브로커 주문번호는 실패 시 없을 수 있다. */
+  localId: string
+  side: 'BUY' | 'SELL'
+  qty: number
+  /** 주문 시 넘긴 지정가. 즉시 체결 의도였으면 null. */
+  requestedPrice: number | null
+  status: 'PENDING' | 'EXECUTED' | 'FAILED'
+  executedQty: number
+  executedPrice: number | null
+  brokerOrderId: string | null
+  errorMessage: string | null
+  placedAt: number
+}
 
 /** 백엔드 `GET /api/v1/trades` 응답 항목 중 주문 패널 갱신에 쓰는 필드. */
 export interface TradeRecord {

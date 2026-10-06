@@ -41,6 +41,7 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`design/design-system.md`](design/design-system.md) | 토큰 체계, 의미 색, 컴포넌트 사용 규칙, 상태 패턴, 문구 규칙 |
 | [`design/brand.md`](design/brand.md) | 로고, 앱 아이콘, 이름 표기, 톤 |
 | `design/screens/<화면>.md` | 화면마다 하나. 역할, 영역 구성, 표시 데이터, 상태, 동작. 픽셀 수치는 쓰지 않습니다 |
+| [`design/screens/call.md`](design/screens/call.md) | 콜 화면: 콜 상태별 구성, 콜 바, 자막과 직전 콜 대조, 종합 판단, 주문 시트 |
 
 ### 개발자 문서
 
