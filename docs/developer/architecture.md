@@ -49,7 +49,7 @@ flowchart LR
     GM["Gemini"]
 
     M -- "REST" --> BC
-    BW -- "/topic/transcript · factcheck<br/>evaluation · transcript-diff<br/>market/indices · prices" --> M
+    BW -- "/topic/transcript · factcheck<br/>evaluation · transcript-diff<br/>transcript-translation<br/>market/indices · prices" --> M
     M -- "주문 · 잔고 · 시세" --> KIS
     BD --> BW
     BD --> BA
@@ -115,7 +115,7 @@ Spring Boot 3.3, Java 17 서버로 인증, 어닝콜 세그먼트 인입과 STOM
 | 시연 어닝콜 재생(시작·중지·상태) | `DemoEarningsCallController`, `DemoEarningsCallService`, `resources/data/demo-earnings-call.json` |
 | 세그먼트 검증(sequence 단조성, 세션 종료)과 STOMP 발행 | `TranscriptService`, `TranscriptSessionRegistry`, `TranscriptPublisher` |
 | data_pipeline 세그먼트 인입 | `TranscriptInternalController`, `InternalSecretFilter` |
-| ai-engine 호출 | `AiEngineClient` (`LiveFactCheckModels`, `EarningsSummaryModels`, `TranscriptDiffModels`) |
+| ai-engine 호출 | `AiEngineClient` (`LiveFactCheckModels`, `EarningsSummaryModels`, `TranscriptDiffModels`, `TranscriptTranslationModels`) |
 | 콜 종료 후 종합 판단 | `EarningsSummaryService`, `EarningsSummaryPublisher` |
 | STOMP 설정과 인증 | `WebSocketConfig`, `StompJwtChannelInterceptor` |
 | 로그인, JWT, refresh token | `AuthController`, `OAuthController`, `AuthService`, `JwtProvider`, `RefreshTokenService`, `RedisRefreshTokenRepository` |
@@ -199,6 +199,10 @@ sequenceDiagram
         A-->>B: 직전 콜 대조 결과
         B-->>M: STOMP /topic/transcript-diff/{ticker}
     end
+    Note over B: 세그먼트를 묶어(3개 · 10초 · 세션 종료) 번역 전용 스레드로 넘김
+    B->>A: POST /v1/engine/transcript/translate (묶음 원문 + 사전 용어)
+    A-->>B: 한국어 번역문
+    B-->>M: STOMP /topic/transcript-translation/{ticker}
     Note over B: 마지막 세그먼트 후 종합 판단 전용 스레드로 넘김
     B->>A: POST /v1/engine/analyze (전문)
     A-->>B: 방향 · 등급 · 근거
@@ -330,6 +334,7 @@ ai-engine 사이 계약은 9절에 있습니다. 직전 콜 대조(`transcript-d
 | `/topic/transcript/{ticker}` | `TranscriptPublisher` | 어닝콜 세그먼트 | 터미널 |
 | `/topic/factcheck/{ticker}` | `FactCheckPublisher` | 3문장 배치 팩트체크 결과 | 터미널 |
 | `/topic/transcript-diff/{ticker}` | `TranscriptDiffPublisher` | 직전 콜 대조 결과 | 터미널 |
+| `/topic/transcript-translation/{ticker}` | `TranscriptTranslationPublisher` | 자막 한국어 번역 (세그먼트 묶음 단위) | 터미널 |
 | `/topic/evaluation/{ticker}` | `EarningsSummaryPublisher` | 콜 종료 후 종합 판단 | 터미널 |
 | `/topic/market/indices` | `MarketIndicesPublisher` | 지수 ETF 5종(SPY, QQQ, DIA, IWM, VIXY) | 터미널 |
 | `/topic/prices` | `StockPricePublisher` | 변경된 종목 시세(1초 주기) | 터미널 |

@@ -28,17 +28,24 @@ import java.util.Map;
 public class GlossaryService {
 
     private final Glossary glossary;
+    private final GlossaryTermMatcher matcher;
 
     public GlossaryService(
             ObjectMapper objectMapper,
             @Value("${glossary.path:data/glossary_ko.json}") String path) {
         this.glossary = load(objectMapper, path);
+        this.matcher = new GlossaryTermMatcher(glossary);
         log.info("[Glossary] 용어 사전 로드 - path={} version={} terms={}",
                 path, glossary.version(), glossary.terms().size());
     }
 
     public Glossary glossary() {
         return glossary;
+    }
+
+    /** 원문에 나온 용어를 찾는다. 규칙은 {@link GlossaryTermMatcher} 참고. */
+    public List<GlossaryTermMatcher.Match> findTerms(String text, int limit) {
+        return matcher.find(text, limit);
     }
 
     /**
