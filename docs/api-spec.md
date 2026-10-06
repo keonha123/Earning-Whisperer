@@ -597,6 +597,36 @@ start 응답 예시:
   4. 정의된 필드 외의 키는 거부합니다. `definiton_ko` 같은 키 오타가 조용히 버려지는 것을 막기 위해서입니다.
 - **관련 설정:** `glossary.path` (기본 `data/glossary_ko.json`).
 
+### 7.10. 어닝콜 질의응답 (Assistant)
+
+| Method | Endpoint                | 인증 | 설명 |
+| :----- | :---------------------- | :--: | :--- |
+| POST   | `/api/v1/assistant/ask` | 필요 | 어닝콜 질문을 보내고 답을 SSE 로 받습니다 |
+
+```json
+{ "ticker": "WMT", "call_id": "demo-wmt-q2fy27-1787227200000-1", "as_of_sequence": 17,
+  "anchor_sequence": 3, "question": "가이던스가 바뀌었어?", "suggested_question_id": null,
+  "history": [ { "role": "user", "text": "..." }, { "role": "assistant", "text": "..." } ] }
+```
+
+- **요청.** `as_of_sequence` 는 터미널이 마지막으로 받은 세그먼트 번호입니다. backend 는 이를 저장된 마지막 세그먼트 이하로 낮추고, 그 세그먼트의 발행 시각을 근거 시점으로 씁니다. `anchor_sequence` 는 사용자가 고른 대목이며 없으면 `null` 입니다. `suggested_question_id` 가 있으면 대목 지정은 무시하고 콜 전체 범위로 답합니다. `question` 은 500자, `history` 는 6개(후속 질문 3회)까지이고 대화 기록은 터미널이 보관합니다.
+- **Accept.** 성공은 `text/event-stream`, 실패는 JSON 이므로 `Accept: text/event-stream, application/json` 으로 보냅니다.
+- **성공(200).** 이벤트는 10.6 과 같습니다(`meta` → `delta` → `citations` → `done`, 실패 시 `error`). backend 가 덧붙이는 `error` 의 `code` 는 `assistant_unavailable`(질의응답 서비스 연결 실패), `assistant_stream_interrupted`(완료 이벤트 없이 끊김), `timeout`(60초 초과)입니다.
+- **실패.** 본문은 `{"error": "<메시지>", "code": "<code>"}` 입니다.
+
+| 상태 | code | 의미 |
+|---|---|---|
+| 400 | (검증 오류) / `ticker_mismatch` | 형식·길이 위반, 또는 콜과 종목 불일치 |
+| 401 | | JWT 없음·만료 |
+| 404 | `segments_not_found` | 이 콜의 저장된 자막이 없음 |
+| 409 | `assistant_busy` | 같은 사용자의 이전 질문 답변이 진행 중 |
+| 429 | `daily_limit_exceeded` | 하루 질문 수(기본 50, 한국 시간 자정 초기화) 초과. `reset_at` 에 다음 초기화 시각(UTC ISO-8601) |
+| 503 | `assistant_overloaded` / `assistant_unavailable` | 중계가 가득 참 / 자막·한도 저장소(Redis) 장애 |
+
+- 하루 횟수는 질문을 시작할 때 차감하며, 답이 실패해도 돌려주지 않습니다. 404·400·409 는 횟수를 쓰지 않습니다.
+- 사용자가 연결을 끊으면 backend 는 질의응답 서비스 연결을 닫고, 질의응답 서비스는 진행 중인 생성을 멈춥니다.
+- **관련 설정:** `app.assistant.base-url`, `app.assistant.daily-limit`, `app.assistant.stream-timeout-seconds`.
+
 ---
 
 ## 8. 공통 개발 가이드라인 (Common Rules)
@@ -893,15 +923,16 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 
 - logothea-assistant 는 `127.0.0.1:8100` 에만 바인딩되며, `X-Internal-Secret` 이 backend 의 `INTERNAL_SECRET` 과 같아야 합니다.
   다르거나 값이 설정되지 않았으면 `401`, 본문 검증에 실패하면 `422` 입니다.
-- 본문은 외부 요청에 backend 가 확정한 `user_id`, `as_of_sequence`, `as_of_epoch` 를 더한 것입니다.
+- 본문은 외부 요청에 backend 가 확정한 `user_id`, `as_of_sequence`, `as_of_epoch`, `call_ended` 를 더한 것입니다.
 
 ```json
 { "user_id": "42", "ticker": "WMT", "call_id": "demo-wmt-q2fy27-1787227200000-1",
-  "as_of_sequence": 17, "as_of_epoch": 1787227218, "anchor_sequence": 3,
+  "as_of_sequence": 17, "as_of_epoch": 1787227218, "anchor_sequence": 3, "call_ended": false,
   "question": "가이던스가 바뀌었어?", "suggested_question_id": null,
   "history": [ { "role": "user", "text": "..." }, { "role": "assistant", "text": "..." } ] }
 ```
 
+- `call_ended` 는 질문 시점의 마지막 세그먼트가 콜 종료 신호인지이며, backend 가 정합니다.
 - `question` 은 앞뒤 공백을 뺀 1~500자, `history` 는 최대 6개(후속 질문 3회), `anchor_sequence` 는 `as_of_sequence` 이하입니다.
   `suggested_question_id` 는 `summary`, `vs_last_quarter`, `guidance`, `vs_expectations`, `risks` 중 하나이며, 값이 있으면 질문 분류를 건너뜁니다.
 - 응답은 `text/event-stream` 입니다. 생성하는 답은 `meta` → `delta`(여러 번) → `citations` → `done` 순서이고, 거절과 용어 사전 답은

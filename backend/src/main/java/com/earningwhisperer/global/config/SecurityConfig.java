@@ -5,6 +5,7 @@ import com.earningwhisperer.infrastructure.security.JwtAuthenticationFilter;
 import com.earningwhisperer.infrastructure.security.JsonAccessDeniedHandler;
 import com.earningwhisperer.infrastructure.security.JsonAuthenticationEntryPoint;
 import com.earningwhisperer.infrastructure.security.JwtProvider;
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -57,6 +58,9 @@ public class SecurityConfig {
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // SSE(질의응답) 응답이 끝날 때의 ASYNC 디스패치는 최초 요청에서 이미 인가됐다.
+                // JWT 필터는 ASYNC 디스패치를 건너뛰어 인증이 비어 있으므로, 여기서 막으면 답이 다 나간 뒤 인가 오류가 난다.
+                .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/market/indices", "/api/v1/market/indices/**").permitAll()
                 .requestMatchers("/api/v1/stocks/sp500", "/api/v1/stocks/prices").permitAll()
