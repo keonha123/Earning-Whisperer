@@ -66,10 +66,21 @@ export class AssistantStreamService {
     const controller = new AbortController()
     const active: ActiveRequest = { requestId: request.requestId, controller, reader: null }
     this.active = active
-    const response = await this.open(request, controller.signal)
-    if (this.active !== active || !response.body) {
+    let response: Response
+    try {
+      response = await this.open(request, controller.signal)
+    } catch (error) {
+      if (this.active === active) this.active = null
+      throw error
+    }
+    if (this.active !== active) {
       controller.abort()
       throw rejection('BUSINESS_RULE', 0, 'cancelled', DEFAULT_MESSAGES.cancelled)
+    }
+    if (!response.body) {
+      this.active = null
+      controller.abort()
+      throw rejection('UNKNOWN', 0, 'stream_interrupted', '답변 전송이 중간에 끊겼습니다.')
     }
     active.reader = response.body.getReader()
     void this.pump(active, sink)
@@ -112,7 +123,9 @@ export class AssistantStreamService {
         try {
           await BackendClient.refreshSession()
         } catch {
-          throw rejection('AUTH_EXPIRED', 401, code, DEFAULT_MESSAGES.auth)
+          // 세션이 끝났으면(토큰 없음) 재로그인, 일시적인 갱신 실패면 연결 문제로 알린다.
+          if (!mainState.backendToken) throw rejection('AUTH_EXPIRED', 401, code, DEFAULT_MESSAGES.auth)
+          throw rejection('NETWORK', 0, 'network', DEFAULT_MESSAGES.network)
         }
         continue
       }
@@ -133,7 +146,16 @@ export class AssistantStreamService {
     const reader = active.reader as ReadableStreamDefaultReader<Uint8Array>
     const parser = new SseParser()
     const decoder = new TextDecoder()
-    const emit = (type: AssistantEventType, data: unknown) => sink({ requestId: active.requestId, type, data })
+    let sinkFailed = false
+    const emit = (type: AssistantEventType, data: unknown) => {
+      if (sinkFailed) return
+      try {
+        sink({ requestId: active.requestId, type, data })
+      } catch {
+        sinkFailed = true
+        active.controller.abort()
+      }
+    }
     let terminal = false
     let interrupted = false
     try {

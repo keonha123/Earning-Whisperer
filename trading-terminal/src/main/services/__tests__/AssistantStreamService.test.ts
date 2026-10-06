@@ -112,11 +112,46 @@ describe('AssistantStreamService', () => {
     expect((retryInit.headers as Record<string, string>).Authorization).toBe('Bearer tok2')
   })
 
-  it('갱신도 실패하면 AUTH_EXPIRED', async () => {
-    vi.spyOn(BackendClient, 'refreshSession').mockRejectedValue(new Error('no refresh token'))
+  it('갱신이 일시적으로 실패하고 세션이 살아 있으면 NETWORK', async () => {
+    vi.spyOn(BackendClient, 'refreshSession').mockRejectedValue(new Error('timeout'))
+    const { service, sink } = setup(async () => jsonResponse(401, {}))
+
+    await expect(service.ask(request(), sink)).rejects.toMatchObject({ code: 'NETWORK' })
+  })
+
+  it('갱신 실패로 세션이 끝났으면 AUTH_EXPIRED', async () => {
+    vi.spyOn(BackendClient, 'refreshSession').mockImplementation(async () => {
+      mainState.setBackendToken(null)
+      throw new Error('no refresh token')
+    })
     const { service, sink } = setup(async () => jsonResponse(401, {}))
 
     await expect(service.ask(request(), sink)).rejects.toMatchObject({ code: 'AUTH_EXPIRED' })
+  })
+
+  it('거절된 요청은 진행 중으로 남지 않아 다음 409 를 재시도하지 않고 cancel 도 false', async () => {
+    const { fetch, sleep, service, sink } = setup(async () => jsonResponse(409, { error: 'busy', code: 'assistant_busy' }))
+
+    await expect(service.ask(request({ requestId: 'r1' }), sink)).rejects.toMatchObject({ code: 'BUSINESS_RULE' })
+    expect(service.cancel('r1')).toBe(false)
+    await expect(service.ask(request({ requestId: 'r2' }), sink)).rejects.toMatchObject({ code: 'BUSINESS_RULE' })
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('sink 가 던지면 연결을 끊고 더 이상 밀지 않는다', async () => {
+    const { fetch, service } = setup(async () => sseResponse(['event:meta\ndata:{}\n\nevent:delta\ndata:{"text": "a"}\n\n'], true))
+    const sink = vi.fn(() => {
+      throw new Error('window destroyed')
+    })
+
+    await service.ask(request(), sink)
+    await flush()
+
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit]
+    expect((init.signal as AbortSignal).aborted).toBe(true)
+    expect(sink).toHaveBeenCalledTimes(1)
   })
 
   it('429 는 BUSINESS_RULE 과 reset_at 을 details 로 넘긴다', async () => {
