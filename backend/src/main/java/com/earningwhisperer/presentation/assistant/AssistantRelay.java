@@ -22,7 +22,10 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -47,20 +50,22 @@ public class AssistantRelay {
     private final AssistantQuota quota;
     private final ObjectMapper objectMapper;
     private final Executor executor;
+    private final ScheduledExecutorService scheduler;
     private final Duration streamTimeout;
 
     @Autowired
     public AssistantRelay(AssistantStreamClient client, AssistantQuota quota, ObjectMapper objectMapper,
                           AssistantProperties properties) {
-        this(client, quota, objectMapper, newRelayExecutor(), properties);
+        this(client, quota, objectMapper, newRelayExecutor(), newTimeoutScheduler(), properties);
     }
 
     AssistantRelay(AssistantStreamClient client, AssistantQuota quota, ObjectMapper objectMapper,
-                   Executor executor, AssistantProperties properties) {
+                   Executor executor, ScheduledExecutorService scheduler, AssistantProperties properties) {
         this.client = client;
         this.quota = quota;
         this.objectMapper = objectMapper;
         this.executor = executor;
+        this.scheduler = scheduler;
         this.streamTimeout = Duration.ofSeconds(properties.streamTimeoutSeconds());
     }
 
@@ -73,11 +78,19 @@ public class AssistantRelay {
                 new CustomizableThreadFactory("assistant-relay-"), new ThreadPoolExecutor.AbortPolicy());
     }
 
+    /** 60초 제한을 재는 단일 데몬 스레드. 컨테이너의 emitter 타임아웃은 이미 완료 처리된 뒤에 불려 이벤트를 보낼 수 없어 직접 잰다. */
+    private static ScheduledExecutorService newTimeoutScheduler() {
+        CustomizableThreadFactory factory = new CustomizableThreadFactory("assistant-timeout-");
+        factory.setDaemon(true);
+        return Executors.newSingleThreadScheduledExecutor(factory);
+    }
+
     @PreDestroy
     void shutdown() {
         if (executor instanceof ExecutorService service) {
             service.shutdownNow();
         }
+        scheduler.shutdownNow();
     }
 
     /** 터미널로 나가는 이벤트 통로. 운영에서는 SseEmitter, 테스트에서는 기록용 구현. */
@@ -91,7 +104,9 @@ public class AssistantRelay {
     final class Session {
         private final Long userId;
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicBoolean terminated = new AtomicBoolean(false);
         private volatile InputStream body;
+        private volatile ScheduledFuture<?> timeoutTask;
 
         private Session(Long userId) {
             this.userId = userId;
@@ -104,12 +119,28 @@ public class AssistantRelay {
             }
         }
 
+        void watch(ScheduledFuture<?> task) {
+            timeoutTask = task;
+            if (closed.get() && task != null) {
+                task.cancel(false);
+            }
+        }
+
+        /** 끝을 알리는 이벤트(done·error)를 보낼 권리. 처음 부른 쪽만 true. */
+        boolean tryTerminate() {
+            return terminated.compareAndSet(false, true);
+        }
+
         boolean isClosed() {
             return closed.get();
         }
 
         void close() {
             if (closed.compareAndSet(false, true)) {
+                ScheduledFuture<?> task = timeoutTask;
+                if (task != null) {
+                    task.cancel(false);
+                }
                 closeQuietly(body);
                 quota.unlock(userId);
             }
@@ -121,17 +152,14 @@ public class AssistantRelay {
     }
 
     public SseEmitter start(PreparedAsk ask) {
-        SseEmitter emitter = new SseEmitter(streamTimeout.toMillis());
+        SseEmitter emitter = new SseEmitter(streamTimeout.plusSeconds(5).toMillis());
         EventSink sink = new EmitterSink(emitter);
         Session session = newSession(ask.userId());
         emitter.onCompletion(session::close);
         emitter.onError(error -> session.close());
-        emitter.onTimeout(() -> {
-            log.warn("질의응답 스트림이 제한 시간을 넘었습니다 user_id={} call_id={}", ask.userId(), ask.callId());
-            sendError(sink, "timeout");
-            sink.complete();
-            session.close();
-        });
+        // 컨테이너 타임아웃은 이미 완료 처리된 뒤라 이벤트를 보낼 수 없다. 정리만 하고 60초는 직접 잰다.
+        emitter.onTimeout(session::close);
+        session.watch(scheduler.schedule(() -> onStreamTimeout(sink, session), streamTimeout.toSeconds(), TimeUnit.SECONDS));
         try {
             executor.execute(() -> relay(ask, sink, session));
         } catch (RejectedExecutionException e) {
@@ -139,6 +167,18 @@ public class AssistantRelay {
             throw e;
         }
         return emitter;
+    }
+
+    void onStreamTimeout(EventSink sink, Session session) {
+        try {
+            if (session.tryTerminate()) {
+                log.warn("질의응답 스트림이 제한 시간을 넘었습니다");
+                sendError(sink, "timeout");
+                sink.complete();
+            }
+        } finally {
+            session.close();
+        }
     }
 
     void relay(PreparedAsk ask, EventSink sink, Session session) {
@@ -149,27 +189,41 @@ public class AssistantRelay {
             try (SseFrameReader reader = new SseFrameReader(in)) {
                 SseFrameReader.Frame frame;
                 while (!session.isClosed() && (frame = reader.next()) != null) {
+                    boolean end = "done".equals(frame.event()) || "error".equals(frame.event());
+                    if (end && !session.tryTerminate()) {
+                        break;
+                    }
                     sink.send(frame.event(), frame.data());
-                    if ("done".equals(frame.event())) {
-                        logUsage(ask, frame.data());
+                    if (end) {
                         terminal = true;
-                    } else if ("error".equals(frame.event())) {
-                        terminal = true;
+                        if ("done".equals(frame.event())) {
+                            logUsage(ask, frame.data());
+                        }
                     }
                 }
             }
-            if (!terminal && !session.isClosed()) {
+            if (!terminal && !session.isClosed() && session.tryTerminate()) {
                 sendError(sink, "assistant_stream_interrupted");
+                sink.complete();
+            } else if (terminal) {
+                sink.complete();
             }
-            sink.complete();
         } catch (AssistantUnavailableException e) {
             log.warn("질의응답 서비스 호출 실패 reason={} user_id={} call_id={}", e.getMessage(), ask.userId(), ask.callId());
-            sendError(sink, "assistant_unavailable");
-            sink.complete();
+            if (session.tryTerminate()) {
+                sendError(sink, "assistant_unavailable");
+                sink.complete();
+            }
         } catch (IOException | IllegalStateException e) {
             // 사용자가 연결을 끊어 전송이 실패했거나(IOException·이미 완료된 emitter), assistant 쪽 읽기가 끊겼다.
             log.info("질의응답 스트림 중단 user_id={} call_id={} cause={}", ask.userId(), ask.callId(), e.toString());
-            if (!session.isClosed()) {
+            if (!session.isClosed() && session.tryTerminate()) {
+                sendError(sink, "assistant_stream_interrupted");
+                sink.complete();
+            }
+        } catch (RuntimeException e) {
+            log.error("질의응답 중계 중 예기치 않은 오류 user_id={} call_id={}", ask.userId(), ask.callId(), e);
+            if (session.tryTerminate()) {
                 sendError(sink, "assistant_stream_interrupted");
                 sink.complete();
             }

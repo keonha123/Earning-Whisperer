@@ -20,10 +20,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,6 +37,7 @@ class AssistantRelayTest {
 
     @Mock AssistantStreamClient client;
     @Mock AssistantQuota quota;
+    @Mock ScheduledExecutorService scheduler;
 
     private AssistantRelay relay;
 
@@ -61,7 +65,7 @@ class AssistantRelayTest {
 
     @BeforeEach
     void setUp() {
-        relay = new AssistantRelay(client, quota, new ObjectMapper(), (Executor) Runnable::run,
+        relay = new AssistantRelay(client, quota, new ObjectMapper(), (Executor) Runnable::run, scheduler,
                 new AssistantProperties(null, 50, 60));
     }
 
@@ -155,7 +159,7 @@ class AssistantRelayTest {
     @DisplayName("스레드풀이 가득 차면 잠금을 풀고 RejectedExecutionException 을 던진다")
     void rejected() {
         AssistantRelay full = new AssistantRelay(client, quota, new ObjectMapper(),
-                command -> { throw new RejectedExecutionException("full"); }, new AssistantProperties(null, 50, 60));
+                command -> { throw new RejectedExecutionException("full"); }, scheduler, new AssistantProperties(null, 50, 60));
 
         assertThatThrownBy(() -> full.start(ASK)).isInstanceOf(RejectedExecutionException.class);
         verify(quota).unlock(7L);
@@ -171,5 +175,60 @@ class AssistantRelayTest {
 
         assertThat(sink.events).containsExactly("done not-json");
         assertThat(sink.completed).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("제한 시간이 지나면 timeout 오류를 한 번만 보내고 닫고 잠금을 푼다")
+    void streamTimeoutSendsOneError() {
+        TrackingStream body = new TrackingStream("");
+        AssistantRelay.Session session = relay.newSession(7L);
+        session.attach(body);
+        RecordingSink sink = new RecordingSink();
+
+        relay.onStreamTimeout(sink, session);
+        relay.onStreamTimeout(sink, session);
+
+        assertThat(sink.events).hasSize(1);
+        assertThat(sink.events.get(0)).startsWith("error ").contains("\"code\":\"timeout\"");
+        assertThat(sink.completed).isEqualTo(1);
+        assertThat(body.closed).isTrue();
+        verify(quota, times(1)).unlock(7L);
+    }
+
+    @Test
+    @DisplayName("timeout 뒤에 도착한 done 은 넘기지 않는다")
+    void doneAfterTimeoutIsDropped() throws Exception {
+        when(client.open(ASK)).thenReturn(new TrackingStream("event: delta\ndata: {}\n\nevent: done\ndata: {}\n\n"));
+        RecordingSink sink = new RecordingSink();
+        AssistantRelay.Session session = relay.newSession(7L);
+
+        relay.onStreamTimeout(sink, session);
+        relay.relay(ASK, sink, session);
+
+        assertThat(sink.events).hasSize(1);
+        assertThat(sink.events.get(0)).contains("\"code\":\"timeout\"");
+        assertThat(sink.completed).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("start 는 스트림 제한 시간만큼 뒤에 timeout 을 예약한다")
+    void startSchedulesTimeout() {
+        relay.start(ASK);
+
+        verify(scheduler).schedule(any(Runnable.class), eq(60L), eq(TimeUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("예기치 않은 RuntimeException 이어도 오류를 보내고 닫고 잠금을 푼다")
+    void unexpectedRuntimeException() throws Exception {
+        when(client.open(ASK)).thenThrow(new NullPointerException());
+        RecordingSink sink = new RecordingSink();
+
+        relay.relay(ASK, sink, relay.newSession(7L));
+
+        assertThat(sink.events).hasSize(1);
+        assertThat(sink.events.get(0)).contains("\"code\":\"assistant_stream_interrupted\"");
+        assertThat(sink.completed).isEqualTo(1);
+        verify(quota).unlock(7L);
     }
 }
