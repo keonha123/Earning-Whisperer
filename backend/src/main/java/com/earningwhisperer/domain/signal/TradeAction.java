@@ -1,7 +1,10 @@
 package com.earningwhisperer.domain.signal;
 
+/**
+ * 주문 방향. 관망(HOLD)은 매매 신호 경로와 함께 #127 에서 제거했다 — 수동 주문 기록이
+ * HOLD 를 받으면 SELF_PAPER 체결 반영에서 매도로 처리되는 구멍이 있었다.
+ */
 public enum TradeAction {
-    BUY,   // 매수 시그널
-    SELL,  // 매도 시그널
-    HOLD   // 관망 (임계치 미달 또는 방어 로직 작동)
+    BUY,
+    SELL
 }

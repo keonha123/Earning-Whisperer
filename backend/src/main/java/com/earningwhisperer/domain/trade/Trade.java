@@ -1,6 +1,5 @@
 package com.earningwhisperer.domain.trade;
 
-import com.earningwhisperer.domain.signal.SignalHistory;
 import com.earningwhisperer.domain.signal.TradeAction;
 import com.earningwhisperer.domain.user.User;
 import jakarta.persistence.*;
@@ -36,17 +35,10 @@ public class Trade {
 
     /**
      * 거래가 일어난 BrokerAccount (모의/실전 또는 다중 계정 분리).
-     * SignalService 가 활성 BrokerAccount 만 사용하므로 PENDING 단계에서 박힌 후 변하지 않는다.
+     * 주문 시점의 활성 BrokerAccount 로 기록되며 이후 변하지 않는다.
      */
     @Column(name = "broker_account_id", nullable = false)
     private Long brokerAccountId;
-
-    /**
-     * 이 거래를 유발한 AI 시그널 (HOLD이면 null)
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "signal_id")
-    private SignalHistory signal;
 
     @Column(nullable = false, length = 20)
     private String ticker;
@@ -60,8 +52,7 @@ public class Trade {
     private OrderType orderType;
 
     /**
-     * 주문 수량. PENDING 상태에서는 0(센티널) — 실제 수량은 Trading Terminal이 현재가·잔고를 바탕으로
-     * 산출하므로 서버 시점에서는 미정이다. 체결 콜백 수신 시 executed()에서 executedQty로 덮어쓴다.
+     * 주문 수량. 체결 콜백 수신 시 executed()에서 executedQty로 덮어쓴다.
      */
     @Column(nullable = false)
     private Integer orderQty;
@@ -94,21 +85,6 @@ public class Trade {
     @Column(length = 50)
     private String brokerOrderId;
 
-    /**
-     * Terminal 로 발행된 주문 비율 (BUY: 예수금 대비 매수, SELL: 보유수량 대비 매도).
-     * Terminal 미접속 후 재접속 시 PENDING 명령을 그대로 복원하기 위해 보존한다.
-     * 마이그레이션 호환을 위해 nullable.
-     */
-    @Column
-    private Double orderRatio;
-
-    /**
-     * Trade 를 유발한 시그널의 AI 점수. 재접속 시 명령 복원용.
-     * 마이그레이션 호환을 위해 nullable.
-     */
-    @Column
-    private Double aiScore;
-
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -118,12 +94,10 @@ public class Trade {
     }
 
     @Builder
-    public Trade(User user, Long brokerAccountId, SignalHistory signal, String ticker, TradeAction side,
-                 OrderType orderType, Integer orderQty, Double price,
-                 String brokerOrderId, Double orderRatio, Double aiScore) {
+    public Trade(User user, Long brokerAccountId, String ticker, TradeAction side,
+                 OrderType orderType, Integer orderQty, Double price, String brokerOrderId) {
         this.user = user;
         this.brokerAccountId = brokerAccountId;
-        this.signal = signal;
         this.ticker = ticker;
         this.side = side;
         this.orderType = orderType;
@@ -133,8 +107,6 @@ public class Trade {
         // 주문을 다시 찾을 수단이 사라진다 — 생성 시 버려지고 executed() 에서만 채워지던 탓에
         // 체결되지 않은 주문은 영구히 추적 불가였다.
         this.brokerOrderId = brokerOrderId;
-        this.orderRatio = orderRatio;
-        this.aiScore = aiScore;
         this.executedQty = 0;
         this.status = TradeStatus.PENDING;
     }

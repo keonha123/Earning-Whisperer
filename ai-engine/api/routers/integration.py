@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import logging
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
@@ -45,6 +46,8 @@ class EvidenceReadinessResponse(BaseModel):
 MINIMUM_EXPECTED_DOCUMENTS = 20
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["integration"])
 
 
@@ -73,7 +76,17 @@ async def evidence_readiness(
 
 @router.post("/api/v1/integration/collector/earnings-transcripts", response_model=EarningsTranscriptIngestResponse)
 async def ingest_earnings_transcripts(payload: EarningsTranscriptIngestRequest, request: Request) -> EarningsTranscriptIngestResponse:
-    return request.app.state.transcript_ingestion_service.ingest(payload.items)
+    response = request.app.state.transcript_ingestion_service.ingest(payload.items)
+    # 직전 콜 대조에 쓸 핵심 문장을 이어서 추출한다. 실패해도 위 적재 결과는 그대로다.
+    try:
+        statements = await request.app.state.transcript_statement_service.ingest(payload.items)
+    except Exception:
+        logger.exception("핵심 문장 추출 단계 실패 - 트랜스크립트 적재 결과만 돌려줍니다")
+        response.warnings.append("key_statement_extraction_failed")
+        return response
+    response.key_statement_counts = statements.counts
+    response.warnings.extend(statements.warnings)
+    return response
 
 
 @router.post("/api/v1/integration/collector/news", response_model=CollectorNewsIngestResponse)

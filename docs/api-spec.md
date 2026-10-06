@@ -8,16 +8,16 @@
 ## 1. 전체 데이터 흐름도 (Data Pipeline)
 
 1. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **AI Engine** (Python)
-2. **AI Engine** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java Spring Boot)
-3. **Backend** (Java) ➔ `[WebSocket /user/queue]` ➔ **Trading Terminal** (Electron/Node.js) : 개인화된 매매 명령 하달
-4. **Backend** (Java) ➔ `[WebSocket /topic/live]` ➔ **Frontend Web** (Next.js) : 라이브 데모 시각화
-5. **Trading Terminal** ➔ `[HTTP REST]` ➔ **증권사 KIS API** : 실제 주문 실행 (Client-side)
-6. **Trading Terminal** ➔ `[HTTP POST Callback]` ➔ **Backend** (Java) : 체결 결과 보고 및 장부 동기화
-7. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
-8. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
-9. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
-10. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 실시간 어닝콜 트랜스크립트 segment 전달 (AI Engine 분석용 슬라이딩 윈도우와 별개 출력)
-11. **Backend** (Java) ➔ `[WebSocket /topic/transcript]` ➔ **Trading Terminal / Frontend Web** : 어닝콜 트랜스크립트 라이브 표시
+2. **Backend** (Java) ➔ `[WebSocket /topic/live/demo]` ➔ **Frontend Web** (Next.js) : 데모 재생 시각화
+3. **Trading Terminal** ➔ `[HTTP REST]` ➔ **증권사 KIS API** : 사용자가 입력한 수동 주문 실행 (Client-side)
+4. **Trading Terminal** ➔ `[HTTP POST]` ➔ **Backend** (Java) : 수동 주문 기록, 체결 결과 보고, 잔고 동기화
+5. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
+6. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
+7. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
+8. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 실시간 어닝콜 트랜스크립트 segment 전달 (AI Engine 분석용 슬라이딩 윈도우와 별개 출력)
+9. **Backend** (Java) ➔ `[WebSocket /topic/transcript]` ➔ **Trading Terminal / Frontend Web** : 어닝콜 트랜스크립트 라이브 표시
+
+> 매매 신호로 주문을 내던 경로(AI Engine ➔ Redis `trading-signals` ➔ Backend 룰 엔진 ➔ `/user/queue/signals` ➔ Terminal)는 #127 에서 제거했습니다. EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가 터미널에서 직접 내는 주문만 있습니다.
 
 ---
 
@@ -42,6 +42,7 @@
 - **통신 방식:** Redis Pub/Sub
 - **Redis Channel:** `trading-signals`
 - **설명:** AI 서버(Stateless)가 텍스트를 분석하여 도출한 **순수 감성 점수(Raw Score)**와 해설을 백엔드로 브로드캐스팅합니다.
+- **현재 상태:** 백엔드는 #127 에서 이 채널의 구독을 제거했습니다. AI Engine 이 발행하더라도 받는 곳이 없습니다. 형식은 기록으로 남겨 둡니다.
 
 | 필드명           | 타입    | 필수 | 설명                                                                       |
 | :--------------- | :------ | :--: | :------------------------------------------------------------------------- |
@@ -56,7 +57,7 @@
 
 ## 4. [Contract 3] Backend ➔ Clients (WebSocket Signaling)
 
-백엔드는 목적에 따라 세 가지 방식의 웹소켓 채널을 운영합니다.
+백엔드는 목적에 따라 여러 웹소켓 채널을 운영합니다. 개인 큐(`/user/queue/...`)로 보내는 채널은 #127 에서 매매 신호 경로를 제거하면서 없어졌습니다.
 
 ### 4.1. Demo Replay Broadcast (Frontend Web 쇼케이스 데모룸용)
 
@@ -82,6 +83,7 @@
 
 - **Topic:** `/topic/live/{ticker}`
 - **설명:** 실제 어닝콜이 진행 중일 때 로그인한 웹 유저에게 시각화용 데이터를 동일하게 브로드캐스트합니다. (주문 명령 없음)
+- **현재 상태:** 이 토픽은 Redis `trading-signals` 수신을 계기로 발행됐으므로, #127 에서 구독을 제거한 뒤로는 발행되지 않습니다. 데모 재생(4.1)의 `/topic/live/demo` 는 그대로입니다.
 - **접근 권한:** 로그인 필수 (JWT). Free 유저는 `action` 필드를 `null`로 수신하여 BUY/SELL 판단은 노출되지 않습니다.
 - **주가 데이터:** Data Pipeline이 Redis `market-data` 채널로 푸시한 주가 tick을 백엔드가 이 채널에 병합하여 포워딩합니다.
 
@@ -98,24 +100,9 @@
 | `timestamp`      | Long    |  Y   | 신호 발생 시점 (Unix Epoch Second, UTC)                                       |
 | `is_session_end` | Boolean |  N   | 어닝콜 세션 종료 신호 (기본값 `false`)                                        |
 
-### 4.3. Private Routing (Trading Terminal 주문 지시용)
+### 4.3. Private Routing (제거됨)
 
-- **Queue:** `/user/{userId}/queue/signals`
-- **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
-- **수량 결정 원칙 (자본시장법 준수):** 백엔드는 **수량을 직접 계산하지 않고**, 사용자의 `PortfolioSettings.buyAmountRatio`를 `order_ratio` 필드로 실어 보냅니다. Trading Terminal이 주문 직전 실제 KIS 잔고·현재가를 조회하여 **사용자 로컬 PC에서 최종 수량을 산출**합니다. 이는 "중앙 서버가 사용자 대신 종목·수량·시점을 결정"하는 행위(미등록 투자일임업)를 회피하기 위한 설계입니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고되며, 백엔드는 이 값으로 `Trade.orderQty`를 덮어씁니다(PENDING 시점엔 0 센티널).
-
-**수량 산출 공식 (Trading Terminal에서 적용):**
-
-- BUY: `qty = floor(orderableCash × order_ratio / currentPrice)`
-- SELL: `qty = floor(holdingQty × order_ratio)` (0이면 주문 안 함 — 서버 의도 비율 초과 매도 방지)
-
-| 필드명        | 타입   | 필수 | 설명                                                                             |
-| :------------ | :----- | :--: | :------------------------------------------------------------------------------- |
-| `trade_id`    | String |  Y   | 백엔드가 DB에 생성한 `PENDING` 상태의 고유 거래 ID                               |
-| `action`      | String |  Y   | 최종 매매 방향 (`BUY`, `SELL`)                                                   |
-| `order_ratio` | Double |  Y   | 주문 비율 (0.0 ~ 1.0). BUY: 예수금 대비 매수 비율. SELL: 보유수량 대비 매도 비율 |
-| `ticker`      | String |  Y   | 종목 심볼                                                                        |
-| `ema_score`   | Double |  Y   | 최종 결정에 사용된 EMA 점수                                                      |
+`/user/{userId}/queue/signals` 로 매매 명령을 보내던 채널은 #127 에서 제거했습니다. 백엔드는 더 이상 주문을 지시하지 않으며, 터미널은 이 큐를 구독하지 않습니다. 재접속 시 대기 명령을 복원하던 `GET /api/v1/trades/pending` 도 함께 제거했습니다.
 
 ### 4.4. Global Market Indices Broadcast (글로벌 시장 지수 1분 스트리밍)
 
@@ -223,12 +210,12 @@
 
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
-로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
+Trading Terminal이 사용자의 수동 주문 결과와 실제 계좌 상태를 백엔드에 기록하기 위해 호출하는 REST API입니다.
 
 ### 5.1. 매매 체결 결과 보고 (Callback)
 
 - **엔드포인트:** `POST /api/v1/trades/{tradeId}/callback`
-- **설명:** Trading Terminal이 실제 KIS 잔고와 현재가를 조회하여 `order_ratio`에 따라 최종 수량을 산출하고 주문을 실행한 뒤, 체결 결과를 백엔드로 보고하여 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. `Trade.orderQty`는 PENDING 시점엔 0(센티널)이며 본 콜백 수신 시 `executed_qty`로 덮어써집니다.
+- **설명:** `PENDING` 으로 기록된 수동 주문(7.3 `POST /api/v1/trades/manual`)이 나중에 체결되거나 실패했을 때, 그 결과를 보고해 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. 본 콜백 수신 시 `Trade.orderQty`는 `executed_qty`로 덮어써집니다. `EXPIRED` 상태에서 `EXECUTED` 를 받으면 정정 전이로 처리합니다.
 
   {
   "status": "EXECUTED",
@@ -241,7 +228,7 @@
 ### 5.2. 실제 계좌 장부 동기화 (Sync)
 
 - **엔드포인트:** `POST /api/v1/portfolio/sync`
-- **설명:** Trading Terminal이 기동되거나 매매가 완료된 직후, 실제 KIS 계좌 잔고를 백엔드에 덮어씌워 룰 엔진의 오차를 교정합니다.
+- **설명:** Trading Terminal이 기동되거나 매매가 완료된 직후, 실제 KIS 계좌 잔고를 백엔드에 덮어씌웁니다.
 
   {
   "total_cash": 15000000,
@@ -427,7 +414,8 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | Method | Endpoint                 | 인증 | 설명                                                                                            |
 | :----- | :----------------------- | :--: | :---------------------------------------------------------------------------------------------- |
 | GET    | `/api/v1/users/me`       | 필요 | 내 프로필 조회. 응답: `{id, email, nickname, role, createdAt}`                                  |
-| PUT    | `/api/v1/users/settings` | 필요 | 리스크 룰 설정 저장. 요청: `{trading_mode, max_buy_ratio, max_holding_ratio, cooldown_minutes}` |
+
+`PUT /api/v1/users/settings` 와 `GET`·`PUT /api/v1/portfolio/settings`(매매 모드와 룰 엔진 설정)는 #127 에서 제거했습니다.
 
 ### 7.3. 거래 내역 (Trades)
 
@@ -455,9 +443,9 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 
 #### `POST /api/v1/trades/manual`
 
-- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록한다. 자동/반자동 경로(Contract 4.1)와 달리 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고한다. 활성 `BrokerAccount` 가 없으면 **422**.
+- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록합니다. 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고합니다. `side` 는 `BUY` / `SELL` 만 받습니다. 활성 `BrokerAccount` 가 없으면 **422** 입니다.
 - **응답 201 `{"tradeId": 123}`** — `status: PENDING` 으로 기록된 미체결 주문을 나중에 `POST /api/v1/trades/{tradeId}/callback` 으로 종결시키기 위해 필요하다. 터미널에 아직 체결 폴링이 없어 현재는 이 경로를 쓰지 않지만, id 를 돌려주지 않으면 종결 자체가 구조적으로 불가능하다.
-- **PENDING 수동 주문의 TTL 은 자동 명령과 다르다.** 자동 명령은 `app.trade.pending-ttl-seconds`(기본 30초), 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간). 수동 주문은 증권사에 실제로 접수돼 체결을 기다리는 주문이라 30초로 만료시키면 살아 있는 주문이 "실패" 로 뜬다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 긴 TTL 을 준다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복한다.
+- **PENDING 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간)가 지나면 `EXPIRED` 로 바뀝니다.** 증권사에 실제로 접수돼 체결을 기다리는 주문이라 짧게 만료시키면 살아 있는 주문이 "실패" 로 뜹니다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 하루를 줍니다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복합니다. 매매 신호 명령용이던 `app.trade.pending-ttl-seconds` 는 #127 에서 제거했습니다.
 - **`status` 는 `EXECUTED` / `PENDING` / `FAILED` 세 값을 받는다.** `PENDING` 은 KIS 가 주문을 접수했으나(ODNO 반환) 아직 체결되지 않은 상태다 — 살아 있는 주문을 `FAILED` 로 적으면 안 된다.
 - **`order_type` 은 항상 `LIMIT` 이다.** KIS 해외주식 매수에는 시장가 코드가 없어(`ORD_DVSN` 매수는 `00` 지정가 / `32` LOO / `34` LOC, 모의투자는 `00` 만) UI 의 "즉시 체결" 도 현재가 ±1% 지정가로 환산해 나간다. `price` 는 브로커에 실제로 보낸 지정가다. 단, 가격 확정 전에 실패한 경우(현재가 조회 불가)는 주문이 나가지 않았으므로 `MARKET` / `price: 0` 으로 기록된다.
 
@@ -577,15 +565,7 @@ start 응답 예시:
    - 만료와 위조를 응답에서 구분해 알려주지 않습니다. 둘 다 `{"error": "인증이 필요합니다."}` 입니다.
 5. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.
 6. **무상태성 및 단일 진실 공급원:** 백엔드는 KIS API 키를 가지지 않으며, 모든 '최종' 자산 상태는 Trading Terminal이 쏘아주는 Sync 데이터를 '단일 진실 공급원(Single Source of Truth)'으로 취급하여 덮어씁니다.
-7. **Fallback (안전망):** Trading Terminal은 백엔드 웹소켓 연결이 끊기거나 비정상적인 데이터가 수신될 경우, 즉시 매매 모드를 `MANUAL(수동)`로 강제 전환하고 유저에게 OS 네이티브 알림을 띄워야 합니다.
-8. **매매 필터링 책임 분리 (2-Layer Filter):** 신호가 실제 주문으로 이어지기까지 두 단계의 독립적인 필터가 존재합니다. 두 필터는 서로 다른 관심사를 담당하며 중복이 아닙니다.
-
-   | 레이어               | 주체                           | 필터링 기준                                      | 결과                                                               |
-   | :------------------- | :----------------------------- | :----------------------------------------------- | :----------------------------------------------------------------- |
-   | **1차 (서버)**       | Backend 룰 엔진                | EMA 임계치, 쿨다운, 장부 잔고/비중 조건          | 조건 미달 시 신호 자체를 생성하지 않음 (HOLD)                      |
-   | **2차 (클라이언트)** | Trading Terminal 트레이딩 모드 | 사용자 승인 방식 (Manual / 1-Click / Auto-Pilot) | 신호를 수신하더라도 모드에 따라 즉시 실행하거나 사용자 승인을 대기 |
-
-   즉, 백엔드가 신호를 보냈다고 해서 반드시 주문이 실행되는 것은 아닙니다. Terminal의 트레이딩 모드가 최종 실행 여부를 결정합니다.
+7. **주문 주체:** 모든 주문은 사용자가 Trading Terminal 에서 직접 입력한 수동 주문입니다. 백엔드의 룰 엔진과 터미널의 매매 모드 선택은 #127 에서 제거했습니다.
 
 ---
 

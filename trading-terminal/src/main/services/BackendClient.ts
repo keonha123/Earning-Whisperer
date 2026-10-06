@@ -2,7 +2,6 @@ import axios from 'axios'
 import { mainState } from '../store/mainState'
 import type { StockDetailResponsePayload } from '../../lib/types/stockDetail'
 import type { Sp500Stock, StockPriceEntry } from '../../lib/types/stockList'
-import type { TradeSignal } from './TradeExecutor'
 import { axiosErrorToIpcError } from '../../lib/types/ipcError'
 
 // Phase 5: StockDetailResponsePayload 정의를 src/lib/types/stockDetail.ts 로 이동.
@@ -240,14 +239,6 @@ export interface PortfolioSyncPayload {
   positions: { ticker: string; quantity: number; avg_price: number }[]
 }
 
-export interface UserSettings {
-  trading_mode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
-  max_buy_ratio: number
-  max_holding_ratio: number
-  cooldown_minutes: number
-  ai_score_threshold: number
-}
-
 /**
  * 관심종목 응답 — 백엔드 record `WatchlistItemResponse(ticker, companyName, sector)`.
  * Spring 기본 직렬화는 camelCase 이므로 Electron 측 타입도 camelCase 그대로 사용.
@@ -368,17 +359,6 @@ export const BackendClient = {
   },
 
   /**
-   * Terminal 재접속 시점에 호출. 백엔드 STOMP convertAndSendToUser 가 미접속 사용자에게
-   * silent drop 되므로, TTL 내 미만료 PENDING 명령을 REST 로 fetch 해 복구한다.
-   * 응답 형식은 STOMP /user/queue/signals 메시지와 동일 (TradeCommandMessage 직렬화 결과).
-   * 실패 시 throw — 호출 측이 catch 해 graceful 처리.
-   */
-  async fetchPendingTrades(): Promise<TradeSignal[]> {
-    const { data } = await http.get<TradeSignal[]>('/api/v1/trades/pending')
-    return Array.isArray(data) ? data : []
-  },
-
-  /**
    * 어닝콜 시연 재생 시작 (Contract 7.8).
    * 202 = 시작, 409 = 이미 재생 중, 500 = 스크립트 결함.
    * 409 는 정상 흐름(중복 클릭)이므로 예외 대신 결과로 구분해 돌려준다.
@@ -451,25 +431,10 @@ export const BackendClient = {
     await http.post('/api/v1/portfolio/sync', payload)
   },
 
-  async updateSettings(settings: UserSettings): Promise<void> {
-    await http.put('/api/v1/users/settings', settings)
-  },
-
   async getTrades(page = 0, size = 20, startDate?: string): Promise<unknown> {
     const params: Record<string, unknown> = { page, size }
     if (startDate) params.startDate = startDate
     const { data } = await http.get('/api/v1/trades', { params })
-    return data
-  },
-
-  async getSettings(): Promise<{
-    buyAmountRatio: number
-    maxPositionRatio: number
-    cooldownMinutes: number
-    aiScoreThreshold: number
-    tradingMode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
-  }> {
-    const { data } = await http.get('/api/v1/portfolio/settings')
     return data
   },
 

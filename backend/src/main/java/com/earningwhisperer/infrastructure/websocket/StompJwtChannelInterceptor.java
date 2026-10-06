@@ -57,8 +57,9 @@ import java.security.Principal;
  * sessionIds = getSessionIdsByUser(userName, sessionId);
  * </pre>
  *
- * 즉 로그인한 사람 누구나 {@code /user/42/queue/signals} 로 위조 매매 신호를 밀어 넣을 수
- * 있고, 터미널이 AUTO_PILOT 이면 그대로 주문이 나간다. {@code /topic/**} 로 보내면 위조
+ * 즉 로그인한 사람 누구나 {@code /user/42/queue/...} 로 남의 개인 큐에 메시지를 밀어 넣을 수
+ * 있다. 매매 신호 경로가 있던 때에는 이 경로로 위조 신호를 보내 남의 터미널에서 주문을
+ * 낼 수 있었다 (매매 신호 경로는 #127 에서 제거). {@code /topic/**} 로 보내면 위조
  * 트랜스크립트·팩트체크를 방송할 수 있다.
  *
  * 목적지 allowlist 대신 전면 거부를 택한 이유는 쓰는 곳이 없기 때문이다 — 저장소에

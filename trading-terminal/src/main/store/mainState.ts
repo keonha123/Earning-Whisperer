@@ -4,7 +4,6 @@
  * 디스크(electron-store, 파일)에 기록하지 않는다.
  */
 
-export type TradingMode = 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
 export type AccountType = 'KIS_REAL' | 'KIS_PAPER' | 'SELF_PAPER'
 
 interface MainState {
@@ -23,8 +22,6 @@ interface MainState {
   kisTokenIssuedAtMono: number | null
   /** 토큰 수명(초). 발급 시점의 expiresIn 을 그대로 보존. */
   kisTokenLifetimeSec: number | null
-  /** 현재 트레이딩 모드 — Renderer store와 동기화 */
-  tradingMode: TradingMode
   /** 진행 중인 주문 여부 — 모드 전환 레이스 컨디션 방지 */
   isOrderInProgress: boolean
   /** 모의투자(true) / 실전투자(false) 환경 — 토큰/baseURL/rate limit 분기 */
@@ -36,10 +33,6 @@ interface MainState {
   /** SELF_PAPER 모드 잔고 — cashBalance + 보유종목. 로그인 시 초기화, 매매 후 갱신. */
   selfPaperCash: number | null
   selfPaperHoldings: { ticker: string; qty: number }[]
-  /** TradingRoom 세션 활성 여부 — 진입 시 true, 명시적 나가기 시 false */
-  isTradeSessionActive: boolean
-  /** 현재 세션의 ticker — 이 ticker의 신호만 처리 */
-  activeSessionTicker: string | null
 }
 
 const state: MainState = {
@@ -49,15 +42,12 @@ const state: MainState = {
   kisTokenExpiresAt: null,
   kisTokenIssuedAtMono: null,
   kisTokenLifetimeSec: null,
-  tradingMode: 'MANUAL',
   isOrderInProgress: false,
   isPaperTrading: true,
   accountType: 'KIS_PAPER',
   pricesCache: {},
   selfPaperCash: null,
   selfPaperHoldings: [],
-  isTradeSessionActive: false,
-  activeSessionTicker: null,
 }
 
 const TOKEN_VALIDITY_MARGIN_SEC = 60
@@ -107,9 +97,6 @@ export const mainState = {
     return elapsedSec < state.kisTokenLifetimeSec - TOKEN_VALIDITY_MARGIN_SEC
   },
 
-  get tradingMode() { return state.tradingMode },
-  setTradingMode(mode: TradingMode) { state.tradingMode = mode },
-
   get isOrderInProgress() { return state.isOrderInProgress },
   setOrderInProgress(v: boolean) { state.isOrderInProgress = v },
 
@@ -133,13 +120,6 @@ export const mainState = {
     state.selfPaperHoldings = holdings
   },
 
-  get isTradeSessionActive() { return state.isTradeSessionActive },
-  get activeSessionTicker() { return state.activeSessionTicker },
-  setTradeSession(active: boolean, ticker?: string) {
-    state.isTradeSessionActive = active
-    state.activeSessionTicker = active && ticker ? ticker : null
-  },
-
   /**
    * 앱 종료 및 로그아웃 시 민감 데이터 소거.
    * isPaperTrading은 사용자 환경 선택값이므로 유지한다.
@@ -151,13 +131,10 @@ export const mainState = {
     state.kisTokenExpiresAt = null
     state.kisTokenIssuedAtMono = null
     state.kisTokenLifetimeSec = null
-    state.tradingMode = 'MANUAL'
     state.isOrderInProgress = false
     state.accountType = 'KIS_PAPER'
     state.pricesCache = {}
     state.selfPaperCash = null
     state.selfPaperHoldings = []
-    state.isTradeSessionActive = false
-    state.activeSessionTicker = null
   },
 }

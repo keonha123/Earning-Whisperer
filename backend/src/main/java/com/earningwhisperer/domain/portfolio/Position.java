@@ -14,8 +14,7 @@ import java.time.LocalDateTime;
  * 사용자의 보유 종목 스냅샷.
  *
  * Trading Terminal 이 KIS API 잔고 조회 결과를 동기화한 값. 평균 매수가(avgPrice) 와 수량(quantity)
- * 만 보존하며 실시간 가격은 미보유. RuleEngine 의 maxPositionRatio 검증에 매수 기준 비중을
- * 산출하는 용도로 사용된다.
+ * 만 보존하며 실시간 가격은 미보유.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

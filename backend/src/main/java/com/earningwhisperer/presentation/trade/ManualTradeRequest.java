@@ -11,7 +11,6 @@ import lombok.NoArgsConstructor;
  * Trading Terminal → 백엔드 수동 주문 기록 요청 DTO.
  *
  * Terminal 이 KIS API 로 수동 주문 실행 후 결과를 POST /api/v1/trades/manual 로 전송.
- * AI 시그널 없이 사용자가 직접 입력한 주문이므로 orderRatio/aiScore 는 기록하지 않는다.
  */
 @Getter
 @NoArgsConstructor

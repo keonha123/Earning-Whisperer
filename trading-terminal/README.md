@@ -7,7 +7,7 @@
 
 > **KIS API 키는 이 앱의 OS 보안 영역에만 암호화 저장됩니다. 중앙 서버로 절대 전송되지 않습니다.**
 
-백엔드가 내린 AI 매매 신호를 수신하여 사용자의 KIS 모의투자 계좌로 실제 주문을 실행하는 **로컬 실행 엔진(Execution Engine)** 겸 **보안 금고(Vault)**입니다. 자본시장법(미등록 투자일임업 방지) 및 KIS API 약관을 준수하기 위해 모든 주문은 사용자의 로컬 PC에서 직접 실행됩니다.
+어닝콜 분석 결과를 보면서 사용자가 직접 낸 주문을 KIS 계좌로 실행하는 **로컬 실행 엔진(Execution Engine)** 겸 **보안 금고(Vault)**입니다. 자본시장법(미등록 투자일임업 방지) 및 KIS API 약관을 준수하기 위해 모든 주문은 사용자의 로컬 PC에서 직접 실행됩니다.
 
 ---
 
@@ -28,11 +28,10 @@ graph TB
     subgraph Main["Main Process (Node.js)"]
         IPC["IPC Handlers"]
         KisSvc["KisService\nAPI 키 관리·토큰 발급·주문"]
-        StompSvc["StompService\nWS 연결·신호 수신·재연결"]
-        TradeExec["TradeExecutor\n잔고 조회·수량 보정·주문"]
-        BackendSvc["BackendClient\n콜백·잔고 동기화·설정"]
+        StompSvc["StompService\nWS 연결·트랜스크립트 수신·재연결"]
+        BackendSvc["BackendClient\n주문 기록·콜백·잔고 동기화"]
         IPC --> KisSvc & StompSvc & BackendSvc
-        KisSvc --> TradeExec --> BackendSvc
+        KisSvc --> BackendSvc
     end
 
     subgraph Secure["OS 보안 영역 (keytar)"]
@@ -54,30 +53,15 @@ graph TB
 
 ---
 
-## 트레이딩 모드 3단계
+## 주문 방식
 
-| 모드 | 표시명 | 동작 | Pro 전용 |
-|------|--------|------|---------|
-| `MANUAL` | 수동 | 신호 피드만 수신. 사용자가 직접 버튼을 클릭해야 주문 실행 | — |
-| `SEMI_AUTO` | 1-Click | 신호 수신 시 30초 타임아웃 승인 팝업 표시. Enter/클릭 시 주문, Esc/타임아웃 시 FAILED 콜백 전송 | — |
-| `AUTO_PILOT` | 자동 | 신호 수신 즉시 Main Process가 백그라운드에서 자동 주문. UI 개입 없음 | ✓ |
-
-**Fallback:** 백엔드 WebSocket 연결이 끊기면 즉시 `MANUAL`로 강제 전환 + OS 네이티브 알림 표시.
+주문은 사용자가 Trading Room 하단 주문 바에서 직접 입력한 수동 주문만 있습니다. 백엔드가 보낸 매매 신호로 주문하던 경로와 매매 모드 선택은 #127 에서 제거했습니다.
 
 ```mermaid
 flowchart TD
-    Signal["신호 수신\n(STOMP /user/queue/signals)"]
-    Signal --> Mode{현재 모드}
-
-    Mode -->|MANUAL| Feed["신호 피드에 표시\nIGNORED 상태"]
-    Mode -->|SEMI_AUTO| Dialog["승인 팝업 표시\n30초 타임아웃"]
-    Mode -->|AUTO_PILOT| Auto["즉시 TradeExecutor 실행"]
-
-    Dialog -->|승인 / Enter| Execute
-    Dialog -->|거절 / Esc / 타임아웃| Cancel["TRADE_CANCEL IPC\n→ FAILED 콜백 전송"]
-
-    Auto --> Execute["KIS 잔고 조회\n→ 수량 보정\n→ KIS 주문 실행"]
-    Execute --> Callback["결과 콜백\nPOST /trades/{id}/callback\n(EXECUTED / FAILED)"]
+    Order["주문 바 입력\n(종목·방향·수량·즉시 체결/지정가)"]
+    Order --> Execute["KIS 주문 실행\n(terminal:kis:place-manual-order)"]
+    Execute --> Record["결과 기록\nPOST /trades/manual\n(EXECUTED / PENDING / FAILED)"]
     Execute --> Sync["잔고 동기화\nPOST /portfolio/sync"]
 ```
 
@@ -164,10 +148,10 @@ npm run package
 | 페이지 | 경로 | 역할 |
 |--------|------|------|
 | 인증 & Vault | `/auth` | JWT 로그인 + KIS API 키 OS 암호화 저장 (2-Step) |
-| 대시보드 | `/dashboard` | 포트폴리오 현황(잔고·보유 종목) + 최근 신호 5건 |
-| 트레이딩 룸 | `/trading-room` | **핵심** — EMA 차트 + 신호 피드 + 실시간 EMA 게이지 |
+| 대시보드 | `/dashboard` | 포트폴리오 현황(잔고·보유 종목) + 어닝콜 일정 |
+| 트레이딩 룸 | `/trading-room` | **핵심** — 실시간 트랜스크립트 · 팩트체크 · 종합 판단 + 수동 주문 |
 | 체결 내역 | `/history` | 페이지네이션된 체결 내역 테이블 |
-| 설정 | `/settings` | 리스크 파라미터 + KIS 연동 상태 + 모드 토글 |
+| 설정 | `/settings` | KIS 연동 상태 + 모의/실전 전환 |
 
 ---
 
@@ -183,24 +167,20 @@ npm run package
 | `terminal:vault:has-credentials` | KIS API 키 저장 여부 확인 |
 | `terminal:vault:delete-credentials` | KIS API 키 삭제 |
 | `terminal:kis:get-balance` | KIS 잔고 조회 (해외주식) |
-| `terminal:kis:place-order` | KIS 주문 실행 (TradeExecutor 경유) |
+| `terminal:kis:place-manual-order` | 수동 주문 실행 + 결과 기록 |
 | `terminal:kis:get-token-status` | KIS OAuth 토큰 상태 조회 |
 | `terminal:kis:issue-token` | KIS OAuth 토큰 발급 |
-| `terminal:settings:update` | 트레이딩 모드 / 리스크 파라미터 저장 |
 | `terminal:ws:connect` | 백엔드 STOMP 연결 시작 |
 | `terminal:ws:disconnect` | 백엔드 STOMP 연결 해제 |
 | `terminal:trades:get` | 체결 내역 페이지네이션 조회 |
-| `terminal:trade:cancel` | 신호 취소 + 백엔드 FAILED 콜백 전송 |
 
 ### Main → Renderer (`ipc.on`)
 
 | 채널 | 역할 |
 |------|------|
-| `terminal:signal:received` | 백엔드로부터 수신한 매매 신호 |
 | `terminal:trade:executed` | 주문 체결 성공 결과 |
 | `terminal:trade:failed` | 주문 실패 결과 |
 | `terminal:ws:status-changed` | WebSocket 연결 상태 변화 |
-| `terminal:mode:forced-manual` | 강제 MANUAL 전환 알림 (연결 끊김) |
 | `terminal:kis:token-refreshed` | KIS 토큰 자동 갱신 완료 |
 
 ---
@@ -233,8 +213,6 @@ WebSocket URL은 `BACKEND_URL`에서 자동 파생됩니다: `http://...` → `w
 | 문서 | 설명 |
 |------|------|
 | [`docs/api-spec.md`](../docs/api-spec.md) | 서비스 간 API & 데이터 컨트랙트 전체 명세 |
-| [`docs/trading-terminal-architecture.md`](docs/trading-terminal-architecture.md) | Electron 기술 아키텍처 상세 |
-| [`docs/trading-terminal-prd.md`](docs/trading-terminal-prd.md) | 제품 요구사항 정의서 (PRD) |
-| [`docs/trading-terminal-ui-spec.md`](docs/trading-terminal-ui-spec.md) | UI 컴포넌트 스펙 |
-| [`docs/trading-terminal-ux-spec.md`](docs/trading-terminal-ux-spec.md) | UX 플로우 스펙 |
-| [`docs/requirements.md`](docs/requirements.md) | Trading Terminal 요구사항 정의서 (원문) |
+| [`docs/developer/architecture.md`](../docs/developer/architecture.md) | 시스템 구성과 터미널 프로세스 구조 |
+| [`docs/install/desktop-app.md`](../docs/install/desktop-app.md) | 설치본 설치와 업데이트 |
+| [`docs/features/`](../docs/features/) | 기능별 사용 안내 |

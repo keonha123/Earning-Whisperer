@@ -41,7 +41,6 @@ beforeEach(() => {
 describe('completeLogin — 로그인 후처리', () => {
   it('활성 계좌가 SELF_PAPER 면 accountType 을 SELF_PAPER 로 설정하고 잔고를 초기화한다', async () => {
     vi.spyOn(BackendClient, 'getMe').mockResolvedValue(FAKE_USER)
-    vi.spyOn(BackendClient, 'getSettings').mockRejectedValue(new Error('no settings'))
     vi.spyOn(BackendClient, 'getActiveBrokerAccount').mockResolvedValue({
       id: 7,
       accountType: 'SELF_PAPER',

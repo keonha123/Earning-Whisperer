@@ -20,7 +20,7 @@ export default function AuthBrandSection() {
         EarningWhisperer Terminal
       </div>
       <div className="text-text-tertiary text-sm whitespace-nowrap">
-        실시간 어닝콜 시그널 · AI 기반 자동매매
+        실시간 어닝콜 AI 분석 · 직접 주문
       </div>
     </div>
   )

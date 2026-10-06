@@ -52,7 +52,6 @@ const PROVIDERS: Record<OAuthProvider, { authUrl: string; scope: string; envClie
 
 interface OAuthSuccess {
   user: { id: number; email: string; nickname: string; role: string }
-  settings: unknown | null
   accountType: string
 }
 
@@ -147,7 +146,7 @@ class OAuthServiceImpl {
 
   /**
    * Renderer 에서 호출. 흐름 종료 시점까지 단일 Promise 로 결과 반환.
-   * - 성공: { user, settings }
+   * - 성공: { user, accountType }
    * - 실패: throw Error
    */
   start(provider: OAuthProvider): Promise<OAuthSuccess> {

@@ -6,8 +6,8 @@ const FEATURES = [
     icon: (
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
     ),
-    title: "실시간 매매 신호 수신",
-    desc: "백엔드 AI 분석 결과를 WebSocket으로 즉시 수신합니다.",
+    title: "실시간 어닝콜 분석",
+    desc: "트랜스크립트 · 팩트체크 · 종합 판단을 WebSocket으로 즉시 수신합니다.",
   },
   {
     icon: (
@@ -20,8 +20,8 @@ const FEATURES = [
     icon: (
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     ),
-    title: "3가지 매매 모드",
-    desc: "MANUAL(수동 확인), 1-Click(클릭 한 번 승인), AUTO_PILOT(완전 자동) 중 선택 가능합니다.",
+    title: "분석 화면에서 직접 주문",
+    desc: "분석을 보면서 주문 바에서 바로 주문할 수 있습니다. 주문은 언제나 사용자가 직접 냅니다.",
   },
   {
     icon: (
@@ -51,7 +51,7 @@ export default function DownloadPage() {
             </span>
             <h1 className="mt-3 text-3xl font-bold text-white sm:text-4xl">
               로컬 PC에서 직접 실행하는<br />
-              <span className="text-gray-400">AI 자동매매 에이전트</span>
+              <span className="text-gray-400">어닝콜 분석 터미널</span>
             </h1>
             <p className="mt-4 text-sm leading-relaxed text-gray-500">
               증권사 API 키는 서버에 올라가지 않습니다.<br />
