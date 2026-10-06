@@ -520,7 +520,9 @@ export default function TradingRoomPage() {
         heldQty={balanceLoaded ? holding?.qty ?? 0 : null}
         account={orderAccount}
         hasKey={hasKey}
-        onOpenSettings={() => navigate("/settings")}
+        onOpenSettings={() =>
+          navigate(`/settings?kis=${orderAccount === "KIS_REAL" ? "real" : "paper"}`)
+        }
         onSubmit={handleOrderSubmit}
         submitting={submitting}
         orders={sessionOrders}

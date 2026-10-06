@@ -45,6 +45,8 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`design/screens/home.md`](design/screens/home.md) | 홈: 내 종목의 다가오는 콜, 전체 일정, 시연 재생, 계좌 · 시장 요약 |
 | [`design/screens/stocks.md`](design/screens/stocks.md) | 종목 화면: 필터, 검색, 종목 표, 행에서 종목 브리핑 열기, 상태 구분 |
 | [`design/screens/stock-brief.md`](design/screens/stock-brief.md) | 종목 브리핑: 다음 콜, 최근 어닝 반응, 30일 종가, 콜 화면 열기 |
+| [`design/screens/login.md`](design/screens/login.md) | 로그인 · KIS 키 등록 권유: 단계, 로그인 판, 키 등록 권유 판, 자리만 있는 요소 |
+| [`design/screens/settings.md`](design/screens/settings.md) | 설정: KIS 연동(주문할 계좌, 연결 단계, API 키), 앱 설정 자리 |
 
 ### 개발자 문서
 

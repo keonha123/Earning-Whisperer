@@ -217,7 +217,7 @@ function SheetBody({
           <div className="flex flex-col gap-3 py-4">
             <p className="text-[14px] text-ink-1 leading-relaxed">KIS 키를 등록하면 이 자리에서 주문할 수 있습니다.</p>
             <button type="button" className="gbtn gbtn-lapis self-start" onClick={onOpenSettings}>
-              설정에서 키 등록
+              KIS 키 등록
             </button>
           </div>
         ) : confirming ? (

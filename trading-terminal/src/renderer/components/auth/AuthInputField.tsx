@@ -17,8 +17,8 @@ interface AuthInputFieldProps extends InputHTMLAttributes<HTMLInputElement> {
 /**
  * AuthInputField — 라벨 + (좌측 아이콘) + input + (비밀번호 toggle) 래퍼.
  *
- * 디자인 토큰 기반 input-wrap 스타일을 직접 구현 (input-base 스타일 미사용).
- * focus 상태는 wrapper 가 직접 추적하여 border + box-shadow 적용.
+ * 입력칸 모양은 .input-base 와 같은 규칙(옅은 면, 반경 --radius-field, 포커스 금색 선)이고,
+ * 아이콘 · 비밀번호 토글을 안에 넣으려고 wrapper 가 포커스를 직접 추적한다.
  *
  * a11y / 보안:
  *   - useId() 로 고유 id 생성 + <label htmlFor> 결합 → 스크린리더 라벨 연결
@@ -53,28 +53,23 @@ export default function AuthInputField({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <label
-          htmlFor={inputId}
-          className="text-text-secondary text-xs font-medium tracking-wide"
-        >
+        <label htmlFor={inputId} className="text-ink-2 text-[12.5px] font-medium">
           {label}
         </label>
         {labelTrailing}
       </div>
+      {/* 입력칸 — 옅은 면 + 1px 선, 포커스에서만 금색 선 (design-system.md 금 · 접근성) */}
       <div
-        className={`flex items-center gap-2 h-9 px-2.5 rounded-md bg-surface-3 border transition-colors ${
-          focused
-            ? 'border-accent-500'
-            : 'border-border-strong'
+        className={`flex items-center gap-2 h-11 px-3.5 rounded-[var(--radius-field)] border transition-colors duration-100 ${
+          focused ? 'border-gold' : 'border-border-strong'
         }`}
-        style={
-          focused
-            ? { boxShadow: '0 0 0 3px rgba(226,189,98,0.18)' }
-            : undefined
-        }
+        style={{
+          background: 'rgba(var(--ink-rgb),0.04)',
+          boxShadow: focused ? '0 0 0 1px var(--gold)' : undefined,
+        }}
       >
         {leadingIcon && (
-          <span className="text-text-tertiary flex-none flex items-center" aria-hidden>
+          <span className="text-ink-3 flex-none flex items-center" aria-hidden>
             {leadingIcon}
           </span>
         )}
@@ -94,7 +89,7 @@ export default function AuthInputField({
             setFocused(false)
             inputProps.onBlur?.(e)
           }}
-          className={`flex-1 bg-transparent text-text-primary text-sm outline-none placeholder:text-text-disabled tracking-wide ${
+          className={`flex-1 min-w-0 bg-transparent text-ink-1 text-[14px] outline-none placeholder:text-ink-4 ${
             className ?? ''
           }`}
         />

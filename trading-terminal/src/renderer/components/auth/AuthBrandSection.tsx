@@ -1,27 +1,16 @@
+import lockupUrl from '../../assets/logo/logothea-lockup-dark.svg'
+
 /**
- * AuthBrandSection — 인증 페이지 카드 위쪽 브랜드 영역.
- * 그라데이션 EW 로고 + 워드마크 + 서브 카피.
+ * AuthBrandSection — 로그인 · 키 등록 카드 위의 브랜드 영역.
+ * 어두운 바탕용 가로 조합(심볼 + 흰 워드마크)을 쓴다. 원본은 docs/design/logo/ 이고
+ * 크기 · 여백 규칙은 docs/design/brand.md "로고와 앱 아이콘" 을 따른다.
  */
 export default function AuthBrandSection() {
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="w-11 h-11 rounded-xl grid place-items-center font-extrabold text-base tracking-tight"
-        style={{
-          background: 'linear-gradient(135deg, #3a3b40, #26272b)',
-          color: '#fbfaf6',
-          boxShadow:
-            '0 0 0 1px rgba(226,189,98,.5), 0 12px 32px -10px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.35)',
-        }}
-      >
-        EW
-      </div>
-      <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
-        EarningWhisperer Terminal
-      </div>
-      <div className="text-text-tertiary text-sm whitespace-nowrap">
-        실시간 어닝콜 AI 분석 · 직접 주문
-      </div>
+    <div className="flex flex-col items-center gap-3">
+      {/* 높이 40px — 가로 조합 최소 24px 이상. 둘레 여백은 심볼 높이의 1/4(10px) 이상 */}
+      <img src={lockupUrl} alt="Logothea" className="h-10 w-auto m-2.5 select-none" draggable={false} />
+      <p className="text-ink-3 text-[13px] whitespace-nowrap">어닝콜을 들으며 판단하고 주문합니다</p>
     </div>
   )
 }
