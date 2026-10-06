@@ -43,6 +43,7 @@ J2 와 J3 이 제품의 중심입니다. J1 은 그 입구이고 J4·J5 는 보�
 | 직전 콜 대조 | J2 | 구현. 지난 콜 발언과 비교해 개선·후퇴·변화 없음 등으로 분류합니다([지난 분기 대비](features/fact-check.md#지난-분기-대비)) |
 | 종합 판단(실행 판단, 질문 회피, 파급 영향, 손절·익절 계획) | J3 | 구현. [종합 판단](features/earnings-summary.md) |
 | KIS 계좌 직접 주문(모의·실전) | J4 | 구현. [KIS 주문](features/trading.md) |
+| 자체 페이퍼 계정 | J4 | 구현, 존속 미정. KIS 키 없이 앱 안에서 가상으로 체결합니다([UX 문서](design/ux.md#아직-정하지-않은-것)) |
 | 실적 일정, 종목 정보, 시세 | J1 | 구현. [대시보드와 마켓](features/market.md) |
 | 시연 재생 | J6 | 구현. 지난 어닝콜 녹취록을 서버가 재생합니다([ADR 0004](adr/0004-replay-past-earnings-call-for-demo.md)) |
 | 자막 한국어 번역 | J2 | 계획 #110 |
