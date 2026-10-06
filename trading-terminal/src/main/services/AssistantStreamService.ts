@@ -31,8 +31,8 @@ export interface AssistantStreamDeps {
 
 const EVENT_TYPES = new Set<AssistantEventType>(['meta', 'delta', 'citations', 'done', 'error'])
 const TERMINAL_EVENTS = new Set<AssistantEventType>(['done', 'error'])
-// 직전 질문을 취소한 직후에는 backend 가 끊김을 알아채기 전(하트비트 주기 수 초)이라 같은 사용자의 잠금이 남아 409 가 온다.
-// 그때만 짧게 기다렸다 다시 보낸다. 다른 기기에서 진행 중인 질문 때문인 409 는 바로 알린다.
+// 직전 질문의 연결을 닫은 직후(취소, 또는 답이 끝나 우리가 닫은 경우)에는 backend 가 잠금을 풀기 전이라 409 가 올 수 있다.
+// 그 뒤 10초 안의 409 만 짧게 기다렸다 다시 보낸다. 같은 사용자가 다른 기기에서 질문 중이면 이 구간에서는 거절이 최대 7.5초 늦게 알려진다.
 const BUSY_RETRY_WINDOW_MS = 10_000
 // backend 는 2초마다 하트비트(`:`)를 보낸다. 이 시간 동안 아무 바이트도 없으면 연결이 죽은 것으로 본다.
 export const STREAM_IDLE_TIMEOUT_MS = 15_000

@@ -113,6 +113,22 @@ describe('useAssistantStore', () => {
     })
   })
 
+  it('로그인 만료는 backend 401 본문의 code 와 무관하게 auth_expired 턴이 된다', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === IPC_CHANNELS.ASSISTANT_ASK) {
+        throw new IpcError('AUTH_EXPIRED', '로그인이 만료됐습니다.', { status: 401, code: 'unauthorized', message: 'x', resetAt: null })
+      }
+      return true
+    })
+    const store = useAssistantStore.getState()
+    store.open({ ticker: 'WMT', callId: 'call-1' })
+    await store.ask({ question: 'q' })
+
+    expect(useAssistantStore.getState().conversation!.turns[0]).toMatchObject({
+      status: 'error', error: { code: 'auth_expired', message: ASSISTANT_ERROR_MESSAGES.auth_expired },
+    })
+  })
+
   it('스트림 전 거절(429)은 reset_at 과 함께 오류 턴이 된다', async () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === IPC_CHANNELS.ASSISTANT_ASK) {

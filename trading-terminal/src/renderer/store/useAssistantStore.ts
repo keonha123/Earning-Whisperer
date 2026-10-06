@@ -282,7 +282,11 @@ function lastSequence(ticker: string, callId: string): number {
 function rejectionOf(e: unknown): { code: string; message: string; resetAt: string | null } {
   if (isIpcError(e)) {
     const details = (e.details ?? null) as Partial<AssistantRejection> | null
-    const code = details?.code ?? (e.code === 'AUTH_EXPIRED' ? 'auth_expired' : e.code === 'VALIDATION' ? 'validation' : e.code === 'NETWORK' ? 'network' : 'internal')
+    // 로그인 만료는 backend 401 본문의 code 와 무관하게 auth_expired 로 맞춘다(화면 계약).
+    const code =
+      e.code === 'AUTH_EXPIRED'
+        ? 'auth_expired'
+        : details?.code ?? (e.code === 'VALIDATION' ? 'validation' : e.code === 'NETWORK' ? 'network' : 'internal')
     return { code, message: ASSISTANT_ERROR_MESSAGES[code] ?? details?.message ?? e.message, resetAt: details?.resetAt ?? null }
   }
   return { code: 'internal', message: ASSISTANT_ERROR_MESSAGES.internal, resetAt: null }
