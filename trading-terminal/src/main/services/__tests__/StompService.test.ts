@@ -348,3 +348,89 @@ describe('StompService — 인증 실패 후 재연결', () => {
     expect(clients).toHaveLength(1)
   })
 })
+
+describe('StompService — 자막 번역 구독 (Contract 4.8)', () => {
+  it('연결 중이면 바로 구독하고, 받은 메시지를 renderer 로 push 한다', async () => {
+    const { StompService, BrowserWindow } = await loadService()
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
+    ])
+    StompService.connect()
+    last().onConnect!()
+
+    StompService.subscribeTranscriptTranslation('WMT')
+
+    const call = last().subscribe.mock.calls.find((c) => c[0] === '/topic/transcript-translation/WMT')
+    expect(call).toBeDefined()
+    const handler = call![1] as (m: { body: string }) => void
+    handler({ body: JSON.stringify({ ticker: 'WMT', sequences: [0], text_ko: '번역' }) })
+    expect(sendSpy).toHaveBeenCalledWith(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_RECEIVED, {
+      ticker: 'WMT',
+      sequences: [0],
+      text_ko: '번역',
+    })
+  })
+
+  it('미연결 중 요청한 구독은 연결되면 자동으로 붙는다', async () => {
+    const { StompService } = await loadService()
+    StompService.subscribeTranscriptTranslation('WMT')
+    StompService.connect()
+
+    last().onConnect!()
+
+    expect(last().subscribe).toHaveBeenCalledWith(
+      '/topic/transcript-translation/WMT',
+      expect.any(Function),
+    )
+  })
+
+  it('구독 해제하면 unsubscribe 하고 재연결 때 다시 붙지 않는다', async () => {
+    const { StompService } = await loadService()
+    StompService.connect()
+    last().onConnect!()
+    StompService.subscribeTranscriptTranslation('WMT')
+    const sub = last().subscribe.mock.results.at(-1)!.value as { unsubscribe: ReturnType<typeof vi.fn> }
+
+    StompService.unsubscribeTranscriptTranslation('WMT')
+    expect(sub.unsubscribe).toHaveBeenCalled()
+
+    last().subscribe.mockClear()
+    last().onConnect!()
+    expect(last().subscribe).not.toHaveBeenCalledWith('/topic/transcript-translation/WMT', expect.any(Function))
+  })
+
+  it('disconnect 하면 구독 목록을 비워, 다시 연결해도 이전 ticker 로 자동 구독하지 않는다', async () => {
+    const { StompService } = await loadService()
+    StompService.connect()
+    last().onConnect!()
+    StompService.subscribeTranscriptTranslation('WMT')
+
+    StompService.disconnect()
+    StompService.connect()
+    last().onConnect!()
+
+    expect(last().subscribe).not.toHaveBeenCalledWith(
+      '/topic/transcript-translation/WMT',
+      expect.any(Function),
+    )
+  })
+
+  it('파싱할 수 없는 메시지는 push 하지 않는다', async () => {
+    const { StompService, BrowserWindow } = await loadService()
+    const sendSpy = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
+    ])
+    StompService.connect()
+    last().onConnect!()
+    StompService.subscribeTranscriptTranslation('WMT')
+    const handler = last().subscribe.mock.calls.at(-1)![1] as (m: { body: string }) => void
+    sendSpy.mockClear()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    handler({ body: 'not json' })
+
+    expect(sendSpy).not.toHaveBeenCalledWith(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_RECEIVED, expect.anything())
+  })
+})

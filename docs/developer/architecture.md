@@ -97,8 +97,9 @@ backend 와 통신합니다.
 
 STOMP 메시지는 main 프로세스가 받아 IPC 이벤트(`terminal:transcript:segment-received`,
 `terminal:factcheck:batch-received`, `terminal:evaluation:received` 등)로 renderer 에 넘깁니다. renderer 의
-`useLiveTranscript`, `useFactCheck`, `useEarningsSummary`, `useTranscriptDiff` 훅이 이 이벤트를 store 에
-반영합니다.
+`useLiveTranscript`, `useFactCheck`, `useEarningsSummary`, `useTranscriptDiff`, `useTranscriptTranslation` 훅이
+이 이벤트를 store 에 반영합니다. `useTranscriptTranslation` 은 용어 사전(`GET /api/v1/glossary`)도 받아 두고,
+번역문마다 용어 밑줄 위치(`spans`)를 계산해 돌려줍니다(`src/renderer/lib/glossaryHighlight.ts`).
 
 계좌 유형은 `KIS_REAL`, `KIS_PAPER`, `SELF_PAPER` 세 가지입니다. `SELF_PAPER` 는 KIS 를 거치지 않고 시세
 캐시 기준으로 가상 체결합니다.

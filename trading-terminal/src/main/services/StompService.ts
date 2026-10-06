@@ -36,6 +36,9 @@ const evaluationSubscriptions = new Map<string, StompSubscription | undefined>()
 /** 직전 콜 대조 구독 핸들. 위 Map 들과 동일한 규약. */
 const transcriptDiffSubscriptions = new Map<string, StompSubscription | undefined>()
 
+/** 자막 번역 구독 핸들 (Contract 4.8). 위 Map 들과 동일한 규약. */
+const transcriptTranslationSubscriptions = new Map<string, StompSubscription | undefined>()
+
 function getRetryDelay(): number {
   return RETRY_DELAYS[Math.min(retryCount, RETRY_DELAYS.length - 1)]
 }
@@ -233,6 +236,13 @@ export const StompService = {
           )
           transcriptDiffSubscriptions.set(ticker, sub)
         }
+        for (const ticker of transcriptTranslationSubscriptions.keys()) {
+          const sub = client!.subscribe(
+            `/topic/transcript-translation/${ticker}`,
+            transcriptTranslationMessageHandler,
+          )
+          transcriptTranslationSubscriptions.set(ticker, sub)
+        }
       },
 
       onDisconnect: () => {
@@ -308,6 +318,7 @@ export const StompService = {
     transcriptSubscriptions.clear()
     factCheckSubscriptions.clear()
     transcriptDiffSubscriptions.clear()
+    transcriptTranslationSubscriptions.clear()
     onStatusChange('DISCONNECTED')
   },
 
@@ -417,6 +428,39 @@ export const StompService = {
   },
 
   /**
+   * 동적 자막 번역 토픽 구독 (Contract 4.8).
+   * subscribeTranscriptDiff 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
+   * 다음 onConnect 에서 자동 재구독한다.
+   */
+  subscribeTranscriptTranslation(ticker: string) {
+    if (!ticker) return
+    if (transcriptTranslationSubscriptions.get(ticker)) return
+
+    if (client?.connected) {
+      const sub = client.subscribe(
+        `/topic/transcript-translation/${ticker}`,
+        transcriptTranslationMessageHandler,
+      )
+      transcriptTranslationSubscriptions.set(ticker, sub)
+    } else {
+      transcriptTranslationSubscriptions.set(ticker, undefined)
+    }
+  },
+
+  unsubscribeTranscriptTranslation(ticker: string) {
+    if (!ticker) return
+    const sub = transcriptTranslationSubscriptions.get(ticker)
+    if (sub) {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.error('[StompService] 자막 번역 unsubscribe 실패:', e)
+      }
+    }
+    transcriptTranslationSubscriptions.delete(ticker)
+  },
+
+  /**
    * 동적 종합 판단 토픽 구독 (Contract 4.7).
    * subscribeFactCheck 와 동일한 규약 — 미연결 시 ticker 만 기록해 두고
    * 다음 onConnect 에서 자동 재구독한다.
@@ -483,6 +527,16 @@ function transcriptDiffMessageHandler(message: IMessage) {
     pushToRenderer(IPC_CHANNELS.TRANSCRIPT_DIFF_RECEIVED, payload)
   } catch (e) {
     console.error('[StompService] 직전 콜 대조 파싱 실패:', e)
+  }
+}
+
+/** 자막 번역 STOMP 메시지 핸들러 — 위와 동일한 이유로 module-level 에 둔다. */
+function transcriptTranslationMessageHandler(message: IMessage) {
+  try {
+    const payload = JSON.parse(message.body)
+    pushToRenderer(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_RECEIVED, payload)
+  } catch (e) {
+    console.error('[StompService] 자막 번역 파싱 실패:', e)
   }
 }
 

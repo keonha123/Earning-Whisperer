@@ -238,6 +238,32 @@ export const IPC_CHANNELS = {
   EVALUATION_RECEIVED: 'terminal:evaluation:received',
 
   /**
+   * 어닝콜 자막 한국어 번역 동적 구독.
+   * Backend Contract 4.8: STOMP /topic/transcript-translation/{ticker}.
+   * TRANSCRIPT_DIFF_SUBSCRIBE 와 같은 생명주기 — 보고 있는 어닝콜 ticker 를 따라간다.
+   * payload: { ticker } (Renderer→Main)
+   */
+  TRANSCRIPT_TRANSLATION_SUBSCRIBE: 'terminal:transcript-translation:subscribe',
+  TRANSCRIPT_TRANSLATION_UNSUBSCRIBE: 'terminal:transcript-translation:unsubscribe',
+
+  /**
+   * STOMP 자막 번역 push (Main → Renderer).
+   * payload (snake_case): { ticker, call_id, sequences: number[], text_ko, terms_used: string[] }
+   * 백엔드는 세그먼트 몇 개를 묶어 한 문단으로 번역한다. sequences 로 원문 세그먼트와 짝짓는다.
+   * 번역에 실패한 묶음은 도착하지 않는다. 변환·검증은 store 의 upsertTranslation 에서 수행.
+   */
+  TRANSCRIPT_TRANSLATION_RECEIVED: 'terminal:transcript-translation:received',
+
+  /**
+   * 어닝콜 용어 사전 조회 (Renderer → Main, invoke).
+   * Backend Contract 7.9: GET /api/v1/glossary — JWT 필요.
+   * 응답: { version, terms: [{ term, aliases, ko, definition_ko?, why_ko?, category }] } (snake_case)
+   * 실패 시 null — 사전 없이도 번역 · 자막은 그대로 보여야 하므로 reject 하지 않는다.
+   * AUTH_EXPIRED 만 다른 IPC 와 같은 규약으로 reject 한다. renderer store 는 이것도 실패로 보고 나중에 재시도한다.
+   */
+  GLOSSARY_GET: 'terminal:glossary:get',
+
+  /**
    * 어닝콜 시연 재생 제어 (Renderer → Main, invoke).
    * Backend Contract 7.8. payload: { ticker }
    * DEMO_START 응답: { ok: true, callId, segmentCount, intervalMs }

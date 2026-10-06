@@ -107,6 +107,19 @@ export function registerWsHandlers() {
   })
 
   /*
+   * 자막 번역 동적 구독 (Contract 4.8). 팩트체크와 동일한 규약.
+   */
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_SUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.subscribeTranscriptTranslation(payload.ticker)
+  })
+
+  registerHandler<{ ticker: string }, void>(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_UNSUBSCRIBE, (_e, payload) => {
+    if (!payload || typeof payload.ticker !== 'string') return
+    StompService.unsubscribeTranscriptTranslation(payload.ticker)
+  })
+
+  /*
    * 종합 판단 동적 구독 (Contract 4.7). 팩트체크와 동일한 규약.
    */
   registerHandler<{ ticker: string }, void>(IPC_CHANNELS.EVALUATION_SUBSCRIBE, (_e, payload) => {
