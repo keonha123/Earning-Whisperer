@@ -807,3 +807,76 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 - **타임아웃 뒤에도 Gemini 호출은 끝까지 진행된다.** 응답을 기다리지 않을 뿐 호출 자체는 취소되지 않으므로 할당량을 쓴다.
 - **백엔드 호출 방식.** 백엔드는 세그먼트를 묶어(4.8 발행 시점 참고) 원문을 공백으로 이어 붙여 `text`로 보내고, 묶음의 첫 `sequence`를 `sequence`로 쓴다. `terms`의 `term`은 원문에 나온 표기 그대로이며, 겹치는 용어는 긴 표기만 담는다.
 - **할당량 주의.** 무료 등급 Gemini는 모델별로 **분당 15요청**이다(`gemini-3.1-flash-lite` 실측, 429 `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`). 번역은 팩트체크(§9.1)와 같은 모델을 쓰므로 할당량을 함께 쓴다. 세그먼트마다 번역을 부르면 시연(6초 간격 24세그먼트) 기준 분당 약 10회가 더해져, 팩트체크와 합쳐 한도를 넘는다.
+
+## 10. [Contract 10] 질의응답 근거 조회 (logothea-assistant ➔ Backend · AI Engine)
+
+어닝콜 질의응답 서비스(logothea-assistant, #112)가 답변 근거를 읽는 내부 계약입니다. 세 서비스 모두 같은 호스트의
+루프백 주소로만 통신하고, 외부(터미널)에는 열리지 않습니다. 근거 시점(`as_of`)은 backend 가 확정해 넘기며, 아래 API 는
+그 시점 이후의 정보를 돌려주지 않습니다.
+
+### 10.1. 콜 세그먼트 (`GET /api/v1/internal/assistant/calls/{callId}/segments?until_sequence=`)
+
+- 인증: `X-Internal-Secret` (6.4 와 같음)
+- backend 는 `/api/v1/internal/transcript-segment` 로 받은 세그먼트 중 레지스트리 검증을 통과해 발행한 것만 콜 단위로
+  Redis 에 보관합니다(`app.assistant.segment-ttl-hours`, 기본 48시간). 보관 실패는 자막 발행에 영향을 주지 않습니다.
+
+```json
+{
+  "call_id": "demo-wmt-q2fy27-1787227200000-1",
+  "until_sequence": 17,
+  "last_sequence": 17,
+  "segments": [
+    { "sequence": 3, "start_ms": 18000, "end_ms": 23000, "speaker": "John Furner", "text": "Comp sales for Walmart U.S. were 2.6%...", "timestamp": 1787227218 }
+  ]
+}
+```
+
+- `until_sequence` 이하만 돌려줍니다. 저장된 마지막이 더 작으면 그만큼만 돌려주고 `last_sequence` 로 알려 줍니다.
+- 저장된 세그먼트가 없으면 `404 {"error": "..."}` 입니다.
+
+### 10.2. 실적 추정치 (`GET /api/v1/internal/assistant/stocks/{ticker}/estimates?as_of_epoch=`)
+
+```json
+{
+  "ticker": "WMT",
+  "as_of_epoch": 1787227200,
+  "upcoming": { "scheduled_at": "2026-08-20T11:00:00Z", "eps_estimate": 0.74, "revenue_estimate": 176000000000.00 },
+  "recent_results": [
+    { "announced_at": "2026-05-15T11:00:00Z", "fiscal_period_label": "Q1 FY27", "eps_estimate": 0.60, "eps_actual": 0.61, "surprise_percent": 1.67, "price_reaction_percent": -2.1 }
+  ]
+}
+```
+
+- `recent_results` 는 `as_of` 하루 뒤까지 발표된 결과입니다(실적 발표문은 콜 당일 콜보다 먼저 나옵니다).
+- `upcoming` 은 `as_of` 하루 전 이후의 가장 이른 일정이며, 없으면 `null` 입니다. 모르는 종목은 `404` 입니다.
+
+### 10.3. 용어 사전 (`GET /api/v1/internal/assistant/glossary`)
+
+7.9 `GET /api/v1/glossary` 와 같은 본문을 내부 인증으로 제공합니다.
+
+### 10.4. 시점 조건 뉴스 검색 (`POST /v1/engine/assistant/news-search`)
+
+```json
+// 요청
+{ "ticker": "WMT", "query": "comp sales guidance", "as_of_epoch": 1787227200, "lookback_days": 30, "top_k": 6 }
+// 응답
+{ "ticker": "WMT", "as_of_epoch": 1787227200,
+  "hits": [ { "doc_id": "...", "title": "...", "source": "Reuters", "url": "...", "published_at": 1787223600, "snippet": "...(최대 600자)", "score": 0.81 } ],
+  "warnings": [] }
+```
+
+- `published_at <= as_of_epoch` 이고 `as_of_epoch - lookback_days` 이후인 기사만 돌려줍니다. 기존
+  `/v1/engine/evidence/search` 는 시점 상한이 없어 질의응답에 쓰지 않습니다.
+- 검색에 실패하면(임베딩 한도 등) `200` 에 `hits: []`, `warnings: ["news_search_failed"]` 입니다.
+
+### 10.5. 직전 콜 원문 문장 (`GET /v1/engine/assistant/prior-call-statements?ticker=&before_epoch=`)
+
+```json
+{ "available": true, "ticker": "WMT", "document_id": "investing:WMT:...", "fiscal_quarter": "Q1 FY2027", "published_at_epoch": 1779000000,
+  "statements": [ { "statement_id": "...", "order": 1, "topic": "guidance", "speaker": "John David Rainey", "text": "We are reiterating our full year guidance..." } ],
+  "warnings": [] }
+```
+
+- `before_epoch` 이전에 발행된 가장 최근 콜의 핵심 문장(#145, 원문 그대로)을 순서대로 돌려줍니다.
+- 직전 콜이 없으면 `available: false`, `warnings: ["prior_call_not_found"]` 입니다. 콜은 있지만 핵심 문장이 없으면
+  `available: true`, `statements: []`, `warnings: ["key_statements_not_found"]` 입니다.
