@@ -12,12 +12,12 @@ _EXPLICIT_TRADE = re.compile(
     r"사야\s*(돼|되|할까|하나|하냐|할지)"
     r"|살까|팔까"
     r"|팔아야\s*(돼|되|할까|하나|할지)"
-    r"|(매수|매도)\s*(할까|해야|해도|하는\s*게|할지)"
+    r"|(매수|매도)\s*(할까|하는\s*게|할지)"
     r"|들어가도\s*(돼|되|될까)"
     r"|손절\s*(할까|해야)"
     r"|물타기\s*(할까|해야|해도)"
-    r"|should\s+i\s+(buy|sell)"
-    r"|is\s+it\s+a\s+(buy|sell)",
+    r"|should\s+i\s+(buy|sell)\b(?![-\s]*(back|side))"
+    r"|is\s+it\s+a\s+(buy|sell)\b(?![-\s]*(back|side))",
     re.IGNORECASE,
 )
 
