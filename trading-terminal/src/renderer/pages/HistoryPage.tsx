@@ -5,30 +5,32 @@ import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import Pagination from '../components/common/Pagination'
 import SegmentedControl from '../components/common/SegmentedControl'
 import Dropdown from '../components/common/Dropdown'
+import Modal from '../components/common/Modal'
+import { EmptyState } from '../components/common/StateView'
 import { showIpcErrorToast } from '../components/common/Toast'
+import { showComingSoon } from '../components/call/comingSoon'
 import { isIpcError } from '../../lib/types/ipcError'
 import { useConnectionStore } from '../store/useConnectionStore'
 import { useUserStore } from '../store/useUserStore'
 import { parseServerTime } from '../lib/serverTime'
 
 /**
- * HistoryPage — 체결 내역.
+ * HistoryPage — 포트폴리오의 거래 내역 탭 (docs/design/screens/portfolio.md).
  *
- * 디자인 매칭: HistoryPage.html.
- *  - Row 1: 제목 + 요약 칩 (오늘/BUY/SELL) + 새로고침.
- *  - Row 2 (필터 바): 세그먼트(전체/BUY/SELL/실패) + 드롭다운 2개 (기간/종목)
- *    + 검색 + CSV 내보내기 (noop).
- *  - Row 3 (테이블 카드): 8컬럼.
+ *  - Row 1: 요약 칩 (이번 페이지 건수 · 매수 · 매도) + 마지막 업데이트 + 새로고침.
+ *  - Row 2 (필터 바): 세그먼트(전체/매수/매도/실패) + 드롭다운 2개 (기간/종목)
+ *    + 검색 + CSV 내보내기.
+ *  - Row 3 (표): 8컬럼. 정렬 표시는 자리만 두고 누르면 "준비 중" 을 알린다.
  *  - Footer: 총 N건 / Pagination / 페이지당 행 수.
+ *  - 목록 조회가 실패하면 받아 둔 목록을 남기고 실패 띠를 띄운다. 받아 둔 목록이 없으면 실패 문구만 둔다.
  *
  * Trade 인터페이스 정책:
  *  - 기존 Trade 타입 (id, ticker, side, executedQty, executedPrice, status, createdAt)
  *    그대로 유지.
  *
  * 보안 메모:
- *  - CSV 내보내기는 본 PR 에서 noop. 다음 PR 에서 IPC 핸들러 (`SHELL_SAVE_CSV`)
- *    경유로 구현 예정. main 측에서 path traversal 방지(다운로드 디렉터리 화이트리스트
- *    + 파일명 sanitize), 사용자 권한 검증 필요.
+ *  - CSV 내보내기는 IPC 핸들러 (`SHELL_SAVE_CSV`) 경유로 저장한다. 저장 위치와 파일명
+ *    검증은 main 측이 맡는다.
  *  - 검색/필터는 클라이언트 측 필터링만 (백엔드 쿼리 확장은 별도 PR).
  */
 
@@ -63,6 +65,8 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<PageSizeOption>('12')
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  /** 마지막 목록 조회가 실패했는지. 성공하면 풀린다 — "불러오는 중" 과 "실패" 를 구분하기 위해 따로 든다. */
+  const [loadFailed, setLoadFailed] = useState(false)
   const [detailRow, setDetailRow] = useState<HistoryRow | null>(null)
 
   const navigate = useNavigate()
@@ -147,8 +151,11 @@ export default function HistoryPage() {
       setTrades(data.content ?? [])
       setTotalPages(data.totalPages ?? 0)
       setLastUpdatedAt(Date.now())
+      setLoadFailed(false)
     } catch (e: unknown) {
       console.error('거래 내역 조회 실패:', e)
+      // 더 새로운 요청이 떠 있으면 그 결과가 상태를 정한다
+      if (generation === loadGenerationRef.current) setLoadFailed(true)
       showIpcErrorToast(e, {
         onNavigate:
           isIpcError(e) && e.code === 'AUTH_EXPIRED'
@@ -253,45 +260,34 @@ export default function HistoryPage() {
     ]
   }, [displayRows])
 
+  const reload = () => reconcileThenLoad(page)
+  const hasRows = displayRows.length > 0
+
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
-      {/* Row 1: 헤더 */}
+    <div className="flex flex-col gap-4 h-full min-h-0">
+      {/* Row 1: 요약 + 새로고침 */}
       <div className="flex items-center gap-3 shrink-0">
-        <h2 className="text-[20px] font-semibold text-text-primary tracking-[-0.015em] whitespace-nowrap">
-          체결 내역
-        </h2>
-        <div className="flex gap-1.5">
+        <div className="flex gap-2">
           <SummaryChip>
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-70">
-              <circle cx="6" cy="6" r="4.5" />
-              <path d="M6 3.5V6l1.8 1.2" />
-            </svg>
-            오늘 <b className="num text-text-primary font-semibold">{summary.todayCount}</b>건
+            오늘 <span><b className="tabular-nums text-ink-1 font-semibold">{summary.todayCount}</b>건</span>
           </SummaryChip>
           <SummaryChip>
-            <span className="text-buy">▲ BUY</span>{' '}
-            <b className="num text-buy font-semibold">{summary.buyCount}</b>건
+            <span className="text-up">▲ 매수</span>{' '}
+            <span><b className="tabular-nums text-up font-semibold">{summary.buyCount}</b>건</span>
           </SummaryChip>
           <SummaryChip>
-            <span className="text-sell">▼ SELL</span>{' '}
-            <b className="num text-sell font-semibold">{summary.sellCount}</b>건
+            <span className="text-down">▼ 매도</span>{' '}
+            <span><b className="tabular-nums text-down font-semibold">{summary.sellCount}</b>건</span>
           </SummaryChip>
         </div>
-        <div className="ml-auto flex items-center gap-2 text-[11px] text-text-tertiary whitespace-nowrap">
+        <div className="ml-auto flex items-center gap-3 text-[12.5px] text-ink-3 whitespace-nowrap">
           {lastUpdatedAt && (
             <span>
-              마지막 업데이트{' '}
-              <span className="num">{formatDateTime(lastUpdatedAt)}</span>
+              마지막 업데이트 <span className="num">{formatDateTime(lastUpdatedAt)}</span>
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => reconcileThenLoad(page)}
-            className="px-2.5 py-1 rounded-md inline-flex items-center gap-1.5
-                       text-text-secondary hover:bg-surface-2 hover:text-text-primary
-                       text-[11px] font-medium"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <button type="button" onClick={reload} disabled={loading} className="gbtn gbtn-sm">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
               <path d="M2 6a4 4 0 017-2.5M10 6a4 4 0 01-7 2.5M9 2v2h-2M3 10V8h2" />
             </svg>
             새로고침
@@ -300,13 +296,12 @@ export default function HistoryPage() {
       </div>
 
       {/* Row 2: 필터 바 */}
-      <div className="shrink-0 bg-surface-1 border border-border-subtle rounded-lg
-                      px-3 py-2.5 flex items-center gap-2.5 flex-wrap">
+      <div className="shrink-0 flex items-center gap-3 flex-wrap">
         <SegmentedControl<SegmentId>
           items={[
             { id: 'all', label: '전체' },
-            { id: 'buy', label: 'BUY' },
-            { id: 'sell', label: 'SELL' },
+            { id: 'buy', label: '매수' },
+            { id: 'sell', label: '매도' },
             { id: 'failed', label: '실패만' },
           ]}
           activeId={segment}
@@ -332,8 +327,9 @@ export default function HistoryPage() {
           ariaLabel="종목 필터"
         />
 
-        <div className="ml-auto flex items-center gap-2 bg-surface-3 border border-border-strong rounded-md px-2.5 h-[30px] w-[200px]">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-tertiary">
+        <label className="ml-auto glass rim flex items-center gap-2 rounded-full px-4 h-9 w-[220px]
+                          focus-within:outline focus-within:outline-2 focus-within:outline-gold-hi focus-within:outline-offset-[3px]">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-ink-3" aria-hidden="true">
             <circle cx="5" cy="5" r="3.5" />
             <path d="M8 8l2.5 2.5" />
           </svg>
@@ -341,60 +337,87 @@ export default function HistoryPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ticker 검색…"
-            className="flex-1 bg-transparent text-[12px] text-text-primary placeholder:text-text-disabled outline-none"
+            placeholder="티커 검색"
+            aria-label="티커 검색"
+            className="flex-1 min-w-0 bg-transparent text-[13px] text-ink-1 placeholder:text-ink-3 outline-none"
           />
-        </div>
+        </label>
 
-        <button
-          type="button"
-          onClick={handleCsvExport}
-          className="h-[30px] px-3 inline-flex items-center gap-1.5 rounded-md
-                     border border-accent-500/35 text-accent-400 hover:bg-accent-500/10 hover:text-accent-300
-                     text-[11px] font-semibold whitespace-nowrap"
-        >
+        <button type="button" onClick={handleCsvExport} disabled={filtered.length === 0} className="gbtn gbtn-sm">
           CSV 내보내기
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="M5 1v6M2 5l3 3 3-3M1.5 9h7" />
           </svg>
         </button>
       </div>
 
-      {/* Row 3: 테이블 */}
-      <div className="card p-0 overflow-hidden flex flex-col flex-1 min-h-0 rounded-xl">
-        <div className="overflow-y-auto flex-1 min-h-0">
+      {/* 실패: 받아 둔 목록이 있으면 남기고 위에 알린다 */}
+      {loadFailed && hasRows && !loading && (
+        <div role="alert" className="shrink-0 flex items-center gap-3 rounded-full glass rim on-glass px-5 h-11 text-[13px]">
+          <span className="text-danger font-semibold">조회 실패</span>
+          <span className="text-ink-2">
+            거래 내역을 새로 불러오지 못했습니다. 아래는 마지막으로 받은 목록입니다
+            {lastUpdatedAt && <> · <span className="num">{formatDateTime(lastUpdatedAt)}</span></>}
+          </span>
+          <button type="button" onClick={reload} className="gbtn gbtn-sm ml-auto">
+            다시 시도
+          </button>
+        </div>
+      )}
+
+      {/* Row 3: 표 */}
+      <div className="frost rim rounded-[28px] overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="overflow-y-auto flex-1 min-h-0 px-3 pt-2">
           <table className="w-full table-fixed border-separate border-spacing-0">
+            <caption className="sr-only">거래 내역</caption>
             <colgroup>
-              <col style={{ width: 130 }} />
-              <col style={{ width: 78 }} />
-              <col style={{ width: 72 }} />
-              <col style={{ width: 52 }} />
+              <col style={{ width: 140 }} />
               <col style={{ width: 84 }} />
-              <col style={{ width: 104 }} />
+              <col style={{ width: 76 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 96 }} />
+              <col style={{ width: 112 }} />
               <col style={{ width: 80 }} />
-              <col style={{ width: 62 }} />
+              <col style={{ width: 64 }} />
             </colgroup>
             <thead>
               <tr>
-                <Th>일시 <span className="opacity-50 ml-1">↕</span></Th>
+                <Th>일시 <SortPlaceholder /></Th>
                 <Th>종목</Th>
                 <Th>방향</Th>
                 <Th align="right">체결수량</Th>
-                <Th align="right">체결가 <span className="opacity-50 ml-1">↕</span></Th>
-                <Th align="right">체결금액 <span className="opacity-50 ml-1">↕</span></Th>
+                <Th align="right">체결가 <SortPlaceholder /></Th>
+                <Th align="right">체결금액 <SortPlaceholder /></Th>
                 <Th>상태</Th>
-                <Th align="center">액션</Th>
+                <Th align="center">상세</Th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow key={i} />
-                ))
+                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
+              ) : loadFailed && !hasRows ? (
+                <tr>
+                  <td colSpan={8}>
+                    <EmptyState
+                      message="거래 내역을 불러오지 못했습니다."
+                      action={
+                        <button type="button" onClick={reload} className="gbtn gbtn-sm">
+                          다시 시도
+                        </button>
+                      }
+                    />
+                  </td>
+                </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-text-disabled text-xs">
-                    조건에 맞는 거래 내역이 없습니다
+                  <td colSpan={8}>
+                    <EmptyState
+                      message={
+                        hasRows
+                          ? '조건에 맞는 거래 내역이 없습니다.'
+                          : '이 기간에 거래 내역이 없습니다.'
+                      }
+                    />
                   </td>
                 </tr>
               ) : (
@@ -405,24 +428,17 @@ export default function HistoryPage() {
         </div>
 
         {/* Footer */}
-        <div className="h-12 min-h-[48px] flex items-center justify-between
-                        px-3.5 gap-3 border-t border-border-subtle"
-             style={{ backgroundColor: '#212226' /* surface-0b — 디자인 캔버스 한정 */ }}>
-          <div className="text-[11px] text-text-tertiary whitespace-nowrap">
-            총 <b className="num text-text-primary">{summary.totalCount}</b>건 중{' '}
-            <b className="num text-text-primary">
+        <div className="h-14 shrink-0 flex items-center justify-between px-6 gap-3 border-t border-white/[0.08]">
+          <div className="text-[12.5px] text-ink-3 whitespace-nowrap">
+            총 <b className="tabular-nums text-ink-1 font-semibold">{summary.totalCount}</b>건 중{' '}
+            <b className="tabular-nums text-ink-1 font-semibold">
               {filtered.length === 0 ? 0 : 1}–{filtered.length}
             </b>{' '}
             표시
           </div>
           <div className="flex-1 flex items-center justify-center">
-            {totalPages > 1 ? (
+            {totalPages > 1 && (
               <Pagination page={page} totalPages={totalPages} onPageChange={handlePageChange} />
-            ) : (
-              // 디자인 캔버스 매칭용 더미 페이지네이션 (실제 totalPages 가 0/1 일 때)
-              <div className="flex items-center gap-1 text-text-tertiary">
-                <button className="pagination-btn-active">1</button>
-              </div>
             )}
           </div>
           <Dropdown<PageSizeOption>
@@ -442,30 +458,34 @@ export default function HistoryPage() {
           />
         </div>
       </div>
-      {detailRow && (
-        <TradeDetailModal row={detailRow} onClose={() => setDetailRow(null)} />
-      )}
+      <TradeDetailModal row={detailRow} onClose={() => setDetailRow(null)} />
     </div>
   )
 }
 
 function SummaryChip({ children }: { children: React.ReactNode }) {
   return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md
-                 bg-surface-2 border border-border-strong text-[11px] text-text-tertiary
-                 whitespace-nowrap"
-    >
+    <span className="glass rim inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full text-[12px] font-semibold text-ink-3 whitespace-nowrap">
       {children}
     </span>
   )
 }
 
-/**
- * 테이블 헤더 셀. 배경은 surface-0b (#212226) — 디자인 캔버스 한정 색으로
- * tailwind.config 토큰에 미승격, HistoryPage 의 table header/footer 에서만 사용.
- * (footer 의 동일 색과 정합 유지.)
- */
+/** 정렬은 아직 없다 — 자리만 두고 누르면 "준비 중" 을 알린다 (#158 범위 밖). */
+function SortPlaceholder() {
+  return (
+    <button
+      type="button"
+      onClick={() => showComingSoon('정렬')}
+      aria-label="정렬 (준비 중)"
+      className="ml-1 opacity-50 hover:opacity-80"
+    >
+      ↕
+    </button>
+  )
+}
+
+/** 머리 행 바탕은 서리 유리가 창 바탕 위에 겹친 색 — 스크롤해도 판과 띠가 지지 않는다. */
 function Th({
   children,
   align = 'left',
@@ -475,9 +495,9 @@ function Th({
 }) {
   return (
     <th
-      className={`bg-[#212226] /* surface-0b — HistoryPage 캔버스 한정 */
-                  text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.12em]
-                  px-2 h-10 whitespace-nowrap border-b border-border-subtle sticky top-0 z-[1]
+      scope="col"
+      className={`sticky top-0 z-[1] bg-[#17181b] text-[12px] font-medium text-ink-3
+                  px-3 h-10 whitespace-nowrap border-b border-white/[0.08]
                   ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}
     >
       {children}
@@ -489,8 +509,8 @@ function SkeletonRow() {
   return (
     <tr>
       {Array.from({ length: 8 }).map((_, j) => (
-        <td key={j} className="px-2 h-11 border-b border-border-subtle">
-          <div className="h-3 bg-surface-2 rounded animate-pulse" />
+        <td key={j} className="px-3 h-12 border-b border-white/[0.06]">
+          <div className="skeleton h-3.5" />
         </td>
       ))}
     </tr>
@@ -499,146 +519,108 @@ function SkeletonRow() {
 
 function Row({ row, onDetail }: { row: HistoryRow; onDetail: () => void }) {
   const isFailed = row.status === 'FAILED'
+  const td = 'px-3 h-12 align-middle border-b border-white/[0.06]'
 
   return (
     <tr
-      className="group h-11 hover:bg-surface-2 transition-colors duration-100"
+      className="hover:bg-white/[0.04] transition-colors duration-200"
       title={row.failureReason ? `거부 사유: ${row.failureReason}` : undefined}
     >
-      <td className="px-2 align-middle border-b border-border-subtle text-[11px]
-                     num text-text-secondary tracking-[0.01em]
-                     group-hover:shadow-[inset_3px_0_0_rgba(var(--ink-rgb),0.5)]">
-        {formatDateTime(row.createdAt)}
+      <td className={`${td} num text-[12px] text-ink-2`}>{formatDateTime(row.createdAt)}</td>
+      <td className={td}>
+        <span className="num text-[13px] font-semibold text-ink-1">{row.ticker}</span>
       </td>
-      <td className="px-2 align-middle border-b border-border-subtle">
-        <span className="num text-[12px] font-semibold text-text-primary tracking-[0.02em]">
-          {row.ticker}
-        </span>
+      <td className={td}>
+        <DirLabel side={row.side} />
       </td>
-      <td className="px-2 align-middle border-b border-border-subtle">
-        <DirBadge side={row.side} />
-      </td>
-      <td className="px-2 num text-right align-middle border-b border-border-subtle text-[12px] text-text-secondary tabular-nums">
-        {row.executedQty}
-      </td>
-      <td className={`px-2 num text-right align-middle border-b border-border-subtle text-[12px] tabular-nums ${
-        isFailed ? 'line-through text-text-disabled' : 'text-text-secondary'
-      }`}>
+      <td className={`${td} text-right text-[13px] text-ink-2 tabular-nums`}>{row.executedQty}</td>
+      <td className={`${td} text-right text-[13px] tabular-nums ${isFailed ? 'line-through text-ink-3' : 'text-ink-2'}`}>
         {row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'}
       </td>
-      <td className={`px-2 num text-right align-middle border-b border-border-subtle text-[12px] tabular-nums ${
-        isFailed ? 'line-through text-text-disabled' : 'text-text-primary'
-      }`}>
+      <td className={`${td} text-right text-[13px] tabular-nums ${isFailed ? 'line-through text-ink-3' : 'text-ink-1'}`}>
         {row.amount != null
           ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : '—'}
       </td>
-      <td className="px-2 align-middle border-b border-border-subtle">
-        <StatusBadge status={row.status} reason={row.failureReason} />
+      <td className={td}>
+        <StatusLabel status={row.status} reason={row.failureReason} />
       </td>
-      <td className="px-2 text-center align-middle border-b border-border-subtle">
-        <button
-          type="button"
-          onClick={onDetail}
-          className="text-[11px] text-text-tertiary hover:text-accent-400
-                     inline-flex items-center gap-0.5"
-        >
-          상세 ↗
+      <td className={`${td} text-center`}>
+        <button type="button" onClick={onDetail} className="text-[12.5px] text-ink-3 hover:text-ink-1">
+          보기
         </button>
       </td>
     </tr>
   )
 }
 
-function DirBadge({ side }: { side: 'BUY' | 'SELL' }) {
+/** 매수 · 매도 글자는 가격 방향과 이어지므로 상승 빨강 · 하락 파랑을 쓴다 (design-system 가격). */
+function DirLabel({ side }: { side: 'BUY' | 'SELL' }) {
   return (
-    <span
-      className={`num inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold tracking-[0.04em] ${
-        side === 'BUY' ? 'bg-white/[0.06] text-buy' : 'bg-white/[0.06] text-sell'
-      }`}
-    >
-      {side === 'BUY' ? '▲' : '▼'} {side}
+    <span className={`text-[13px] font-semibold ${side === 'BUY' ? 'text-up' : 'text-down'}`}>
+      {side === 'BUY' ? '▲ 매수' : '▼ 매도'}
     </span>
   )
 }
 
-function StatusBadge({ status, reason }: { status: HistoryStatus; reason?: string }) {
-  if (status === 'EXECUTED') {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-info">
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M2.5 6l2.5 2.5L9.5 3.5" />
-        </svg>
-        체결
-      </span>
-    )
-  }
-  if (status === 'PENDING') {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-warning">
-        <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
-        대기
-      </span>
-    )
-  }
+const STATUS_META: Record<HistoryStatus, { label: string; className: string }> = {
+  EXECUTED: { label: '체결', className: 'text-ok' },
+  // tailwind 에는 caution 이름이 없어(예전 이름 warning) 토큰 변수를 직접 쓴다
+  PENDING: { label: '대기', className: 'text-[var(--caution)]' },
+  FAILED: { label: '실패', className: 'text-danger' },
+}
+
+/** 상태 색은 작은 점과 글자에만 쓰고 늘 문구와 함께 둔다. */
+function StatusLabel({ status, reason }: { status: HistoryStatus; reason?: string }) {
+  const meta = STATUS_META[status]
   return (
     <span
-      className="inline-flex items-center gap-1 text-[11px] font-semibold text-danger"
-      title={reason ? `거부 사유: ${reason}` : undefined}
+      className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold ${meta.className}`}
+      title={status === 'FAILED' && reason ? `거부 사유: ${reason}` : undefined}
     >
-      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 3l6 6M9 3l-6 6" />
-      </svg>
-      실패
+      <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
+      {meta.label}
     </span>
   )
 }
 
-function TradeDetailModal({ row, onClose }: { row: HistoryRow; onClose: () => void }) {
-  const fields: [string, string][] = [
-    ['일시', formatDateTime(row.createdAt)],
-    ['종목', row.ticker],
-    ['방향', row.side],
-    ['주문유형', row.orderType ?? '—'],
-    ['주문수량', row.orderQty != null ? String(row.orderQty) : '—'],
-    ['주문가', row.price != null ? `$${row.price.toFixed(2)}` : '—'],
-    ['체결수량', String(row.executedQty)],
-    ['체결가', row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'],
-    ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
-    ['상태', row.status],
-    ...(row.failureReason ? [['거부 사유', row.failureReason] as [string, string]] : []),
-  ]
+function TradeDetailModal({ row, onClose }: { row: HistoryRow | null; onClose: () => void }) {
+  const fields: [string, string][] = row
+    ? [
+        ['일시', formatDateTime(row.createdAt)],
+        ['종목', row.ticker],
+        ['방향', row.side === 'BUY' ? '매수' : '매도'],
+        ['주문유형', row.orderType === 'MARKET' ? '시장가' : row.orderType === 'LIMIT' ? '지정가' : '—'],
+        ['주문수량', row.orderQty != null ? String(row.orderQty) : '—'],
+        ['주문가', row.price != null ? `$${row.price.toFixed(2)}` : '—'],
+        ['체결수량', String(row.executedQty)],
+        ['체결가', row.executedPrice != null ? `$${row.executedPrice.toFixed(2)}` : '—'],
+        ['체결금액', row.amount != null ? `$${row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'],
+        ['상태', STATUS_META[row.status].label],
+        ...(row.failureReason ? [['거부 사유', row.failureReason] as [string, string]] : []),
+      ]
+    : []
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface-1 border border-border-subtle rounded-xl shadow-2xl w-[420px] max-w-[90vw] max-h-[80vh] overflow-y-auto p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal open={row != null} onClose={onClose} ariaLabel="거래 상세">
+      <div className="w-[420px] max-w-[90vw] max-h-[80vh] overflow-y-auto p-7">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-[14px] font-semibold text-text-primary">거래 상세</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-text-tertiary hover:text-text-primary"
-          >
-            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+          <h3 className="text-[18px] font-semibold text-ink-1">거래 상세</h3>
+          <button type="button" onClick={onClose} aria-label="닫기" className="gbtn gbtn-icon gbtn-sm">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M3 3l6 6M9 3l-6 6" />
             </svg>
           </button>
         </div>
-        <dl className="space-y-2.5">
+        <dl className="flex flex-col gap-3">
           {fields.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between gap-4">
-              <dt className="text-[11px] text-text-tertiary whitespace-nowrap">{label}</dt>
-              <dd className="text-[12px] text-text-primary num font-medium truncate text-right">{value}</dd>
+              <dt className="text-[13px] text-ink-3 whitespace-nowrap">{label}</dt>
+              <dd className="text-[14px] text-ink-1 tabular-nums truncate text-right">{value}</dd>
             </div>
           ))}
         </dl>
       </div>
-    </div>
+    </Modal>
   )
 }
 

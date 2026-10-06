@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
 import SegmentedControl from '../components/common/SegmentedControl'
-import { ComingSoon } from '../components/common/StateView'
+import AssetsView from '../components/portfolio/AssetsView'
 import HistoryPage from './HistoryPage'
 
 type PortfolioTab = 'assets' | 'history'
@@ -13,8 +13,7 @@ const TABS: { id: PortfolioTab; label: string }[] = [
 /**
  * 포트폴리오 — 자산 · 보유 / 거래 내역 (docs/design/ux.md 정보 구조).
  *
- * 메뉴 개편(#154) 단계에서는 자리만 잡는다. 거래 내역 탭은 예전 체결 내역 화면을 그대로 담고,
- * 자산 · 보유는 화면 이슈(#158)에서 홈의 계좌 카드를 옮겨 온다. 탭은 ?tab= 으로 남겨
+ * 화면 명세는 docs/design/screens/portfolio.md. 탭은 ?tab= 으로 남겨
  * 다른 화면에서 거래 내역 탭으로 바로 보낼 수 있게 한다.
  */
 export default function PortfolioPage() {
@@ -35,7 +34,7 @@ export default function PortfolioPage() {
         {tab === 'history' ? (
           <HistoryPage />
         ) : (
-          <ComingSoon title="자산 · 보유" note="지금은 홈 화면에서 계좌와 보유 종목을 볼 수 있습니다" />
+          <AssetsView />
         )}
       </div>
     </div>
