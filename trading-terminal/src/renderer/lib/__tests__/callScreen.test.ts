@@ -8,6 +8,7 @@ import {
   groupDiffsBySequence,
   isProminentDiff,
   maxOrderQty,
+  translationsByLastSequence,
 } from '../callScreen'
 import type { TranscriptSegment } from '../../store/useTranscriptStore'
 import type { TranscriptDiffItem } from '../../store/useTranscriptDiffStore'
@@ -144,5 +145,28 @@ describe('countdownParts', () => {
 
   it('예정 시각이 지났으면 null 이다', () => {
     expect(countdownParts(1000, 1000 * 1000)).toBeNull()
+  })
+})
+
+describe('translationsByLastSequence', () => {
+  const tr = (callId: string, sequences: number[]) => ({ callId, sequences, textKo: 't' })
+
+  it('문단을 마지막 발언 번호에 붙인다', () => {
+    const a = tr('WMT-Q2', [0, 1, 2])
+    const b = tr('WMT-Q2', [3, 4, 5])
+    const map = translationsByLastSequence([a, b], 'WMT-Q2')
+    expect(map.get(2)).toBe(a)
+    expect(map.get(5)).toBe(b)
+    expect(map.get(0)).toBeUndefined()
+  })
+
+  it('지난 회차 번역은 버린다', () => {
+    const map = translationsByLastSequence([tr('old', [0, 1, 2]), tr('new', [0])], 'new')
+    expect(map.get(2)).toBeUndefined()
+    expect(map.get(0)?.callId).toBe('new')
+  })
+
+  it('지금 콜을 모르면 비어 있다', () => {
+    expect(translationsByLastSequence([tr('a', [0])], null).size).toBe(0)
   })
 })

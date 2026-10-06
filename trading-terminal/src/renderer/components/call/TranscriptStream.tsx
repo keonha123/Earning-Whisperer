@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { TranscriptSegment } from '../../store/useTranscriptStore'
+import type { HighlightedTranslation } from '../../hooks/useTranscriptTranslation'
+import type { GlossaryStatus } from '../../store/useGlossaryStore'
 import type { TranscriptDiffItem } from '../../store/useTranscriptDiffStore'
 import { formatCallClock, isProminentDiff } from '../../lib/callScreen'
 import { CHANGE_META, topicLabel } from './diffMeta'
-import { showComingSoon } from './comingSoon'
+import TranslationBlock from './TranslationBlock'
 import ScrollEdge from './ScrollEdge'
 
 interface TranscriptStreamProps {
@@ -18,6 +20,11 @@ interface TranscriptStreamProps {
   onSpeakerClick?: (speaker: string) => void
   /** 이 발언으로 스크롤한다 (옆 탭의 대조 목록에서 누를 때). 같은 값으로 다시 누르면 nonce 로 구분한다. */
   focus?: { sequence: number; nonce: number } | null
+  /** 번역 문단 — 묶음의 마지막 발언 번호 → 문단. */
+  translations: ReadonlyMap<number, HighlightedTranslation>
+  showTranslation: boolean
+  onShowTranslationChange: (show: boolean) => void
+  glossaryStatus: GlossaryStatus
 }
 
 /**
@@ -36,6 +43,10 @@ export default function TranscriptStream({
   topInset,
   onSpeakerClick,
   focus,
+  translations,
+  showTranslation,
+  onShowTranslationChange,
+  glossaryStatus,
 }: TranscriptStreamProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [stuck, setStuck] = useState(true)
@@ -43,13 +54,13 @@ export default function TranscriptStream({
   const [seenCount, setSeenCount] = useState(segments.length)
   const [flash, setFlash] = useState<number | null>(null)
 
-  // 대조 카드는 발언보다 늦게 붙어 높이를 늘린다. 맨 아래를 보고 있었다면 그때도 따라 내려간다.
+  // 대조 카드와 번역은 발언보다 늦게 붙어 높이를 늘린다. 맨 아래를 보고 있었다면 그때도 따라 내려간다.
   useLayoutEffect(() => {
     if (!stuck) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
     setSeenCount(segments.length)
-  }, [segments.length, diffsBySequence, stuck])
+  }, [segments.length, diffsBySequence, translations, showTranslation, stuck])
 
   useEffect(() => {
     if (!focus) return
@@ -92,8 +103,11 @@ export default function TranscriptStream({
             {compact ? '자막 다시 보기' : '자막'}
             <span className="tabular-nums text-ink-3 font-normal ml-2">{segments.length}문장</span>
           </span>
-          {!compact && <TranslationToggle />}
+          {!compact && <TranslationToggle show={showTranslation} onChange={onShowTranslationChange} />}
         </div>
+        {showTranslation && glossaryStatus === 'failed' && translations.size > 0 && !compact && (
+          <p className="px-7 -mt-1 pb-2 text-[12px] text-ink-3">용어 설명을 불러오지 못해 번역만 보여 줍니다.</p>
+        )}
 
         {segments.length === 0 ? (
           <p className="px-7 py-10 text-center text-[13px] text-ink-3">
@@ -103,6 +117,7 @@ export default function TranscriptStream({
           <ol role="log" aria-label="자막" className={`flex flex-col ${compact ? 'gap-3 px-5 pb-6' : 'gap-5 px-7 pb-10'}`}>
             {segments.map((seg) => {
               const diffs = diffsBySequence.get(seg.sequence)
+              const translation = showTranslation ? translations.get(seg.sequence) : undefined
               const isLatest = isLive && seg.sequence === latestSeq
               return (
                 <li
@@ -135,6 +150,7 @@ export default function TranscriptStream({
                   >
                     {seg.text}
                   </p>
+                  {translation && <TranslationBlock item={translation} compact={compact} />}
                   {diffs && diffs.length > 0 && (
                     <div className="flex flex-col gap-2 pt-1">
                       {diffs.map((d, i) =>
@@ -241,14 +257,30 @@ function DiffChip({ item, expandable }: { item: TranscriptDiffItem; expandable: 
   )
 }
 
-/** 번역 보기 전환 — 번역(#110) 동작이 정해지면 연결한다. 지금은 자리만 둔다. */
-function TranslationToggle() {
+/** 번역 보기 전환. 번역은 원문 몇 문장 묶음마다 몇 초 늦게 붙는다. */
+function TranslationToggle({ show, onChange }: { show: boolean; onChange: (show: boolean) => void }) {
+  const options = [
+    { value: false, label: '원문' },
+    { value: true, label: '원문 + 번역' },
+  ]
   return (
-    <div className="glass rim inline-flex p-1 rounded-full text-[12px]" aria-disabled="true" title="준비 중입니다">
-      <span className="glass rim rim-float rounded-full px-3 py-1 font-semibold text-ink-1">원문</span>
-      <button type="button" onClick={() => showComingSoon('번역 보기')} className="px-3 py-1 text-ink-4">
-        원문 + 번역
-      </button>
+    <div className="glass rim inline-flex p-1 rounded-full text-[12px]" role="group" aria-label="자막 보기">
+      {options.map((o) => {
+        const active = o.value === show
+        return (
+          <button
+            key={o.label}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(o.value)}
+            className={`rounded-full px-3 py-1 ${
+              active ? 'glass rim rim-float font-semibold text-ink-1' : 'text-ink-3 hover:text-ink-1'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
