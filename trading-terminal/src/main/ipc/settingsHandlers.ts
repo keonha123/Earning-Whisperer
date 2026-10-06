@@ -1,7 +1,6 @@
 import { BrowserWindow } from 'electron'
 import keytar from 'keytar'
 import { mainState } from '../store/mainState'
-import { BackendClient } from '../services/BackendClient'
 import { KisService } from '../services/KisService'
 import { kisLimiter } from '../services/KisRateLimiter'
 import * as PricePoller from '../services/PricePoller'
@@ -23,37 +22,7 @@ function broadcast(channel: string, payload: unknown) {
   })
 }
 
-interface SettingsUpdatePayload {
-  tradingMode: 'MANUAL' | 'SEMI_AUTO' | 'AUTO_PILOT'
-  maxBuyRatio: number
-  maxHoldingRatio: number
-  cooldownMinutes: number
-  aiScoreThreshold: number
-}
-
 export function registerSettingsHandlers() {
-  registerHandler<SettingsUpdatePayload, void>(IPC_CHANNELS.SETTINGS_UPDATE, async (_e, settings) => {
-    // Main 모드 캐시 업데이트
-    if (settings.tradingMode) {
-      // 진행 중인 주문이 없을 때만 전환
-      if (!mainState.isOrderInProgress) {
-        mainState.setTradingMode(settings.tradingMode)
-      }
-    }
-    // 백엔드 동기화 — 토큰 만료/네트워크 오류 시에도 로컬 모드 변경은 유지
-    try {
-      await BackendClient.updateSettings({
-        trading_mode: settings.tradingMode,
-        max_buy_ratio: settings.maxBuyRatio,
-        max_holding_ratio: settings.maxHoldingRatio,
-        cooldown_minutes: settings.cooldownMinutes,
-        ai_score_threshold: settings.aiScoreThreshold,
-      })
-    } catch (e) {
-      console.warn('[settingsHandlers] 백엔드 모드 동기화 실패 (로컬 적용 유지):', e)
-    }
-  })
-
   registerHandler<undefined, boolean>(IPC_CHANNELS.SETTINGS_GET_PAPER_TRADING, () => {
     return mainState.isPaperTrading
   })

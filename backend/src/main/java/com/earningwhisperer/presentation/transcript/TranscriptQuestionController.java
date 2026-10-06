@@ -1,6 +1,8 @@
 package com.earningwhisperer.presentation.transcript;
 import com.earningwhisperer.domain.transcript.*;
 import com.earningwhisperer.infrastructure.aiengine.AiEngineClient;
+import com.earningwhisperer.infrastructure.glossary.Glossary;
+import com.earningwhisperer.infrastructure.glossary.GlossaryService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
@@ -19,11 +21,13 @@ import java.util.*;
 public class TranscriptQuestionController {
     private final TranscriptSessionRegistry registry;
     private final AiEngineClient client;
+    private final GlossaryService glossaryService;
     public record Question(@NotBlank String ticker, @NotBlank @JsonProperty("call_id") String callId,
             @NotEmpty @Size(max=10) @JsonProperty("segment_sequences") List<@NotNull @PositiveOrZero Integer> sequences,
             @NotBlank @Size(max=2000) String question) {}
-    @GetMapping("/glossary") public JsonNode glossary() {
-        return client.transcriptRequest("/v1/engine/glossary", null).orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE));
+    /** Compatibility alias for the backend-owned glossary; independent of AI availability. */
+    @GetMapping("/glossary") public Glossary glossary() {
+        return glossaryService.glossary();
     }
     @PostMapping("/ask") public JsonNode ask(@Valid @RequestBody Question request) {
         List<TranscriptSegment> all = registry.completedSegments(request.ticker(), request.callId());

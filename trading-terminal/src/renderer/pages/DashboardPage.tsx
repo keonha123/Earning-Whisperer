@@ -28,7 +28,7 @@ import { isIpcError } from '../../lib/types/ipcError'
 /**
  * DashboardPage — 4-Row 레이아웃.
  *
- *  Row 0 (헤더): 제목 + 마지막 동기화 + 동기화 버튼 + ModeSelector.
+ *  Row 0 (헤더): 제목 + 마지막 동기화 + 동기화 버튼.
  *  Row 1 (MarketStrip): 글로벌 지수 5종 (DEV 가드).
  *  Row 2 (Portfolio + AssetChart): PortfolioCard + 30D SVG 차트.
  *  Row 3 (Holdings + Earnings): HoldingsTable + EarningsTimeline.
@@ -38,9 +38,7 @@ import { isIpcError } from '../../lib/types/ipcError'
  *
  * 보존 동작:
  *  - 마운트 시 KIS_GET_BALANCE 1회.
- *  - 모드 변경 시 SETTINGS_UPDATE.
  *  - PortfolioCard 컴포넌트 (PR #1 잔존) 그대로 사용.
- *  - SignalFeed 는 import 제거 — PR #4 TradingRoom 에서 사용 예정.
  */
 export default function DashboardPage() {
   const {

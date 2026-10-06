@@ -12,7 +12,6 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Configuration
 public class RedisConfig {
 
-    static final String TRADING_SIGNALS_CHANNEL = "trading-signals";
     static final String MARKET_INDICES_CHANNEL = "market-indices";
 
     /**
@@ -31,16 +30,7 @@ public class RedisConfig {
     }
 
     /**
-     * TradingSignalSubscriber의 handleMessage() 메서드를 Redis 메시지 핸들러로 등록.
-     */
-    @Bean
-    public MessageListenerAdapter tradingSignalListenerAdapter(TradingSignalSubscriber subscriber) {
-        return new MessageListenerAdapter(subscriber, "handleMessage");
-    }
-
-    /**
      * MarketIndicesSubscriber의 handleMessage() 메서드를 Redis 메시지 핸들러로 등록.
-     * 메서드명은 TradingSignalSubscriber와 동일한 "handleMessage"로 통일한다.
      */
     @Bean
     public MessageListenerAdapter marketIndicesListenerAdapter(MarketIndicesSubscriber subscriber) {
@@ -48,21 +38,16 @@ public class RedisConfig {
     }
 
     /**
-     * 단일 리스너 컨테이너에 trading-signals / market-indices 채널을 모두 등록한다.
-     * Redis에서 메시지 수신 시 채널별로 해당 리스너 어댑터로 위임된다.
+     * 리스너 컨테이너에 market-indices 채널을 등록한다.
+     * ai-engine 이 여전히 trading-signals 채널에 발행할 수 있지만 매매 신호 경로를 제거해 구독하지 않는다.
      */
     @Bean
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
-            MessageListenerAdapter tradingSignalListenerAdapter,
             MessageListenerAdapter marketIndicesListenerAdapter) {
 
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        container.addMessageListener(
-                tradingSignalListenerAdapter,
-                new ChannelTopic(TRADING_SIGNALS_CHANNEL)
-        );
         container.addMessageListener(
                 marketIndicesListenerAdapter,
                 new ChannelTopic(MARKET_INDICES_CHANNEL)

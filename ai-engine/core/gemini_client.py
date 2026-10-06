@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
+MAX_REQUEST_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(slots=True)
@@ -202,8 +203,13 @@ class GeminiClient:
 
     def _generate_sync(self, model: str, prompt: str, config: dict[str, Any]) -> GenerationUsage:
         settings = get_settings()
-        budget = min(float(config.get("timeout_seconds", settings.gemini_request_timeout_seconds)),
-                     settings.gemini_request_timeout_seconds)
+        # The default is not an upper bound for deliberately slower operations
+        # such as offline statement extraction. Preserve caller deadlines while
+        # retaining a finite hard cap for all provider work.
+        budget = float(config.get("timeout_seconds", settings.gemini_request_timeout_seconds))
+        if not math.isfinite(budget) or budget <= 0:
+            raise ValueError("Gemini timeout must be finite and positive")
+        budget = min(budget, MAX_REQUEST_TIMEOUT_SECONDS)
         deadline = time.monotonic() + max(0.001, budget)
         code = "timeout"
         attempts = 0

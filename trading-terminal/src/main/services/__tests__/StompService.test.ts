@@ -9,22 +9,14 @@ vi.mock('ws', () => ({
   default: class FakeWebSocket {},
 }))
 
-vi.mock('../TradeExecutor', () => ({
-  TradeExecutor: {
-    execute: vi.fn(async () => undefined),
-  },
-}))
-
 vi.mock('../BackendClient', () => ({
   BackendClient: {
-    fetchPendingTrades: vi.fn(async () => []),
     refreshSession: vi.fn(async () => undefined),
   },
 }))
 
 vi.mock('../NotificationService', () => ({
   NotificationService: {
-    notifyWsDisconnected: vi.fn(),
     notifyWsReconnected: vi.fn(),
   },
 }))
@@ -146,17 +138,6 @@ describe('StompService — 소켓 종료 감지', () => {
     expect(clients).toHaveLength(2)
   })
 
-  it('onWebSocketClose 는 MANUAL 강제 전환을 유발한다', async () => {
-    const { StompService, mainState } = await loadService()
-    mainState.setTradingMode('AUTO_PILOT')
-    StompService.connect()
-
-    last().connected = false
-    last().onWebSocketClose!({ code: 1006 })
-
-    expect(mainState.tradingMode).toBe('MANUAL')
-  })
-
   it('의도적 disconnect() 후 onWebSocketClose 가 와도 재연결하지 않는다', async () => {
     const { StompService } = await loadService()
     StompService.connect()
@@ -201,13 +182,11 @@ describe('StompService — 재연결 중첩 방지', () => {
   })
 
   it('교체된 옛 client 의 지연 close 콜백은 무시된다', async () => {
-    const { StompService, mainState, BrowserWindow } = await loadService()
+    const { StompService, BrowserWindow } = await loadService()
     const sendSpy = vi.fn()
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       { isDestroyed: () => false, webContents: { send: sendSpy } } as never,
     ])
-    mainState.setTradingMode('AUTO_PILOT')
-
     StompService.connect()
     // 아직 STOMP CONNECTED 이전(CONNECTING) 상태에서 재호출 → 첫 client 가 교체된다.
     last().connected = false
@@ -217,7 +196,6 @@ describe('StompService — 재연결 중첩 방지', () => {
     vi.advanceTimersByTime(60000)
 
     expect(clients).toHaveLength(2)
-    expect(mainState.tradingMode).toBe('AUTO_PILOT')
     expect(countStatusPush(sendSpy, 'DISCONNECTED')).toBe(0)
   })
 
@@ -368,5 +346,45 @@ describe('StompService — 인증 실패 후 재연결', () => {
     expect(countStatusPush(sendSpy, 'DISCONNECTED')).toBeGreaterThan(0)
     vi.advanceTimersByTime(60000)
     expect(clients).toHaveLength(1)
+  })
+})
+
+describe('paired transcript translation subscriptions', () => {
+  it('relays translation payloads and restores both subscriptions after socket loss', async () => {
+    const { StompService, BrowserWindow } = await loadService()
+    const send = vi.fn()
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
+      { isDestroyed: () => false, webContents: { send } } as never,
+    ])
+    StompService.connect()
+    last().onConnect?.()
+    StompService.subscribeTranscript('NVDA')
+    const payload = { ticker: 'NVDA', call_id: 'call', sequences: [1, 2], text_ko: '번역' }
+    last().subscribe.mock.calls.find(c => c[0] === '/topic/transcript-translation/NVDA')![1]({ body: JSON.stringify(payload) })
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.TRANSCRIPT_TRANSLATION_RECEIVED, payload)
+    last().connected = false
+    last().onWebSocketClose?.({ code: 1006 })
+    vi.advanceTimersByTime(2000)
+    last().onConnect?.()
+    expect(last().subscribe.mock.calls.map(c => c[0])).toEqual(expect.arrayContaining([
+      '/topic/transcript/NVDA', '/topic/transcript-translation/NVDA',
+    ]))
+  })
+  it('subscribes and unsubscribes both topics and reconnects the pair', async () => {
+    const { StompService } = await loadService()
+    StompService.subscribeTranscript('NVDA')
+    StompService.connect()
+    last().onConnect?.()
+    const original = last().subscribe.mock.calls.find(c => c[0] === '/topic/transcript/NVDA')
+    const translated = last().subscribe.mock.calls.find(c => c[0] === '/topic/transcript-translation/NVDA')
+    expect(original).toBeDefined()
+    expect(translated).toBeDefined()
+    const handles = last().subscribe.mock.results.map(r => r.value)
+    StompService.unsubscribeTranscript('NVDA')
+    expect(handles.filter(h => h.unsubscribe.mock.calls.length === 1)).toHaveLength(2)
+    StompService.disconnect()
+    StompService.connect()
+    last().onConnect?.()
+    expect(last().subscribe.mock.calls.some(c => c[0].includes('/transcript'))).toBe(false)
   })
 })

@@ -31,12 +31,19 @@ public class AiEngineClient {
     private static final String INTELLIGENCE_PATH = "/v1/engine/earnings/intelligence";
     private static final String READINESS_PATH = "/v1/engine/evidence/readiness";
     private static final String TRANSCRIPT_DIFF_PATH = "/v1/engine/transcript/diff";
+    private static final String TRANSCRIPT_TRANSLATE_PATH = "/v1/engine/transcript/translate";
 
     private final RestClient restClient;
     private final RestClient transcriptClient;
+    /**
+     * 번역 전용. 번역은 단일 스레드에서 차례로 부르므로, 공용 읽기 타임아웃(기본 50초)을 쓰면 엔진이 멈췄을 때
+     * 뒤의 번역이 모두 그만큼 밀린다. 엔진 번역 예산(12초)보다 조금 길게 둔다.
+     */
+    private final RestClient translationRestClient;
     private final boolean factCheckEnabled;
     private final boolean summaryEnabled;
     private final boolean transcriptDiffEnabled;
+    private final boolean translationEnabled;
 
     /**
      * 생성자가 여럿이므로 Spring 이 쓸 것을 명시한다. 없으면 기본 생성자를 찾다가
@@ -48,11 +55,14 @@ public class AiEngineClient {
             @Value("${ai-engine.fact-check-enabled:true}") boolean factCheckEnabled,
             @Value("${ai-engine.summary-enabled:true}") boolean summaryEnabled,
             @Value("${ai-engine.transcript-diff-enabled:true}") boolean transcriptDiffEnabled,
-            @Value("${ai-engine.timeout-ms:8000}") long timeoutMs
+            @Value("${ai-engine.translation-enabled:true}") boolean translationEnabled,
+            @Value("${ai-engine.timeout-ms:8000}") long timeoutMs,
+            @Value("${ai-engine.translation-timeout-ms:25000}") long translationTimeoutMs
     ) {
         this.factCheckEnabled = factCheckEnabled;
         this.summaryEnabled = summaryEnabled;
         this.transcriptDiffEnabled = transcriptDiffEnabled;
+        this.translationEnabled = translationEnabled;
         // 연결 타임아웃은 짧게(응답 없는 호스트를 오래 붙들 이유가 없다), 읽기 타임아웃은
         // LLM 2패스 소요시간(실측 약 5초)을 감안해 설정값을 그대로 쓴다.
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -67,9 +77,17 @@ public class AiEngineClient {
         // QA includes candidate generation and verification within the engine's 25-second budget.
         transcriptFactory.setReadTimeout(Duration.ofSeconds(30));
         this.transcriptClient = RestClient.builder().baseUrl(baseUrl).requestFactory(transcriptFactory).build();
+        SimpleClientHttpRequestFactory translationFactory = new SimpleClientHttpRequestFactory();
+        translationFactory.setConnectTimeout(Duration.ofMillis(Math.min(2000, translationTimeoutMs)));
+        translationFactory.setReadTimeout(Duration.ofMillis(translationTimeoutMs));
+        this.translationRestClient = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(translationFactory)
+                .build();
         log.info("[AiEngine] 클라이언트 초기화 - baseUrl={} factCheckEnabled={} summaryEnabled={} "
-                        + "transcriptDiffEnabled={} timeoutMs={}",
-                baseUrl, factCheckEnabled, summaryEnabled, transcriptDiffEnabled, timeoutMs);
+                        + "transcriptDiffEnabled={} translationEnabled={} timeoutMs={} translationTimeoutMs={}",
+                baseUrl, factCheckEnabled, summaryEnabled, transcriptDiffEnabled, translationEnabled, timeoutMs,
+                translationTimeoutMs);
     }
 
     /**
@@ -88,11 +106,19 @@ public class AiEngineClient {
     /** 테스트용 생성자. 과거 콜 대조까지 따로 켜고 끌 때 쓴다. */
     protected AiEngineClient(RestClient restClient, boolean factCheckEnabled, boolean summaryEnabled,
                              boolean transcriptDiffEnabled) {
+        this(restClient, factCheckEnabled, summaryEnabled, transcriptDiffEnabled, false);
+    }
+
+    /** 테스트용 생성자. 번역까지 따로 켜고 끌 때 쓴다. */
+    protected AiEngineClient(RestClient restClient, boolean factCheckEnabled, boolean summaryEnabled,
+                             boolean transcriptDiffEnabled, boolean translationEnabled) {
         this.restClient = restClient;
         this.transcriptClient = restClient;
+        this.translationRestClient = restClient;
         this.factCheckEnabled = factCheckEnabled;
         this.summaryEnabled = summaryEnabled;
         this.transcriptDiffEnabled = transcriptDiffEnabled;
+        this.translationEnabled = translationEnabled;
     }
 
     public Optional<com.fasterxml.jackson.databind.JsonNode> transcriptRequest(String path, Object body) {
@@ -115,6 +141,10 @@ public class AiEngineClient {
 
     public boolean isTranscriptDiffEnabled() {
         return transcriptDiffEnabled;
+    }
+
+    public boolean isTranslationEnabled() {
+        return translationEnabled;
     }
 
     /**
@@ -232,6 +262,38 @@ public class AiEngineClient {
             return Optional.of(response);
         } catch (Exception e) {
             log.warn("[AiEngine] 과거 콜 대조 호출 실패 - ticker={} error={}", request.ticker(), e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 세그먼트(또는 세그먼트 묶음)를 한국어로 번역한다 (Contract 9.10).
+     *
+     * <p>LLM 을 타므로 자막 발행 스레드에서 부르지 말 것.
+     *
+     * @return 응답. 비활성화되었거나 호출이 실패하면 empty. 번역 실패는 {@code available=false}
+     *         응답으로 온다.
+     */
+    public Optional<TranscriptTranslationModels.TranslateResponse> translate(
+            TranscriptTranslationModels.TranslateRequest request) {
+        if (!translationEnabled) {
+            return Optional.empty();
+        }
+        try {
+            TranscriptTranslationModels.TranslateResponse response = translationRestClient.post()
+                    .uri(TRANSCRIPT_TRANSLATE_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TranscriptTranslationModels.TranslateResponse.class);
+            if (response == null) {
+                log.warn("[AiEngine] 번역 빈 응답 - ticker={} sequence={}", request.ticker(), request.sequence());
+                return Optional.empty();
+            }
+            return Optional.of(response);
+        } catch (Exception e) {
+            log.warn("[AiEngine] 번역 호출 실패 - ticker={} sequence={} error={}",
+                    request.ticker(), request.sequence(), e.toString());
             return Optional.empty();
         }
     }

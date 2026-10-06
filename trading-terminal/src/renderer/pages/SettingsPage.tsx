@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { type MaskedCredentialsResponse } from '../../lib/ipcChannels'
 import AuthInputField from '../components/auth/AuthInputField'
 import { useUserStore } from '../store/useUserStore'
-import { useTradingStore } from '../store/useTradingStore'
 import { useConnectionStore } from '../store/useConnectionStore'
-import Slider from '../components/common/Slider'
-import Stepper from '../components/common/Stepper'
 import KisStatusTimeline, {
   type KisTimelineStep,
 } from '../components/settings/KisStatusTimeline'
@@ -46,16 +43,9 @@ export function decideCardDelete(
   return { kind: 'active-redirect' }
 }
 
-const SETTINGS_DEFAULT = {
-  maxBuyRatio: 0.1,
-  maxHoldingRatio: 0.3,
-  cooldownMinutes: 5,
-  aiScoreThreshold: 0.6,
-}
-
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const { settings, setSettings, setAiScoreThreshold, accountType } = useUserStore()
+  const { accountType } = useUserStore()
   const isSelfPaper = accountType === 'SELF_PAPER'
   const {
     kisTokenStatus,
@@ -63,11 +53,6 @@ export default function SettingsPage() {
     setHasCredentials,
     setKisTokenStatus,
   } = useConnectionStore()
-
-  const [form, setForm] = useState({ ...settings })
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
 
   // 모의/실전 환경 토글 — main 프로세스에서 단일 source of truth
   const [isPaperTrading, setIsPaperTrading] = useState<boolean>(true)
@@ -139,62 +124,6 @@ export default function SettingsPage() {
     } finally {
       setPaperToggleBusy(false)
     }
-  }
-
-  // "저장됨" 배지 자동 hide 타이머 — 연속 저장 race / 언마운트 후 setState 방지.
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    return () => {
-      if (savedTimerRef.current !== null) {
-        clearTimeout(savedTimerRef.current)
-        savedTimerRef.current = null
-      }
-    }
-  }, [])
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setSaveError(null)
-    try {
-      await ipc.invoke(IPC_CHANNELS.SETTINGS_UPDATE, {
-        tradingMode: form.tradingMode,
-        maxBuyRatio: form.maxBuyRatio,
-        maxHoldingRatio: form.maxHoldingRatio,
-        cooldownMinutes: form.cooldownMinutes,
-        aiScoreThreshold: form.aiScoreThreshold,
-      })
-      setSettings(form)
-      // 셀렉터/헤더가 읽는 useTradingStore.mode 도 함께 갱신 — 설정 저장 후
-      // 승인 판정(useUserStore.settings.tradingMode)과 표시가 어긋나지 않도록.
-      useTradingStore.getState().setMode(form.tradingMode)
-      setAiScoreThreshold(form.aiScoreThreshold)
-      setSaved(true)
-      if (savedTimerRef.current !== null) {
-        clearTimeout(savedTimerRef.current)
-      }
-      savedTimerRef.current = setTimeout(() => {
-        setSaved(false)
-        savedTimerRef.current = null
-      }, 2000)
-    } catch (err: unknown) {
-      // 기존 인라인 setSaveError 는 유지 + toast 추가.
-      const fallback = err instanceof Error ? err.message : '저장에 실패했습니다.'
-      setSaveError(fallback)
-      showIpcErrorToast(err)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function handleReset() {
-    setForm({
-      ...form,
-      maxBuyRatio: SETTINGS_DEFAULT.maxBuyRatio,
-      maxHoldingRatio: SETTINGS_DEFAULT.maxHoldingRatio,
-      cooldownMinutes: SETTINGS_DEFAULT.cooldownMinutes,
-      aiScoreThreshold: SETTINGS_DEFAULT.aiScoreThreshold,
-    })
   }
 
   /**
@@ -339,167 +268,9 @@ export default function SettingsPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-text-primary text-xl font-semibold tracking-tight">설정</h1>
         <p className="text-text-tertiary text-base">
-          거래 위험 관리 파라미터와 KIS 연동 상태를 관리합니다.
+          KIS 연동 상태를 관리합니다.
         </p>
       </div>
-
-      {/* 카드 1 — 리스크 파라미터 */}
-      <section className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-md grid place-items-center text-accent-400 flex-none"
-            style={{
-              background: 'rgba(16,185,129,0.08)',
-              border: '1px solid rgba(16,185,129,0.2)',
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M8 1.5l5.5 2v4.25c0 3.25-2.3 5.75-5.5 6.5-3.2-.75-5.5-3.25-5.5-6.5V3.5L8 1.5z" />
-            </svg>
-          </div>
-          <div className="text-text-primary text-base font-semibold tracking-tight whitespace-nowrap">
-            리스크 파라미터
-          </div>
-          {saved && (
-            <span
-              className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold tracking-wider whitespace-nowrap"
-              style={{
-                background: 'rgba(16,185,129,0.10)',
-                color: '#34d399',
-                border: '1px solid rgba(16,185,129,0.25)',
-              }}
-            >
-              <span className="w-[5px] h-[5px] rounded-full bg-accent-500" />
-              저장됨
-            </span>
-          )}
-        </div>
-
-        <form onSubmit={handleSave} className="flex flex-col">
-          <div className="flex flex-col">
-            {/* Row 1 — 1회 매수 비율 */}
-            <SettingsRow
-              label="1회 매수 비율"
-              description="1회 시그널당 총 자산 대비 매수 비중"
-              control={
-                <Slider
-                  value={Math.round(form.maxBuyRatio * 100)}
-                  min={5}
-                  max={50}
-                  step={1}
-                  onChange={(v) => setForm({ ...form, maxBuyRatio: v / 100 })}
-                  formatValue={(v) => `${v}%`}
-                  ariaLabel="1회 매수 비율"
-                />
-              }
-              valueDisplay={
-                <>
-                  {Math.round(form.maxBuyRatio * 100)}
-                  <span className="text-sm text-text-tertiary font-medium ml-0.5">%</span>
-                </>
-              }
-            />
-
-            {/* Row 2 — 최대 보유 비중 */}
-            <SettingsRow
-              label="최대 보유 비중"
-              description="단일 종목 최대 포지션 한도"
-              control={
-                <Slider
-                  value={Math.round(form.maxHoldingRatio * 100)}
-                  min={10}
-                  max={100}
-                  step={1}
-                  onChange={(v) => setForm({ ...form, maxHoldingRatio: v / 100 })}
-                  formatValue={(v) => `${v}%`}
-                  ariaLabel="최대 보유 비중"
-                />
-              }
-              valueDisplay={
-                <>
-                  {Math.round(form.maxHoldingRatio * 100)}
-                  <span className="text-sm text-text-tertiary font-medium ml-0.5">%</span>
-                </>
-              }
-            />
-
-            {/* Row 3 — 쿨다운 */}
-            <SettingsRow
-              label="쿨다운"
-              description="동일 종목 재진입 대기 시간"
-              control={
-                <div className="flex flex-col gap-0.5">
-                  <Stepper
-                    value={form.cooldownMinutes}
-                    min={1}
-                    max={120}
-                    step={1}
-                    onChange={(v) => setForm({ ...form, cooldownMinutes: v })}
-                    ariaLabel="쿨다운"
-                  />
-                  <div className="flex justify-between font-mono text-xs text-text-disabled px-0.5 mt-0.5">
-                    <span>최소 1분</span>
-                    <span>최대 120분</span>
-                  </div>
-                </div>
-              }
-              valueDisplay={
-                <>
-                  {form.cooldownMinutes}
-                  <span className="text-sm text-text-tertiary font-medium ml-0.5">분</span>
-                </>
-              }
-            />
-
-            {/* Row 4 — AI 신호 임계치 */}
-            <SettingsRow
-              label="AI 신호 임계치"
-              description="AI 점수가 이 값 이상일 때만 신호 발동 (0.0 ~ 1.0)"
-              control={
-                <Slider
-                  value={form.aiScoreThreshold}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  onChange={(v) => setForm({ ...form, aiScoreThreshold: v })}
-                  formatValue={(v) => v.toFixed(2)}
-                  ariaLabel="AI 신호 임계치"
-                />
-              }
-              valueDisplay={form.aiScoreThreshold.toFixed(2)}
-              isLast
-            />
-          </div>
-
-          {saveError && (
-            <p className="text-sell text-sm mt-2">{saveError}</p>
-          )}
-
-          <div className="flex gap-2 justify-end pt-1 mt-2">
-            <button
-              type="button"
-              onClick={handleReset}
-              className="h-[34px] px-3.5 rounded-md text-sm font-semibold inline-flex items-center justify-center gap-1.5 bg-transparent border border-border-strong text-text-tertiary hover:bg-surface-2 hover:text-text-primary transition-colors"
-            >
-              기본값으로 초기화
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="h-[34px] px-3.5 rounded-md text-sm font-bold tracking-wide inline-flex items-center justify-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-accent-foreground disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            >
-              {saving ? '저장 중...' : '저장'}
-            </button>
-          </div>
-        </form>
-      </section>
 
       {/* 카드 2 — 연동 섹션: SELF_PAPER 는 간략 상태 카드, KIS 는 전체 연동 섹션 */}
       {isSelfPaper ? (
@@ -523,7 +294,7 @@ export default function SettingsPage() {
             </span>
           </div>
           <div className="text-sm text-text-secondary leading-[1.55] bg-surface-2 border border-border-subtle rounded-lg px-3 py-2.5">
-            KIS API 없이 가상 자금으로 자동매매를 시뮬레이션합니다. 잔고 및 체결 내역은 서버에 기록됩니다.
+            KIS API 없이 가상 자금으로 매매를 시뮬레이션합니다. 잔고 및 체결 내역은 서버에 기록됩니다.
           </div>
         </section>
       ) : (
@@ -692,39 +463,6 @@ export default function SettingsPage() {
         </div>
       </section>
       )}
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* SettingsRow — 라벨(설명) / 컨트롤 / 값 세 컬럼 그리드 행                    */
-/* -------------------------------------------------------------------------- */
-function SettingsRow({
-  label,
-  description,
-  control,
-  valueDisplay,
-  isLast = false,
-}: {
-  label: string
-  description: string
-  control: React.ReactNode
-  valueDisplay: React.ReactNode
-  isLast?: boolean
-}) {
-  return (
-    <div
-      className={`grid gap-4 items-center py-3.5 ${isLast ? '' : 'border-b border-border-subtle'}`}
-      style={{ gridTemplateColumns: '1fr 280px 80px' }}
-    >
-      <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-text-primary text-base font-medium">{label}</span>
-        <span className="text-text-disabled text-xs leading-snug">{description}</span>
-      </div>
-      <div className="min-w-0">{control}</div>
-      <div className="font-mono text-lg font-semibold text-text-primary text-right tabular-nums tracking-tight">
-        {valueDisplay}
-      </div>
     </div>
   )
 }

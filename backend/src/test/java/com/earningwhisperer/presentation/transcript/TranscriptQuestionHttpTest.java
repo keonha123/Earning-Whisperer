@@ -17,17 +17,29 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(TranscriptQuestionController.class)
+@WebMvcTest({TranscriptQuestionController.class, com.earningwhisperer.presentation.glossary.GlossaryController.class})
 @Import({com.earningwhisperer.global.config.SecurityConfig.class,
         com.earningwhisperer.global.exception.GlobalExceptionHandler.class, InternalSecretFilter.class})
 class TranscriptQuestionHttpTest {
     @Autowired MockMvc mvc;
     @MockBean TranscriptSessionRegistry registry;
     @MockBean AiEngineClient client;
+    @MockBean com.earningwhisperer.infrastructure.glossary.GlossaryService glossaryService;
     @MockBean com.earningwhisperer.infrastructure.security.JwtProvider jwtProvider;
     private static final String BODY = "{\"ticker\":\"SMOKE\",\"call_id\":\"call\",\"segment_sequences\":[0],\"question\":\"Explain revenue\"}";
+    @Test @WithMockUser void bothGlossaryRoutesWorkWithoutAi() throws Exception {
+        var packaged = new com.earningwhisperer.infrastructure.glossary.GlossaryService(
+                new com.fasterxml.jackson.databind.ObjectMapper(), "data/glossary_ko.json").glossary();
+        when(glossaryService.glossary()).thenReturn(packaged);
+        String canonical = mvc.perform(get("/api/v1/glossary"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        mvc.perform(get("/api/v1/transcript/glossary"))
+                .andExpect(status().isOk()).andExpect(content().json(canonical));
+        verifyNoInteractions(client);
+    }
     @Test @WithMockUser void unavailableSessionIs409JsonWithoutErrorRedispatch() throws Exception {
         when(registry.completedSegments(anyString(), anyString())).thenReturn(List.of());
         mvc.perform(post("/api/v1/transcript/ask").contentType(MediaType.APPLICATION_JSON).content(BODY))

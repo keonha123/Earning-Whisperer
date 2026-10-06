@@ -299,9 +299,13 @@ async def test_comp_sales_term_translation_is_consistent(monkeypatch):
 
 
 def test_live_routes_translate_and_answer_return_valid_contracts(monkeypatch):
+    from api.routers.transcript_translation import router as translation_router
+    from services.transcript_translation_service import TranscriptTranslationService
     app = FastAPI()
     app.include_router(router)
+    app.include_router(translation_router)
     app.state.settings = settings()
+    app.state.transcript_translation_service = TranscriptTranslationService(settings=settings(gemini_primary_thinking_level="minimal"))
     client = TestClient(app)
     fake_model(monkeypatch, {"text_ko": "매출은 20% 성장했습니다.", "meaning_preserved": True})
     translation = client.post("/v1/engine/transcript/translate", json={

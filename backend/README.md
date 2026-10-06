@@ -5,7 +5,7 @@
 ![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-latest-DC382D?logo=redis&logoColor=white)
 
-AI 시그널을 수신하여 EMA 계산 → 룰엔진 판단 → Trading Terminal로 매매 명령 라우팅 → 체결 콜백 수신 → 웹 대시보드 브로드캐스팅을 담당하는 중앙 관제탑(Control Tower)입니다.
+어닝콜 트랜스크립트 · 팩트체크 · 종합 판단을 클라이언트에 브로드캐스팅하고, Trading Terminal 에서 사용자가 직접 낸 주문의 결과를 기록하는 중앙 서버입니다.
 
 > **백엔드는 KIS 증권사 API를 직접 호출하지 않습니다.** 매매 실행은 사용자 로컬 PC의 Trading Terminal이 담당합니다.
 
@@ -28,14 +28,7 @@ flowchart TB
 
     subgraph Backend["Backend (Spring Boot 3.3)"]
         direction TB
-        Sub[TradingSignalSubscriber\n신호 수신 오케스트레이터]
-        Svc[SignalService\nEMA 계산 + RuleEngine]
-        Trade[TradeService\nPENDING Trade 생성]
-        Pub1[LiveSignalPublisher]
-        Pub2[TradeCommandPublisher]
-        Sub --> Svc --> Trade
-        Svc --> Pub1
-        Trade --> Pub2
+        Trade[TradeService\n수동 주문 기록 · 체결 콜백]
     end
 
     subgraph Clients["클라이언트"]
@@ -43,13 +36,8 @@ flowchart TB
         FE[Frontend Web\nNext.js]
     end
 
-    AI -->|Redis Pub/Sub\ntrading-signals| Redis
-    Redis --> Sub
-    Svc <--> DB
     Trade <--> DB
-    Pub1 -->|"WS /topic/live/{ticker}"| FE
-    Pub2 -->|"WS /user/{id}/queue/signals"| TT
-    TT -->|"POST /trades/{id}/callback"| Backend
+    TT -->|"POST /trades/manual\nPOST /trades/{id}/callback"| Backend
     FIN -->|"HTTP 스케줄러\n매일 06:00 UTC"| Backend
     FMP -->|"HTTP 스케줄러\n분기 1회"| Backend
 ```
@@ -130,8 +118,8 @@ com/earningwhisperer/
 │
 ├── domain/                     # 비즈니스 로직 — Spring 없는 순수 Java
 │   ├── earnings/               # 어닝 캘린더 관리
-│   ├── portfolio/              # 리스크 설정 (PortfolioSettings), 잔고 동기화
-│   ├── signal/                 # EmaCalculator, RuleEngine, SignalService, SignalHistory
+│   ├── portfolio/              # 계좌(BrokerAccount), 보유종목, 잔고 동기화
+│   ├── signal/                 # TradeAction (BUY/SELL)
 │   ├── stock/                  # S&P 500 종목 마스터 (Stock)
 │   ├── trade/                  # 주문 상태 관리 (Trade: PENDING→EXECUTED/FAILED)
 │   ├── user/                   # 사용자, JWT 발급, 인증 서비스
@@ -141,16 +129,16 @@ com/earningwhisperer/
 │   ├── demo/                   # DemoReplayService (쇼케이스 데모룸 스크립트 재생)
 │   ├── finnhub/                # Finnhub API 클라이언트, 어닝 스케줄러
 │   ├── fmp/                    # FMP API 클라이언트, S&P 500 분기 동기화
-│   ├── redis/                  # TradingSignalSubscriber, Pub/Sub 설정
+│   ├── redis/                  # 시장 지수 구독, Pub/Sub 설정
 │   ├── security/               # JwtProvider, JwtAuthenticationFilter
-│   └── websocket/              # LiveSignalPublisher, TradeCommandPublisher, STOMP 인터셉터
+│   └── websocket/              # 트랜스크립트 · 팩트체크 · 시세 Publisher, STOMP 인터셉터
 │
 ├── presentation/               # REST Controller 레이어
 │   ├── auth/                   # POST /auth/signup, /auth/login
 │   ├── earnings/               # GET /earnings-calendar
-│   ├── portfolio/              # GET/PUT /portfolio/settings, POST /portfolio/sync
-│   ├── trade/                  # GET /trades, POST /trades/{id}/callback
-│   ├── user/                   # GET /users/me, PUT /users/settings
+│   ├── portfolio/              # POST /portfolio/sync, 계좌 · 보유종목 조회
+│   ├── trade/                  # GET /trades, POST /trades/manual, POST /trades/{id}/callback
+│   ├── user/                   # GET /users/me
 │   └── watchlist/              # GET/POST/DELETE /watchlist, GET /watchlist/search
 │
 └── global/                     # 공통 설정, 예외 처리, BaseEntity
@@ -166,38 +154,13 @@ com/earningwhisperer/
 
 ## 핵심 개념
 
-### EMA (지수이동평균)
+### 주문 처리
 
-AI Engine은 상태를 기억하지 않고 순수 `raw_score`(−1.0~+1.0)만 발행합니다. 백엔드의 `EmaCalculator`가 이를 시계열로 평활화하여 노이즈를 제거합니다.
+EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가 Trading Terminal 에서 직접 냅니다. 백엔드는 주문을 지시하지 않고 결과만 기록합니다. 매매 신호로 주문을 내던 경로(룰 엔진, 매매 모드, `/user/queue/signals`)는 #127 에서 제거했습니다.
 
-```
-α = 2 / (windowSize + 1)     # 기본 windowSize = 10
-ema = α × rawScore + (1 − α) × prevEma
-```
-
-ticker별 이전 EMA 값은 `InMemoryEmaStateStore`에 유지됩니다. (서버 재시작 시 초기화 — 개선 예정)
-
-### RuleEngine (2-Layer Filter)
-
-신호가 실제 주문으로 이어지기까지 두 단계의 독립적인 필터가 존재합니다.
-
-| 레이어 | 주체 | 필터링 기준 |
-|--------|------|------------|
-| **1차 (서버)** | Backend RuleEngine | 트레이딩 모드, 쿨다운, `|emaScore| < threshold` 조건 → 미달 시 HOLD |
-| **2차 (클라이언트)** | Trading Terminal | MANUAL(버튼 직접 클릭), SEMI_AUTO(승인 팝업), AUTO_PILOT(즉시 실행) |
-
-판단 우선순위: `MANUAL 모드` → `쿨다운 중` → `|emaScore| < threshold` → `BUY/SELL`
-
-### Private Signal Routing
-
-매매 명령은 공개 브로드캐스트가 아닌 특정 사용자 전용 큐로만 전송됩니다.
-
-```
-TradeCommandPublisher.publish(userId, message)
-  → /user/{userId}/queue/signals
-```
-
-STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별하고, `StompJwtChannelInterceptor`가 검증합니다.
+1. 터미널이 KIS 로 주문을 내고 `POST /api/v1/trades/manual` 로 결과를 기록합니다 (`EXECUTED` / `PENDING` / `FAILED`).
+2. 접수만 된 `PENDING` 주문은 체결되면 `POST /api/v1/trades/{tradeId}/callback` 으로 종결합니다.
+3. 24시간(`app.trade.manual-pending-ttl-seconds`) 안에 종결되지 않은 `PENDING` 은 스케줄러가 `EXPIRED` 로 바꿉니다.
 
 ---
 
@@ -208,8 +171,6 @@ STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별�
 | POST | `/api/v1/auth/signup` | — | 회원가입 |
 | POST | `/api/v1/auth/login` | — | 로그인 (JWT 발급) |
 | GET | `/api/v1/users/me` | ✓ | 내 프로필 조회 |
-| PUT | `/api/v1/users/settings` | ✓ | 리스크 설정 업데이트 |
-| GET | `/api/v1/portfolio/settings` | ✓ | 포트폴리오 설정 조회 |
 | POST | `/api/v1/portfolio/sync` | ✓ | Trading Terminal 잔고 동기화 |
 | GET | `/api/v1/watchlist` | ✓ | 관심종목 목록 조회 |
 | POST | `/api/v1/watchlist` | ✓ | 관심종목 추가 |
@@ -218,6 +179,7 @@ STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별�
 | GET | `/api/v1/earnings-calendar?days=` | ✓ | 관심종목 어닝 일정 조회 |
 | POST | `/api/v1/earnings-calendar/sync` | — | 어닝 일정 수동 갱신 (개발용) |
 | GET | `/api/v1/trades?page=&size=` | ✓ | 거래내역 페이징 조회 |
+| POST | `/api/v1/trades/manual` | ✓ | 수동 주문 결과 기록 |
 | POST | `/api/v1/trades/{tradeId}/callback` | ✓ | 체결 결과 콜백 수신 |
 
 상세 계약은 [`docs/api-spec.md`](../docs/api-spec.md)를 참조하세요.
@@ -235,8 +197,8 @@ STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별�
 
 | STOMP 채널 | 유형 | 메시지 | 대상 |
 |-----------|------|--------|------|
-| `/topic/live/{ticker}` | Public Broadcast | 신호 + 주가 (Free: action 마스킹) | Frontend 전체 구독자 |
-| `/user/{userId}/queue/signals` | Private Routing | 매매 명령 (`trade_id`, `action`, `target_qty`, ...) | Trading Terminal (특정 사용자) |
+| `/topic/live/demo` | Public Broadcast | 데모 재생 신호 + 주가 | Frontend 데모룸 |
+| `/topic/transcript/{ticker}` | Public Broadcast | 어닝콜 트랜스크립트 세그먼트 | Trading Terminal · Frontend |
 
 ---
 
@@ -260,7 +222,7 @@ STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별�
 ./gradlew test
 ```
 
-외부 의존성을 격리합니다 — MySQL은 H2로, Redis/KIS API는 `@MockBean`으로 대체합니다. 테스트 전략 상세는 [`docs/testing-guidelines.md`](../docs/testing-guidelines.md)를 참조하세요.
+외부 의존성을 격리합니다 — MySQL은 H2로, Redis/KIS API는 `@MockBean`으로 대체합니다. 테스트 실행과 작성 관례는 [`docs/developer/testing.md`](../docs/developer/testing.md)에 있습니다.
 
 ---
 
@@ -270,5 +232,5 @@ STOMP CONNECT 시 `Authorization: Bearer {token}` 헤더로 사용자를 식별�
 |------|------|
 | [`docs/api-spec.md`](../docs/api-spec.md) | 서비스 간 API & 데이터 컨트랙트 전체 명세 |
 | [`docs/db-schema.md`](../docs/db-schema.md) | DB 스키마 상세 (테이블, 인덱스, 비즈니스 규칙) |
-| [`docs/testing-guidelines.md`](../docs/testing-guidelines.md) | 테스트 전략 및 작성 규칙 |
-| [`docs/requirements.md`](docs/requirements.md) | 백엔드 요구사항 정의서 (원문) |
+| [`docs/developer/architecture.md`](../docs/developer/architecture.md) | 시스템 구성과 주요 흐름 |
+| [`docs/developer/testing.md`](../docs/developer/testing.md) | 테스트 실행과 작성 관례 |

@@ -9,6 +9,7 @@ interface STTScriptPanelProps {
   transcript: readonly TranscriptLine[]
   /** LIVE 세션 진행 중 여부. false 면 placeholder 표시. */
   isLive: boolean
+  endedCallIds?: ReadonlySet<string>
   /** WPM 메타 (헤더 우측 표시). */
   wpm?: number
   /** "최신 라인으로 점프" 콜백 (선택). 미제공 시 내부에서만 처리. */
@@ -42,6 +43,7 @@ interface STTScriptPanelProps {
 export default function STTScriptPanel({
   transcript,
   isLive,
+  endedCallIds,
   wpm,
   onJumpLatest,
   onSpeakerClick,
@@ -205,9 +207,16 @@ export default function STTScriptPanel({
                 >
                   {line.text}
                 </div>
-                {line.textKo && <p className="text-xs text-accent-300">{line.textKo}</p>}
-                {!line.textKo && <span className="text-[10px] text-text-tertiary">한국어 번역 대기 또는 사용 불가 · 원문 유지</span>}
-                {!isLive && line.callId && <TranscriptQuestion key={`${line.ticker}:${line.callId}:${line.sequence}`} line={line} />}
+                {line.textKo && <p className="text-xs text-accent-300">
+                  {line.translationSequences && line.translationSequences.length > 1 && <span className="block text-[10px]">발언 {line.translationSequences.join(', ')} 묶음 번역</span>}
+                  {line.textKo}
+                </p>}
+                {!line.textKo && (line.translationSequences?.length
+                  ? <span className="text-[10px] text-text-tertiary">아래 묶음 번역에 포함</span>
+                  : <span className="text-[10px] text-text-tertiary">한국어 번역 대기 또는 사용 불가 · 원문 유지</span>)}
+                {line.callId && (endedCallIds ? endedCallIds.has(line.callId) : !isLive)
+                  ? <TranscriptQuestion key={`${line.ticker}:${line.callId}:${line.sequence}`} line={line} />
+                  : line.callId && <p className="text-[10px] text-text-tertiary">재생이 끝난 뒤 질문할 수 있습니다.</p>}
               </div>
             )
           })}

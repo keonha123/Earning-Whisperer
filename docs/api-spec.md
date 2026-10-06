@@ -8,16 +8,16 @@
 ## 1. 전체 데이터 흐름도 (Data Pipeline)
 
 1. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **AI Engine** (Python)
-2. **AI Engine** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java Spring Boot)
-3. **Backend** (Java) ➔ `[WebSocket /user/queue]` ➔ **Trading Terminal** (Electron/Node.js) : 개인화된 매매 명령 하달
-4. **Backend** (Java) ➔ `[WebSocket /topic/live]` ➔ **Frontend Web** (Next.js) : 라이브 데모 시각화
-5. **Trading Terminal** ➔ `[HTTP REST]` ➔ **증권사 KIS API** : 실제 주문 실행 (Client-side)
-6. **Trading Terminal** ➔ `[HTTP POST Callback]` ➔ **Backend** (Java) : 체결 결과 보고 및 장부 동기화
-7. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
-8. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
-9. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
-10. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 실시간 어닝콜 트랜스크립트 segment 전달 (AI Engine 분석용 슬라이딩 윈도우와 별개 출력)
-11. **Backend** (Java) ➔ `[WebSocket /topic/transcript]` ➔ **Trading Terminal / Frontend Web** : 어닝콜 트랜스크립트 라이브 표시
+2. **Backend** (Java) ➔ `[WebSocket /topic/live/demo]` ➔ **Frontend Web** (Next.js) : 데모 재생 시각화
+3. **Trading Terminal** ➔ `[HTTP REST]` ➔ **증권사 KIS API** : 사용자가 입력한 수동 주문 실행 (Client-side)
+4. **Trading Terminal** ➔ `[HTTP POST]` ➔ **Backend** (Java) : 수동 주문 기록, 체결 결과 보고, 잔고 동기화
+5. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 어닝콜 일정 데이터 동기화 (저빈도 배치)
+6. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 실시간 주가 데이터 스트리밍
+7. **Data Pipeline** (Python) ➔ `[Redis Pub/Sub]` ➔ **Backend** (Java) : 글로벌 시장 지수 1분 스트리밍
+8. **Data Pipeline** (Python) ➔ `[HTTP POST]` ➔ **Backend** (Java) : 실시간 어닝콜 트랜스크립트 segment 전달 (AI Engine 분석용 슬라이딩 윈도우와 별개 출력)
+9. **Backend** (Java) ➔ `[WebSocket /topic/transcript]` ➔ **Trading Terminal / Frontend Web** : 어닝콜 트랜스크립트 라이브 표시
+
+> 매매 신호로 주문을 내던 경로(AI Engine ➔ Redis `trading-signals` ➔ Backend 룰 엔진 ➔ `/user/queue/signals` ➔ Terminal)는 #127 에서 제거했습니다. EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가 터미널에서 직접 내는 주문만 있습니다.
 
 ---
 
@@ -42,6 +42,7 @@
 - **통신 방식:** Redis Pub/Sub
 - **Redis Channel:** `trading-signals`
 - **설명:** AI 서버(Stateless)가 텍스트를 분석하여 도출한 **순수 감성 점수(Raw Score)**와 해설을 백엔드로 브로드캐스팅합니다.
+- **현재 상태:** 백엔드는 #127 에서 이 채널의 구독을 제거했습니다. AI Engine 이 발행하더라도 받는 곳이 없습니다. 형식은 기록으로 남겨 둡니다.
 
 | 필드명           | 타입    | 필수 | 설명                                                                       |
 | :--------------- | :------ | :--: | :------------------------------------------------------------------------- |
@@ -56,7 +57,7 @@
 
 ## 4. [Contract 3] Backend ➔ Clients (WebSocket Signaling)
 
-백엔드는 목적에 따라 세 가지 방식의 웹소켓 채널을 운영합니다.
+백엔드는 목적에 따라 여러 웹소켓 채널을 운영합니다. 개인 큐(`/user/queue/...`)로 보내는 채널은 #127 에서 매매 신호 경로를 제거하면서 없어졌습니다.
 
 ### 4.1. Demo Replay Broadcast (Frontend Web 쇼케이스 데모룸용)
 
@@ -82,6 +83,7 @@
 
 - **Topic:** `/topic/live/{ticker}`
 - **설명:** 실제 어닝콜이 진행 중일 때 로그인한 웹 유저에게 시각화용 데이터를 동일하게 브로드캐스트합니다. (주문 명령 없음)
+- **현재 상태:** 이 토픽은 Redis `trading-signals` 수신을 계기로 발행됐으므로, #127 에서 구독을 제거한 뒤로는 발행되지 않습니다. 데모 재생(4.1)의 `/topic/live/demo` 는 그대로입니다.
 - **접근 권한:** 로그인 필수 (JWT). Free 유저는 `action` 필드를 `null`로 수신하여 BUY/SELL 판단은 노출되지 않습니다.
 - **주가 데이터:** Data Pipeline이 Redis `market-data` 채널로 푸시한 주가 tick을 백엔드가 이 채널에 병합하여 포워딩합니다.
 
@@ -98,24 +100,9 @@
 | `timestamp`      | Long    |  Y   | 신호 발생 시점 (Unix Epoch Second, UTC)                                       |
 | `is_session_end` | Boolean |  N   | 어닝콜 세션 종료 신호 (기본값 `false`)                                        |
 
-### 4.3. Private Routing (Trading Terminal 주문 지시용)
+### 4.3. Private Routing (제거됨)
 
-- **Queue:** `/user/{userId}/queue/signals`
-- **설명:** 백엔드의 '자체 추정 장부(Internal Ledger)'와 유저의 리스크 룰을 통과한 **실제 매매 명령**을 특정 유저의 데스크톱 앱으로만 은밀하게 발송합니다.
-- **수량 결정 원칙 (자본시장법 준수):** 백엔드는 **수량을 직접 계산하지 않고**, 사용자의 `PortfolioSettings.buyAmountRatio`를 `order_ratio` 필드로 실어 보냅니다. Trading Terminal이 주문 직전 실제 KIS 잔고·현재가를 조회하여 **사용자 로컬 PC에서 최종 수량을 산출**합니다. 이는 "중앙 서버가 사용자 대신 종목·수량·시점을 결정"하는 행위(미등록 투자일임업)를 회피하기 위한 설계입니다. 최종 체결 수량(`executed_qty`)은 콜백 API(Contract 4.1)로 보고되며, 백엔드는 이 값으로 `Trade.orderQty`를 덮어씁니다(PENDING 시점엔 0 센티널).
-
-**수량 산출 공식 (Trading Terminal에서 적용):**
-
-- BUY: `qty = floor(orderableCash × order_ratio / currentPrice)`
-- SELL: `qty = floor(holdingQty × order_ratio)` (0이면 주문 안 함 — 서버 의도 비율 초과 매도 방지)
-
-| 필드명        | 타입   | 필수 | 설명                                                                             |
-| :------------ | :----- | :--: | :------------------------------------------------------------------------------- |
-| `trade_id`    | String |  Y   | 백엔드가 DB에 생성한 `PENDING` 상태의 고유 거래 ID                               |
-| `action`      | String |  Y   | 최종 매매 방향 (`BUY`, `SELL`)                                                   |
-| `order_ratio` | Double |  Y   | 주문 비율 (0.0 ~ 1.0). BUY: 예수금 대비 매수 비율. SELL: 보유수량 대비 매도 비율 |
-| `ticker`      | String |  Y   | 종목 심볼                                                                        |
-| `ema_score`   | Double |  Y   | 최종 결정에 사용된 EMA 점수                                                      |
+`/user/{userId}/queue/signals` 로 매매 명령을 보내던 채널은 #127 에서 제거했습니다. 백엔드는 더 이상 주문을 지시하지 않으며, 터미널은 이 큐를 구독하지 않습니다. 재접속 시 대기 명령을 복원하던 `GET /api/v1/trades/pending` 도 함께 제거했습니다.
 
 ### 4.4. Global Market Indices Broadcast (글로벌 시장 지수 1분 스트리밍)
 
@@ -221,14 +208,35 @@
 
 ---
 
+### 4.8. Transcript Translation Broadcast (어닝콜 자막 한국어 번역)
+
+- **Topic:** `/topic/transcript-translation/{ticker}`
+- **인증:** 로그인 필수 (JWT). 4.5와 동일 정책.
+- **설명:** 4.5로 나간 자막 세그먼트의 한국어 번역입니다(#110). 백엔드가 세그먼트를 몇 개씩 묶어 AI Engine(Contract 9.10)에 번역을 요청하고, 결과를 이 채널로 발행합니다. 용어 사전(7.9)에 있는 용어는 사전의 번역어로 고정됩니다.
+- **발행 시점:** 세그먼트 3개가 모이거나, 묶음의 첫 세그먼트가 들어온 지 10초가 지나거나, 글자 수 상한(1,200자)에 닿거나, 세션 종료 세그먼트(`is_session_end=true`)가 들어왔을 때 묶음을 보냅니다. 번역은 AI Engine 응답(LLM) 시간만큼 더 늦게 도착합니다. 값은 `transcript-translation.*` 설정으로 바꿀 수 있습니다.
+- **발행되지 않는 경우:** 번역이 꺼져 있을 때(`ai-engine.translation-enabled=false`), AI Engine 호출 실패, 번역 실패(`available=false`), 대기열에서 30초(`transcript-translation.max-age-ms`) 넘게 밀린 묶음. 원문을 번역 대신 보내지 않습니다. 사유는 백엔드 로그에 남습니다.
+- **트랜스크립트 채널과의 관계:** 4.5 원문은 번역을 기다리지 않고 먼저 나갑니다. 클라이언트는 `ticker`, `call_id`, `sequences` 로 세션과 원문을 대조하고, 묶음의 마지막 세그먼트에 번역을 한 번 표시합니다. 빈 종료 제어 메시지도 대기 중인 번역 묶음을 즉시 보냅니다. 묶음 단위로 한 문단이 오므로 세그먼트별로 나뉘어 있지 않습니다.
+
+| 필드명       | 타입          | 필수 | 설명                                                                 |
+| :----------- | :------------ | :--: | :------------------------------------------------------------------- |
+| `ticker`     | String        |  Y   | 종목 심볼                                                            |
+| `call_id`    | String        |  Y   | 어닝콜 세션 식별자 (4.5와 동일 값)                                   |
+| `sequences`  | Array<Integer> |  Y   | 이 번역이 담은 4.5 세그먼트의 `sequence`. 오름차순, 1개 이상         |
+| `text_ko`    | String        |  Y   | 한국어 번역문                                                        |
+| `terms_used` | Array<String> |  Y   | 사전 번역어가 번역문에 실제로 들어간 용어 (원문 표기). 없으면 빈 배열 |
+
+> **구독 예시:** `stompClient.subscribe('/topic/transcript-translation/WMT', handler)`
+
+---
+
 ## 5. [Contract 4] Trading Terminal ➔ Backend (Callback & Sync)
 
-로컬 PC에서 매매를 대신 실행한 Trading Terminal이 백엔드 장부(Ledger)와 상태를 일치시키기 위해 호출하는 핵심 REST API입니다.
+Trading Terminal이 사용자의 수동 주문 결과와 실제 계좌 상태를 백엔드에 기록하기 위해 호출하는 REST API입니다.
 
 ### 5.1. 매매 체결 결과 보고 (Callback)
 
 - **엔드포인트:** `POST /api/v1/trades/{tradeId}/callback`
-- **설명:** Trading Terminal이 실제 KIS 잔고와 현재가를 조회하여 `order_ratio`에 따라 최종 수량을 산출하고 주문을 실행한 뒤, 체결 결과를 백엔드로 보고하여 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. `Trade.orderQty`는 PENDING 시점엔 0(센티널)이며 본 콜백 수신 시 `executed_qty`로 덮어써집니다.
+- **설명:** `PENDING` 으로 기록된 수동 주문(7.3 `POST /api/v1/trades/manual`)이 나중에 체결되거나 실패했을 때, 그 결과를 보고해 DB 상태를 `EXECUTED` 또는 `FAILED`로 확정합니다. 본 콜백 수신 시 `Trade.orderQty`는 `executed_qty`로 덮어써집니다. `EXPIRED` 상태에서 `EXECUTED` 를 받으면 정정 전이로 처리합니다.
 
   {
   "status": "EXECUTED",
@@ -241,7 +249,7 @@
 ### 5.2. 실제 계좌 장부 동기화 (Sync)
 
 - **엔드포인트:** `POST /api/v1/portfolio/sync`
-- **설명:** Trading Terminal이 기동되거나 매매가 완료된 직후, 실제 KIS 계좌 잔고를 백엔드에 덮어씌워 룰 엔진의 오차를 교정합니다.
+- **설명:** Trading Terminal이 기동되거나 매매가 완료된 직후, 실제 KIS 계좌 잔고를 백엔드에 덮어씌웁니다.
 
   {
   "total_cash": 15000000,
@@ -427,7 +435,8 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 | Method | Endpoint                 | 인증 | 설명                                                                                            |
 | :----- | :----------------------- | :--: | :---------------------------------------------------------------------------------------------- |
 | GET    | `/api/v1/users/me`       | 필요 | 내 프로필 조회. 응답: `{id, email, nickname, role, createdAt}`                                  |
-| PUT    | `/api/v1/users/settings` | 필요 | 리스크 룰 설정 저장. 요청: `{trading_mode, max_buy_ratio, max_holding_ratio, cooldown_minutes}` |
+
+`PUT /api/v1/users/settings` 와 `GET`·`PUT /api/v1/portfolio/settings`(매매 모드와 룰 엔진 설정)는 #127 에서 제거했습니다.
 
 ### 7.3. 거래 내역 (Trades)
 
@@ -455,9 +464,9 @@ Data Pipeline 팀이 외부 주가/어닝 일정 데이터를 수집하여 백�
 
 #### `POST /api/v1/trades/manual`
 
-- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록한다. 자동/반자동 경로(Contract 4.1)와 달리 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고한다. 활성 `BrokerAccount` 가 없으면 **422**.
+- **설명:** 사용자가 터미널 UI 에서 직접 낸 주문의 결과를 기록합니다. 백엔드가 주문을 지시하지 않으므로 요청에 `trade_id` 가 없고, 터미널이 KIS 주문 후 결과를 그대로 보고합니다. `side` 는 `BUY` / `SELL` 만 받습니다. 활성 `BrokerAccount` 가 없으면 **422** 입니다.
 - **응답 201 `{"tradeId": 123}`** — `status: PENDING` 으로 기록된 미체결 주문을 나중에 `POST /api/v1/trades/{tradeId}/callback` 으로 종결시키기 위해 필요하다. 터미널에 아직 체결 폴링이 없어 현재는 이 경로를 쓰지 않지만, id 를 돌려주지 않으면 종결 자체가 구조적으로 불가능하다.
-- **PENDING 수동 주문의 TTL 은 자동 명령과 다르다.** 자동 명령은 `app.trade.pending-ttl-seconds`(기본 30초), 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간). 수동 주문은 증권사에 실제로 접수돼 체결을 기다리는 주문이라 30초로 만료시키면 살아 있는 주문이 "실패" 로 뜬다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 긴 TTL 을 준다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복한다.
+- **PENDING 수동 주문은 `app.trade.manual-pending-ttl-seconds`(기본 24시간)가 지나면 `EXPIRED` 로 바뀝니다.** 증권사에 실제로 접수돼 체결을 기다리는 주문이라 짧게 만료시키면 살아 있는 주문이 "실패" 로 뜹니다. 반대로 만료 대상에서 아예 빼면 영구 PENDING 고아가 되므로, KIS 당일 주문이 장 마감에 취소되는 것에 맞춰 하루를 줍니다. 사후에 체결이 확인되면 EXPIRED → EXECUTED 정정 전이로 회복합니다. 매매 신호 명령용이던 `app.trade.pending-ttl-seconds` 는 #127 에서 제거했습니다.
 - **`status` 는 `EXECUTED` / `PENDING` / `FAILED` 세 값을 받는다.** `PENDING` 은 KIS 가 주문을 접수했으나(ODNO 반환) 아직 체결되지 않은 상태다 — 살아 있는 주문을 `FAILED` 로 적으면 안 된다.
 - **`order_type` 은 항상 `LIMIT` 이다.** KIS 해외주식 매수에는 시장가 코드가 없어(`ORD_DVSN` 매수는 `00` 지정가 / `32` LOO / `34` LOC, 모의투자는 `00` 만) UI 의 "즉시 체결" 도 현재가 ±1% 지정가로 환산해 나간다. `price` 는 브로커에 실제로 보낸 지정가다. 단, 가격 확정 전에 실패한 경우(현재가 조회 불가)는 주문이 나가지 않았으므로 `MARKET` / `price: 0` 으로 기록된다.
 
@@ -564,6 +573,30 @@ start 응답 예시:
 
 - **관련 설정:** `demo.earnings-call.script-path`, `demo.earnings-call.interval-ms`, `ai-engine.base-url`, `ai-engine.fact-check-enabled`, `ai-engine.timeout-ms`. `fact-check-enabled=false`로 두면 AI Engine 없이 트랜스크립트 재생만 수행합니다.
 
+### 7.9. 어닝콜 용어 사전 (Glossary)
+
+| Method | Endpoint           | 인증 | 설명                 |
+| :----- | :----------------- | :--: | :------------------- |
+| GET    | `/api/v1/glossary` | 필요 | 어닝콜 용어 사전 전체 |
+
+- **설명:** 어닝콜 영어의 금융 용어와 그 한국어 표기를 담은 사전입니다. 한 사전을 두 기능이 함께 씁니다. 실시간 번역(#110)은 세그먼트에서 찾은 용어의 `ko`로 번역어를 고정하고, 용어 하이라이팅(#111)은 `definition_ko`·`why_ko`를 정의 팝오버에 보여줍니다.
+- **사전은 백엔드 리소스(`data/glossary_ko.json`)입니다.** 기동 시 한 번 읽어 끝까지 같은 값을 내려주므로, 클라이언트는 로그인 직후 한 번만 조회하면 됩니다(JWT 필요). AI Engine 가동 여부와 무관하게 응답합니다.
+- **`ko`는 번역문에 그대로 들어가는 표기입니다.** 설명을 괄호로 붙이면(예: "가이던스(실적 전망치)") 번역문에도 매번 괄호째 들어갑니다. 설명은 `definition_ko`에 둡니다. 약어 병기("주당순이익(EPS)")처럼 번역문에 함께 보여야 하는 것만 괄호를 씁니다.
+- **`definition_ko`·`why_ko`는 선택 필드이며, 값이 없으면 응답에서 생략됩니다.** 정의가 없는 용어는 번역 고정에만 쓰이고 하이라이팅 대상이 아닙니다. 현재 사전은 41개 용어 중 21개에 정의·사용 이유를 포함합니다. 정의가 없는 항목은 번역용으로만 사용합니다.
+
+      { "version": 1,
+        "terms": [
+          { "term": "comp sales", "aliases": ["comparable sales", "comps"], "ko": "기존점 매출", "category": "retail",
+            "definition_ko": "1년 이상 운영된 점포만 집계한 매출 증가율입니다.", "why_ko": "신규 출점 효과를 뺀 실제 영업력을 보여줍니다." },
+          { "term": "guidance", "aliases": [], "ko": "가이던스", "category": "guidance" } ] }
+
+- **사전 교체 시 규칙.** 기동 시점에 검증하며, 위반하면 **애플리케이션이 기동되지 않습니다.** 빈 사전이나 잘못된 사전으로 기동하면 번역이 용어 고정 없이 도는데, 화면만으로는 원인을 알 수 없기 때문입니다.
+  1. `version`은 1 이상, `terms`는 1개 이상이어야 합니다.
+  2. `term`·`ko`는 비어 있을 수 없습니다.
+  3. `term`과 `aliases` 전체에서 같은 표기가 두 번 나올 수 없습니다(대소문자·앞뒤 공백 무시). 한 표기가 두 용어에 걸리면 어느 번역어로 고정할지 정해지지 않습니다.
+  4. 정의된 필드 외의 키는 거부합니다. `definiton_ko` 같은 키 오타가 조용히 버려지는 것을 막기 위해서입니다.
+- **관련 설정:** `glossary.path` (기본 `data/glossary_ko.json`).
+
 ---
 
 ## 8. 공통 개발 가이드라인 (Common Rules)
@@ -577,15 +610,7 @@ start 응답 예시:
    - 만료와 위조를 응답에서 구분해 알려주지 않습니다. 둘 다 `{"error": "인증이 필요합니다."}` 입니다.
 5. **타임존:** 모든 `timestamp`는 **UTC** 기준의 Unix Epoch Second를 사용합니다. 프론트엔드 및 터미널 수신 후 로컬 브라우저/OS 시간으로 변환하여 표출합니다.
 6. **무상태성 및 단일 진실 공급원:** 백엔드는 KIS API 키를 가지지 않으며, 모든 '최종' 자산 상태는 Trading Terminal이 쏘아주는 Sync 데이터를 '단일 진실 공급원(Single Source of Truth)'으로 취급하여 덮어씁니다.
-7. **Fallback (안전망):** Trading Terminal은 백엔드 웹소켓 연결이 끊기거나 비정상적인 데이터가 수신될 경우, 즉시 매매 모드를 `MANUAL(수동)`로 강제 전환하고 유저에게 OS 네이티브 알림을 띄워야 합니다.
-8. **매매 필터링 책임 분리 (2-Layer Filter):** 신호가 실제 주문으로 이어지기까지 두 단계의 독립적인 필터가 존재합니다. 두 필터는 서로 다른 관심사를 담당하며 중복이 아닙니다.
-
-   | 레이어               | 주체                           | 필터링 기준                                      | 결과                                                               |
-   | :------------------- | :----------------------------- | :----------------------------------------------- | :----------------------------------------------------------------- |
-   | **1차 (서버)**       | Backend 룰 엔진                | EMA 임계치, 쿨다운, 장부 잔고/비중 조건          | 조건 미달 시 신호 자체를 생성하지 않음 (HOLD)                      |
-   | **2차 (클라이언트)** | Trading Terminal 트레이딩 모드 | 사용자 승인 방식 (Manual / 1-Click / Auto-Pilot) | 신호를 수신하더라도 모드에 따라 즉시 실행하거나 사용자 승인을 대기 |
-
-   즉, 백엔드가 신호를 보냈다고 해서 반드시 주문이 실행되는 것은 아닙니다. Terminal의 트레이딩 모드가 최종 실행 여부를 결정합니다.
+7. **주문 주체:** 모든 주문은 사용자가 Trading Terminal 에서 직접 입력한 수동 주문입니다. 백엔드의 룰 엔진과 터미널의 매매 모드 선택은 #127 에서 제거했습니다.
 
 ---
 
@@ -744,19 +769,57 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 
 **관련도 임계값은 임베딩 모델에 종속된다.** Gemini 임베딩은 기준선 유사도가 높아서 무관한 문서도 0.48 수준이 나온다. 해시 임베딩 기준으로 잡힌 0.42/0.34를 그대로 쓰면 아무 기사나 근거로 통과한다. 모델을 바꾸면 `FACT_CHECK_STRONG_RELEVANCE_SCORE` / `FACT_CHECK_MODERATE_RELEVANCE_SCORE`를 실제 코퍼스로 재보정해야 한다.
 
+### 9.10. 세그먼트 한국어 번역 (`POST /v1/engine/transcript/translate`)
 
-## Local implementation: transcript translation and selected statement QA (#110 / #112)
+어닝콜 세그먼트 1개를 한국어로 번역한다(#110). 용어 사전은 백엔드(§7.9)에 있고, 엔진은 **요청에 실려 온 용어만** 번역어로 고정한다. 백엔드는 세그먼트 원문에서 찾은 용어만 `terms`에 담는다 — 사전 전체를 보내지 않으므로 사전이 커져도 프롬프트 크기와 지연이 늘지 않는다.
 
-- `POST /v1/engine/transcript/translate`: `{ticker, call_id?, sequence, text, terms?:[{term,ko}]}` -> `{available, ticker, call_id, sequence, original_text, text_ko, terms_used, warnings}`. This accepts the latest remote translation producer contract; omitted `call_id` is echoed as null for standalone translation only. Live updates still require an exact nonempty session identity. Explicit `terms` overrides the engine glossary for that request; absent terms use matching curated terms. AI timeout is 12 seconds. Missing credentials or failed numeric/unit/negation/term verification leaves `text_ko=null`; original English is never replaced.
-- Backend `TranscriptService` publishes original STT immediately, then schedules translation on a separate bounded pool (2 workers, queue 128). `ai-engine.translation-enabled=false` disables calls. Successful updates use the original `/topic/transcript/{ticker}` payload plus optional `text_ko`. Same `(ticker, call_id, sequence)` is an enrichment update; clients merge only when original text/offsets match, including after session end. Overload/unavailable translation leaves English visible.
-- `GET /api/v1/transcript/glossary` (JWT) proxies `GET /v1/engine/glossary`; `{version, terms:[{term, aliases, ko, definition_ko, why_ko, category}]}`. Terminal exposes a financial glossary drawer.
-- `GET /api/v1/glossary` (JWT) additionally exposes the packaged backend glossary adopted from remote PR #139: numeric `version`, the same term fields, optional definitions. Backend translation selects its longest nonoverlapping source terms and forwards their fixed Korean labels. The rich AI glossary remains available for QA definitions.
-- `POST /api/v1/transcript/ask` (JWT): `{ticker, call_id, segment_sequences:[integer], question}`. Accepts 1-10 unique, server-known sequences from an ended session. Unknown/live/cross-ticker calls return 409; invalid or duplicate selection returns 400. The server supplies original accepted `segment_texts` and historical `as_of` from the selected segment timestamps; client text/cutoff is never trusted. The shared candidate/verification budget is 25 seconds, backend HTTP read timeout 30 seconds, terminal QA timeout 35 seconds. Translation has a separate 12-second budget and never delays original STT.
+| 필드       | 필수 | 설명                                                        |
+| :--------- | :--: | :---------------------------------------------------------- |
+| `ticker`   |  Y   | 종목 심볼                                                   |
+| `call_id`  |  N   | 어닝콜 세션 식별자 (로그용)                                 |
+| `sequence` |  Y   | 세그먼트 시퀀스. 응답에 그대로 돌려준다                     |
+| `text`     |  Y   | 세그먼트 원문 (앞뒤 공백 제거 후 1~4000자)                  |
+| `terms`    |  N   | 고정할 용어 `[{ "term", "ko" }]`, 최대 50개. 비면 일반 번역 |
+
+    POST /v1/engine/transcript/translate
+    { "ticker": "WMT", "call_id": "demo-wmt-q2fy27-1", "sequence": 3,
+      "text": "Comp sales for Walmart U.S. were 2.6%, led by transactions.",
+      "terms": [ { "term": "comp sales", "ko": "기존점 매출" }, { "term": "transactions", "ko": "거래 건수" } ] }
+
+    200 OK
+    { "available": true, "sequence": 3,
+      "text_ko": "Walmart U.S.의 기존점 매출은 거래 건수 증가에 힘입어 2.6%를 기록했습니다.",
+      "terms_used": ["comp sales", "transactions"], "warnings": [] }
+
+- **번역 실패도 HTTP 200이다.** 실패는 `available=false`와 `warnings`로 알린다. 요청 형식이 틀리면(빈 `text`, 공백뿐인 `term`·`ko` 등) 422다. **실패 시 `text_ko`는 null이며, 원문을 대신 넣지 않는다.** 호출자는 `available`을 분기해야 한다.
+
+| `warnings` 값                   | `available` | 의미                                                                           |
+| :------------------------------ | :---------: | :----------------------------------------------------------------------------- |
+| `translation_llm_timeout`       |    false    | `TRANSCRIPT_TRANSLATION_TIMEOUT_SECONDS`(기본 20초) 안에 끝나지 않음                                                           |
+| `translation_llm_failed`        |    false    | LLM 호출 실패. 429 할당량 초과 · 503 과부하 · API 키 누락이 모두 여기로 온다   |
+| `translation_invalid_response`  |    false    | 응답에 `text_ko`가 없거나 형식이 틀림                                          |
+| `translation_not_korean`        |    false    | 번역문 글자 중 한글 비율이 30% 미만 — 원문을 그대로 또는 일부만 옮긴 경우      |
+| `translation_numeric_or_unit_mismatch` | false | 숫자·단위가 원문과 다름 |
+| `translation_negation_mismatch` | false | 원문의 부정 표현이 번역에서 누락됨 |
+| `translation_internal_error`    |    false    | 엔진 내부 오류. 엔진 로그에 스택이 남는다                                      |
+| `translation_terms_not_applied` |    true     | 번역은 되었지만 `terms` 중 일부의 번역어가 번역문에 없음. 번역문은 그대로 쓴다 |
+
+- **`terms_used`는 코드가 판정한다.** `terms` 중 `ko`가 번역문에 실제로 들어간 용어만 담는다. LLM의 자기 보고를 쓰지 않는다. 긴 번역어부터 찾으므로 "기존점 매출"만 쓰인 번역문에서 "매출"이 함께 잡히지 않는다.
+- **실패한 세그먼트는 재시도하면 다시 호출된다.** Gemini 클라이언트는 호출 실패·폴백 응답을 캐시하지 않는다. 성공한 번역은 캐시에 남아 같은 세그먼트를 다시 재생하면 할당량을 쓰지 않는다.
+- **호출 예산.** 번역 전체 기본 예산은 20초이고 백엔드는 별도 25초 읽기 제한을 쓴다. 일시적 오류는 Gemini 클라이언트가 남은 예산 안에서 재시도한다. 이미 진행 중인 SDK 요청은 대기 취소 후에도 완료되며 할당량을 쓸 수 있다.
+- **백엔드 호출 방식.** 백엔드는 세그먼트를 묶어(4.8 발행 시점 참고) 원문을 공백으로 이어 붙여 `text`로 보내고, 묶음의 첫 `sequence`를 `sequence`로 쓴다. `terms`의 `term`은 원문에 나온 표기 그대로이며, 겹치는 용어는 긴 표기만 담는다.
+- **할당량 주의.** 기존 시연에서는 무료 등급 Gemini의 모델별 **분당 15요청** 제한이 관찰되었다(`gemini-3.1-flash-lite` 실측, 429 `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`). 번역은 팩트체크(§9.1)와 같은 모델을 쓰므로 할당량을 함께 쓴다. 세그먼트마다 번역을 부르면 시연(6초 간격 24세그먼트) 기준 분당 약 10회가 더해져, 팩트체크와 합쳐 한도를 넘는다.
+
+
+## Selected statement QA compatibility (#112)
+
+- `GET /api/v1/transcript/glossary` (JWT) is a compatibility alias for `GET /api/v1/glossary`, serving the same packaged backend resource without contacting AI; `{version:number, terms:[{term, aliases, ko, definition_ko?, why_ko?, category}]}`. Terminal exposes a financial glossary drawer even when AI is unavailable.
+- The backend glossary retains the 41 canonical main terms and Korean labels; version 2 includes definitions for 21 unambiguous matches from the existing QA glossary. Backend translation selects its longest nonoverlapping source terms and forwards their fixed Korean labels. The AI glossary remains an internal QA source and a legacy direct API.
+- `POST /api/v1/transcript/ask` (JWT): `{ticker, call_id, segment_sequences:[integer], question}`. Accepts 1-10 unique, server-known sequences from an ended session. Unknown/live/cross-ticker calls return 409; invalid or duplicate selection returns 400. The server supplies original accepted `segment_texts` and historical `as_of` from the selected segment timestamps; client text/cutoff is never trusted. The shared candidate/verification budget is 25 seconds, backend HTTP read timeout 30 seconds, terminal QA timeout 35 seconds. Translation has a separate 20-second budget and never delays original STT.
 - Backend forwards to `POST /v1/engine/transcript/ask`. Response `{available,ticker,call_id,segment_sequences,answer_ko,refused,refusal_reason,evidence,citations,warnings}`; citations are `{evidence_index,quote}` with zero-based indexes into `evidence`. `EvidenceCitation` uses `snippet`, `source`, `published_at`, `source_url`. Identity mismatch returns 502; unavailable AI service returns 503. Timeout/no-answer responses from AI still carry retrieved evidence and render it in the terminal.
 - Actual `INSUFFICIENT_EVIDENCE` explanations are retained only when the fact-check batch and source text match accepted segments; forwarded as optional `insufficient_reason`. Without a matching actual record, QA reports unavailable rather than inventing the reason.
 - Terminal offers a single-turn question form beside each completed statement. Investment recommendations and unrelated questions are refused. English, Korean translation, answer, quoted citations and source snippets remain distinct.
 - Transcript content retention is bounded to the newest 64 calls for 24 hours, at most 5,000 segments / 1,000,000 characters per call; evicted selections are unavailable. Lightweight sequence/end tombstones keep the existing process-lifetime behavior. Session/QA history remains process-local (same lifetime as existing STT registry); backend restart loses QA selection context, so a replay is needed. Multi-instance persistent history is not implemented by this local change.
-- `trading-signals.execution_allowed` is optional for legacy compatibility. Explicit `false` forces HOLD and skips broker lookup, rule evaluation, history/cooldown mutation and order creation. The engine also suppresses blocked legacy events for compatibility with older consumers; enriched informational events remain available.
 
 
 ### Live internal fact-check wiring

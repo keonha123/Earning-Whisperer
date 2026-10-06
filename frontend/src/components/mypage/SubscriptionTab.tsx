@@ -4,7 +4,7 @@ import { m } from "framer-motion";
 
 const PRO_FEATURES = [
   "EMA 기반 BUY/SELL 매매 신호",
-  "AUTO_PILOT 자동매매 모드",
+  "분석 화면에서 직접 주문",
   "포트폴리오 연동 신호 최적화",
   "Free 플랜 전체 포함",
 ];

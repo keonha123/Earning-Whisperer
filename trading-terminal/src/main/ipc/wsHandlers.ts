@@ -7,7 +7,6 @@ import {
   type DemoStartResult,
   type SpeakerProfilePayload,
 } from '../services/BackendClient'
-import { mainState } from '../store/mainState'
 import { SubscriptionManager } from '../services/SubscriptionManager'
 import { IPC_CHANNELS } from '../../lib/ipcChannels'
 import { registerHandler } from './registerHandler'
@@ -52,19 +51,6 @@ export function registerWsHandlers() {
     },
   )
 
-  registerHandler<{ tradeId: string; reason: string }, void>(
-    IPC_CHANNELS.TRADE_CANCEL,
-    async (_e, { tradeId, reason }) => {
-      await BackendClient.sendCallback(tradeId, {
-        status: 'FAILED',
-        broker_order_id: null,
-        executed_price: null,
-        executed_qty: 0,
-        error_message: reason,
-      })
-    },
-  )
-
   /*
    * 트랜스크립트 동적 구독 (Contract 4.5).
    * Renderer 가 사용자의 어닝콜 ticker 변경에 따라 SUBSCRIBE/UNSUBSCRIBE 를 명령한다.
@@ -76,7 +62,6 @@ export function registerWsHandlers() {
     IPC_CHANNELS.TRADE_SESSION_START,
     (_e, payload) => {
       if (!payload || typeof payload.ticker !== 'string' || !payload.ticker) return
-      mainState.setTradeSession(true, payload.ticker)
       SubscriptionManager.setActiveSession(payload.ticker)
     },
   )
@@ -84,7 +69,6 @@ export function registerWsHandlers() {
   registerHandler<undefined, void>(
     IPC_CHANNELS.TRADE_SESSION_END,
     () => {
-      mainState.setTradeSession(false)
       SubscriptionManager.setActiveSession(null)
     },
   )

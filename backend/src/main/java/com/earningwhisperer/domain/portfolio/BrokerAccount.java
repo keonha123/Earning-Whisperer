@@ -14,8 +14,7 @@ import lombok.NoArgsConstructor;
  * <p>accountType 단일 컬럼으로 계정 종류를 표현한다. unique 제약은 (user_id, account_type) 으로,
  * 한 사용자가 KIS_REAL / KIS_PAPER / SELF_PAPER 각 1개씩 보유 가능.
  *
- * <p>cashBalance 는 Trading Terminal 의 잔고 sync 가 갱신하며, RuleEngine 의 maxPositionRatio 검증과
- * PositionService.computePositionRatio 가 이 값을 기반으로 계산한다.
+ * <p>cashBalance 는 Trading Terminal 의 잔고 sync 가 갱신한다.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -48,7 +47,7 @@ public class BrokerAccount extends BaseEntity {
 
     /**
      * 실계좌 예수금. Trading Terminal 의 KIS 잔고 sync 가 갱신.
-     * null = 아직 동기화 미완료 (SignalService fail-safe HOLD 트리거).
+     * null = 아직 동기화 미완료.
      */
     @Column
     private Double cashBalance;

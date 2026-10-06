@@ -12,7 +12,8 @@ import static org.mockito.Mockito.*;
 class TranscriptQuestionControllerTest {
     TranscriptSessionRegistry registry = new TranscriptSessionRegistry();
     AiEngineClient client = mock(AiEngineClient.class);
-    TranscriptQuestionController controller = new TranscriptQuestionController(registry, client);
+    TranscriptQuestionController controller = new TranscriptQuestionController(registry, client,
+            new com.earningwhisperer.infrastructure.glossary.GlossaryService(new ObjectMapper(), "data/glossary_ko.json"));
     TranscriptSegment segment(int seq, boolean end) {
         return new TranscriptSegment("NVDA", "call", seq, 0, 1000, "Authoritative original", null, 1700000000L, end);
     }

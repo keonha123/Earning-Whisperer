@@ -11,11 +11,13 @@ try:
     from core.gemini_client import gemini_client
     from models.evidence_models import EvidenceCitation
     from models.request_models import SourceType
+    from services import transcript_statement_diff
 except ImportError:  # pragma: no cover
     from ..config import get_settings
     from ..core.gemini_client import gemini_client
     from ..models.evidence_models import EvidenceCitation
     from ..models.request_models import SourceType
+    from . import transcript_statement_diff
 
 
 TOPIC_TERMS: dict[str, set[str]] = {
@@ -70,8 +72,11 @@ class TranscriptDiffService:
     min_relevance_score = 0.68
     min_confidence_score = 0.72
 
-    def __init__(self, repository) -> None:
+    def __init__(self, repository, statement_service=None) -> None:
         self.repository = repository
+        # 직전 콜 핵심 문장(TranscriptStatementService). 있으면 문장 기반으로 대조하고,
+        # 없거나 해당 콜의 문장이 저장되지 않았으면 아래의 청크 검색 방식으로 대조한다.
+        self.statement_service = statement_service
 
     async def analyze(
         self,
@@ -107,13 +112,32 @@ class TranscriptDiffService:
 
         document_id = str(previous.get("document_id") or "")
         topics = _topics_for(current_chunk)
+        statement_warnings: list[str] = []
+        if self.statement_service is not None:
+            try:
+                statements = self.statement_service.list(document_id)
+            except Exception:
+                statements = []
+                statement_warnings.append("key_statements_lookup_failed")
+            if statements:
+                return await self._analyze_with_statements(
+                    ticker=normalized_ticker,
+                    current_chunk=current_chunk,
+                    topics=topics,
+                    statements=statements,
+                    previous=previous,
+                )
+            if not statement_warnings:
+                statement_warnings.append("key_statements_not_found")
+
+        # 문장 기반 대조는 위에서 관련 문장 유무로 거른다. 아래 주제어 판정은 청크 검색 방식에만 쓴다.
         if not _is_material_chunk(current_chunk, topics):
             return {
                 "available": True,
                 "ticker": normalized_ticker,
                 "previous_document": _previous_document(previous),
                 "items": [],
-                "warnings": ["current_chunk_not_material"],
+                "warnings": [*statement_warnings, "current_chunk_not_material"],
             }
 
         try:
@@ -134,10 +158,10 @@ class TranscriptDiffService:
                 "ticker": normalized_ticker,
                 "previous_document": _previous_document(previous),
                 "items": [],
-                "warnings": ["weak_prior_transcript_evidence"],
+                "warnings": [*statement_warnings, "weak_prior_transcript_evidence"],
             }
 
-        warnings: list[str] = []
+        warnings: list[str] = list(statement_warnings)
         try:
             items = await asyncio.wait_for(self._generate_llm_diff(
                 ticker=normalized_ticker,
@@ -162,6 +186,44 @@ class TranscriptDiffService:
             "items": items[:3],
             "warnings": warnings,
         }
+
+    async def _analyze_with_statements(
+        self,
+        *,
+        ticker: str,
+        current_chunk: str,
+        topics: list[str],
+        statements: list,
+        previous: dict[str, Any],
+    ) -> dict[str, Any]:
+        """직전 콜 핵심 문장과 대조한다. 직전 발언은 저장된 원문 문장만 쓰고, 실패해도 지어내지 않는다."""
+        result: dict[str, Any] = {
+            "available": True,
+            "ticker": ticker,
+            "previous_document": _previous_document(previous),
+            "items": [],
+            "warnings": [],
+        }
+        candidates = transcript_statement_diff.select_candidates(statements, current_chunk=current_chunk, diff_topics=topics)
+        if not candidates:
+            result["warnings"].append("no_related_prior_statement")
+            return result
+        try:
+            items, warnings = await transcript_statement_diff.compare(
+                ticker=ticker,
+                current_chunk=current_chunk,
+                candidates=candidates,
+                previous_document=result["previous_document"],
+                llm_client=gemini_client,
+            )
+        except transcript_statement_diff.StatementDiffError as exc:
+            result["warnings"].extend(["historical_transcript_diff_llm_failed", str(exc)[:160]])
+            return result
+        result["items"] = items
+        result["warnings"].extend(warnings)
+        if not items:
+            result["warnings"].append("no_comparable_prior_statement")
+        return result
 
     async def _generate_llm_diff(
         self,
@@ -345,6 +407,8 @@ def _normalize_llm_items(raw_items: list[Any], citations: list[EvidenceCitation]
         if current_chunk and normalize(current_claim) not in normalize(current_chunk):
             continue
         if not any(normalize(prior_claim) in normalize(item["snippet"]) for item in selected):
+            continue
+        if transcript_statement_diff.explicit_comparison_conflict(current_claim, prior_claim):
             continue
         change_type = str(raw.get("change_type") or "mixed").strip().lower()
         if change_type not in CHANGE_TYPES:

@@ -63,7 +63,7 @@ def _numeric_tokens(text: str) -> tuple[str, ...]:
     text = _SPOKEN_NUMBER.sub(spoken, text)
     text = re.sub(r"\b(?:minus|negative)\s+(?=\d)", "-", text, flags=re.I)
     text = re.sub(r"\bplus\s+(?=\d)", "+", text, flags=re.I)
-    text = re.sub(r"percentage\s+points?|percent\s+points?|퍼센트\s*포인트|%\s*p\b", "pp", text, flags=re.I)
+    text = re.sub(r"percentage\s+points?|percent\s+points?|퍼센트\s*포인트|%\s*포인트|%\s*p\b", "pp", text, flags=re.I)
     text = re.sub(r"percent(?:age)?\b|퍼센트", "%", text, flags=re.I)
     return tuple(re.sub(r"\s+", "", token.lower()).replace(",", "") for token in _NUMBER.findall(text))
 

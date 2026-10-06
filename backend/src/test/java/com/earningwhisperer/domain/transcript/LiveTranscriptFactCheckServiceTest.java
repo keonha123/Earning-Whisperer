@@ -1,6 +1,7 @@
 package com.earningwhisperer.domain.transcript;
 
 import com.earningwhisperer.infrastructure.aiengine.*;
+import com.earningwhisperer.infrastructure.translation.TranscriptTranslationService;
 import com.earningwhisperer.infrastructure.websocket.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class LiveTranscriptFactCheckServiceTest {
     @Test void acceptedLiveSentencesAreOrderedAndPreserveEndCutoffAndReason() throws Exception {
         var registry = new TranscriptSessionRegistry();
         var transcriptPublisher = mock(TranscriptPublisher.class);
-        var translation = mock(TranscriptTranslationWorker.class);
+        var translation = mock(TranscriptTranslationService.class);
         var transcripts = new TranscriptService(registry, transcriptPublisher, translation);
         var client = mock(AiEngineClient.class);
         when(client.isFactCheckEnabled()).thenReturn(true);
@@ -51,7 +52,7 @@ class LiveTranscriptFactCheckServiceTest {
 
     @Test void directDemoPathDoesNotSubmitTwiceAndRejectedLiveDoesNotSubmit() {
         var registry = new TranscriptSessionRegistry();
-        var transcripts = new TranscriptService(registry, mock(TranscriptPublisher.class), mock(TranscriptTranslationWorker.class));
+        var transcripts = new TranscriptService(registry, mock(TranscriptPublisher.class), mock(TranscriptTranslationService.class));
         var client = mock(AiEngineClient.class);
         var live = new LiveTranscriptFactCheckService(transcripts, client, mock(FactCheckPublisher.class));
         try {
@@ -64,7 +65,7 @@ class LiveTranscriptFactCheckServiceTest {
     @Test void slowFactCheckNeverBlocksOriginalIngress() throws Exception {
         var registry = new TranscriptSessionRegistry();
         var publisher = mock(TranscriptPublisher.class);
-        var transcripts = new TranscriptService(registry, publisher, mock(TranscriptTranslationWorker.class));
+        var transcripts = new TranscriptService(registry, publisher, mock(TranscriptTranslationService.class));
         var client = mock(AiEngineClient.class);
         when(client.isFactCheckEnabled()).thenReturn(true);
         var release = new CountDownLatch(1);

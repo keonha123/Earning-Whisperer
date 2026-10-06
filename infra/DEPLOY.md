@@ -1,6 +1,6 @@
 # 배포 운영 매뉴얼
 
-시연용 서버의 구성과 운영 방법입니다. 2026년 9월 30일 기준입니다.
+시연용 서버의 구성과 운영 방법입니다. 2026년 10월 5일 기준입니다.
 
 - 대상 독자: 팀원 전원
 - 다루는 범위: AWS 시연 서버의 구성 · 연결 · 재배포 · 검증 · 비용
@@ -458,6 +458,70 @@ HTTPS 를 도입하며 값을 바꾸거나 새로 넣은 것이 둘 있습니다
 로컬 개발에서는 둘 다 필요하지 않습니다. 로컬은 평문이어도 `BackendClient.ts` 가 `localhost` 를
 보안 채널로 취급하고, 바인딩을 좁힐 이유도 없습니다.
 
+### 5-4. 매매 신호 경로 제거에 따른 스키마 정리 (#127, 1회)
+
+백엔드는 `ddl-auto: update` 라 엔티티에서 뺀 컬럼과 테이블을 스스로 지우지 않습니다. #127 에서
+매매 신호 경로를 제거하면서 쓰지 않게 된 것을 서버 DB 에서 직접 지웁니다.
+
+| 대상 | 내용 |
+|---|---|
+| `trades.signal_id` | `signal_history` 를 가리키는 외래키 컬럼 |
+| `trades.order_ratio`, `trades.ai_score` | 자동 명령 복원용 값 |
+| `signal_history` 테이블 | 룰 엔진 신호 이력 |
+| `portfolio_settings` 테이블 | 매매 모드와 룰 엔진 설정 |
+
+새 백엔드는 이 컬럼과 테이블을 읽지도 쓰지도 않습니다. 남은 컬럼은 모두 nullable 이라 배포와
+정리 사이에 시간이 떠도 동작에 문제가 없습니다. 반대로 **정리를 배포보다 먼저 하면 안 됩니다** —
+떠 있는 옛 백엔드가 지운 컬럼을 찾다가 실패합니다. 정리한 뒤 옛 백엔드로 되돌려야 한다면 1단계
+백업에서 복원합니다. 옛 백엔드는 빠진 테이블을 빈 상태로 다시 만들어 기동은 되지만, 기존 사용자의
+설정 행이 없어 설정 조회가 실패합니다.
+
+거래 행은 그대로 남습니다. 자동 경로로 생긴 거래도 종목 · 수량 · 체결가 · 상태는 유지되고,
+어떤 신호에서 나왔는지에 대한 연결만 사라집니다.
+
+```bash
+# 1. 백업 — DROP 은 되돌릴 수 없습니다
+ssh ubuntu@43.200.26.70 \
+  'docker exec ew-mysql sh -c '"'"'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" earning_whisperer'"'"' \
+   > ~/backup-before-127-$(date +%Y%m%d).sql && tail -1 ~/backup-before-127-*.sql'
+# 마지막 줄이 "-- Dump completed on ..." 이어야 백업이 끝까지 된 것입니다
+
+# 2. 새 백엔드 배포
+./infra/deploy.sh backend
+
+# 3. 서버에서 MySQL 접속
+ssh ubuntu@43.200.26.70
+docker exec -it ew-mysql sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" earning_whisperer'
+```
+
+```sql
+-- 4. 외래키 이름 확인 — Hibernate 가 자동 생성한 이름이라 환경마다 다릅니다
+SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+ WHERE TABLE_SCHEMA = 'earning_whisperer' AND TABLE_NAME = 'trades'
+   AND COLUMN_NAME = 'signal_id' AND REFERENCED_TABLE_NAME IS NOT NULL;
+
+-- 관망(HOLD) 주문 방향을 없앴으므로 trades 에 HOLD 가 없어야 합니다 (0이어야 합니다)
+SELECT COUNT(*) FROM trades WHERE side = 'HOLD';
+
+-- 두 테이블을 가리키는 다른 외래키가 없는지도 확인합니다 (0행이어야 합니다)
+SELECT TABLE_NAME, CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+ WHERE REFERENCED_TABLE_SCHEMA = 'earning_whisperer'
+   AND REFERENCED_TABLE_NAME IN ('signal_history', 'portfolio_settings')
+   AND TABLE_NAME <> 'trades';
+
+-- 5. 외래키부터 지우고 컬럼 · 테이블을 지웁니다
+--    (4의 첫 조회가 0행이면 외래키가 없는 것이므로 첫 줄은 건너뜁니다)
+ALTER TABLE trades DROP FOREIGN KEY <4에서 확인한 이름>;
+-- 매매 신호 명령으로 생겨 아직 PENDING 인 행은 먼저 만료시킵니다. 30초 TTL 이 없어져 그대로 두면 24시간 남습니다
+UPDATE trades SET status = 'EXPIRED' WHERE status = 'PENDING' AND order_ratio IS NOT NULL;
+ALTER TABLE trades DROP COLUMN signal_id, DROP COLUMN order_ratio, DROP COLUMN ai_score;
+DROP TABLE signal_history;
+DROP TABLE portfolio_settings;
+```
+
+정리한 뒤 회원가입, 수동 주문, 체결 내역 조회가 되는지 확인합니다. 서버 `backend.env` 에
+`TRADE_PENDING_TTL_SECONDS` 가 있다면 더 이상 읽지 않으므로 지워도 됩니다.
+
 ---
 
 ## 6. 근거 데이터 (Qdrant)
@@ -709,10 +773,11 @@ sudo systemctl enable --now cloudflared
 - **서버가 켜져 있지 않으면 터널도 없습니다.** Cloudflare 엣지는 살아 있지만 연결할 곳이 없어 `530`(Argo Tunnel error)이 돌아옵니다. 인스턴스가 꺼져 있을 때의 정상 응답으로 보시면 됩니다.
 - **가용성은 터널 하나에 달려 있습니다.** `cloudflared` 가 죽으면 백엔드가 살아 있어도 외부에서 붙을 수 없습니다. `systemctl status cloudflared` 를 상태 확인 목록에 넣어 두었습니다 ([4장](#4-일상-운영)).
 - **백엔드와 ai-engine 은 평문 HTTP 입니다.** 둘 다 루프백만 바인딩해 서버 밖으로 평문이 나가지 않습니다. 같은 서버에 다른 사용자가 있다면 이 전제가 깨집니다.
-- **STOMP 구독에 인증이 없습니다.** `StompJwtChannelInterceptor` 가 CONNECT 만 검사하고 실패해도 연결을 허용하며, SUBSCRIBE 검사가 없어 `/topic/**` 이 사실상 공개입니다.
+- **STOMP 는 인증된 연결만 받습니다** ([#136](https://github.com/keonha123/Earning-Whisperer/issues/136), 2026-10-01 배포). CONNECT 에 유효한 JWT 가 없으면 거부하고, 연결을 거친 세션인지는 Principal 로 판별합니다. 클라이언트가 서버로 보내는 SEND 프레임은 받지 않습니다 — Spring 이 목적지의 `{userId}` 를 그대로 믿어, 인증만 하면 남에게 위조 매매 신호를 보낼 수 있었습니다. 구독 권한은 "로그인했는가" 까지이고 토픽별 인가는 없습니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
 - **`DemoReplayService` 가 기동과 함께 `mock-nvda-replay.json` 을 무한 재생합니다.** `/topic/live/demo` 로 브로드캐스트되며 구독자는 미배포 상태인 `frontend` 뿐이라 터미널 시연에는 영향이 없습니다. 현재 시연 경로(`DemoEarningsCallService`)와는 별개입니다.
+- **`frontend` 의 `/demo` 는 데이터가 들어오지 않습니다.** `useDemoWebSocket` 이 CONNECT 헤더에 토큰을 싣지 않아 위 인증에 걸립니다. 웹 개발이 보류 상태라 연결 시도만 막아 두었고, 재개할 때 로그인 흐름과 함께 붙이면 됩니다. 해당 파일에 주석으로 남겼습니다.
 - **data_pipeline 은 이 서버에 올리지 않습니다.** 별도 인스턴스로 분리하는 방향으로 정해졌습니다 ([11장](#11-data_pipeline-배포-계획)). 현재 시연은 과거 콜 재생이라 STT 가 필요하지 않습니다.
 - **Gemini 임베딩 무료 등급은 하루 1,000요청이고 한국시간 16:00 에 리셋됩니다.** 근거 적재가 이 한도를 쓰기 때문에 서버에서 재적재하지 않고 스냅샷으로 옮기는 것을 정책으로 두었습니다 ([6장](#6-근거-데이터-qdrant)).
 - **팩트체크 지연 여유가 크지 않습니다.** 세그먼트 간격 6초, 팩트체크 1배치 실측 5.2초입니다. `[DemoCall] 팩트체크 큐 적체` 경고가 보이면 카드가 스크립트보다 뒤처지고 있다는 뜻입니다.
@@ -751,16 +816,40 @@ sudo systemctl enable --now cloudflared
 
 개발 단계에서는 각자 `npm run dev` 로 실행합니다 ([3장](#3-연결-방법)). **최종 목표는 인스톨러 배포입니다.**
 
-인스톨러가 나오면 GitHub Releases 에서 내려받아 설치하는 방식이 됩니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
+인스톨러는 GitHub Releases 에서 내려받아 설치합니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
+
+```
+https://github.com/keonha123/Earning-Whisperer/releases
+```
+
+**이 저장소는 public 입니다.** 게시한 릴리스는 누구나 받을 수 있고, 설치본에는 시연 서버 주소가 박혀 있습니다. 팀 안에서만 돌릴 것은 draft 로 두면 협업자에게만 보입니다. draft 는 Releases 탭의 목록에 나타나지 않으므로 위 주소로 직접 들어가야 보입니다.
+
+현재 게시본은 `v0.1.0-rc1` 입니다.
 
 ### 빌드 방법
 
-**Windows 에서 빌드해야 합니다.** `.exe` 인스톨러(NSIS)를 만드는 단계에서 Windows 도구가 필요합니다. macOS 에서는 `wine` 없이는 이 단계에 이르지 못합니다.
+**macOS 에서도 만들 수 있습니다.** electron-builder 가 자체 `wine` 과 NSIS 를 내려받아 쓰기 때문에 따로 설치할 것이 없습니다. 2026-09-14 에 "wine 이 없어 NSIS 단계에 이르지 못한다" 고 적어 두었는데, 그때는 `--win` 을 지정하지 않아 macOS 대상으로 빌드되고 있었습니다.
+
+**대상 아키텍처를 반드시 지정해야 합니다.** 빼면 빌드하는 기기 기준으로 나옵니다.
+
+```bash
+npx electron-builder --win          # Apple Silicon 에서는 win-arm64 가 나온다
+npx electron-builder --win --x64    # 일반 PC 용
+```
 
 빌드 시점에 환경변수를 넣어야 합니다. 패키징된 앱에는 `.env` 파일이 들어가지 않아서, 값이 없으면 서버에 붙지 못한 채 화면만 뜹니다 (#118).
 
+```bash
+# macOS · Linux — trading-terminal/ 에서
+export BACKEND_URL="https://api.logothea.com"
+export OAUTH_GOOGLE_CLIENT_ID="$(grep '^OAUTH_GOOGLE_CLIENT_ID=' .env.local | cut -d= -f2-)"
+export OAUTH_KAKAO_CLIENT_ID="$(grep '^OAUTH_KAKAO_CLIENT_ID=' .env.local | cut -d= -f2-)"
+npm run build
+npx electron-builder --win --x64
+```
+
 ```powershell
-# 값을 주는 방법 1 — 셸 환경변수
+# Windows
 $env:BACKEND_URL="https://api.logothea.com"
 $env:OAUTH_GOOGLE_CLIENT_ID="<keonha 에게 요청>"
 $env:OAUTH_KAKAO_CLIENT_ID="<keonha 에게 요청>"
@@ -777,16 +866,55 @@ npm run package
 
 산출물은 `trading-terminal/dist/` 에 나옵니다.
 
-### 남은 작업
+**맥에서 Windows 빌드를 돌리면 `npm run dev` 가 깨집니다.** electron-builder 가 `node_modules/keytar` 를 Windows 바이너리로 교체하기 때문입니다. 복구는 아래 한 줄입니다.
 
-| 이슈 | 내용 |
+```bash
+npm run postinstall     # electron-rebuild — keytar 를 현재 플랫폼용으로 되돌린다
+```
+
+`file node_modules/keytar/build/Release/keytar.node` 로 확인할 수 있습니다. 맥에서는 `Mach-O`, Windows 빌드 뒤에는 `PE32+` 로 나옵니다.
+
+### 릴리스 올리기
+
+```bash
+# 자산 교체
+gh release delete-asset v0.1.0-rc1 "EarningWhisperer.Terminal.Setup.0.1.0.exe" --yes
+gh release upload     v0.1.0-rc1 "trading-terminal/dist/EarningWhisperer Terminal Setup 0.1.0.exe"
+
+# draft 로 두기 / 게시하기
+gh release edit v0.1.0-rc1 --draft=true
+gh release edit v0.1.0-rc1 --draft=false --prerelease
+```
+
+**서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Earning-Whisperer/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.
+
+### 검증 결과
+
+Windows 데스크톱에서 설치해 확인했습니다 (2026-10-05, #115).
+
+| 확인 항목 | 결과 |
 |---|---|
-| #115 | 빌드 검증 — Windows 에서 `.exe` 생성, 설치 후 로그인, `keytar`(KIS 자격증명 저장), 시연 화면 표시 |
-| #129 | 앱 아이콘 디자인 교체. 현재 아이콘은 임시입니다 |
+| 설치 후 실행 + OAuth 로그인 | 정상 |
+| `keytar` — KIS 자격증명 저장·조회 | 저장 후 앱을 다시 켜도 등록 화면이 뜨지 않습니다 |
+| 시연 화면 | 자막 · 팩트체크 · 종합 판단 · 직전 분기 대비 모두 표시 |
+| 설정 주입 | 기동 시 누락 대화상자가 뜨지 않았습니다 |
 
-#118(환경변수 주입)과 #119(아이콘 리소스)는 완료되었습니다. #120(도메인과 HTTPS)은 서버 적용이
-끝났고 시연 완주 리허설만 남아 열려 있습니다. 인스톨러에 박히는 주소가 `https://api.logothea.com`
-이 되어, 서버를 옮기더라도 인스톨러를 다시 만들 필요가 없습니다.
+"인스톨러 배포" 마일스톤은 #118(환경변수 주입) · #119(아이콘 리소스) · #120(도메인과 HTTPS) ·
+#115 로 완료되었습니다. #129(아이콘 디자인)는 UI·UX 전반 개편과 함께 다루기로 하여 이 마일스톤에서
+제외했습니다.
+
+인스톨러에 박히는 주소가 `https://api.logothea.com` 이라, 서버를 옮기더라도 인스톨러를 다시
+만들 필요가 없습니다.
+
+### 설치본을 처음 받는 사람에게 생기는 일
+
+**KIS 자격증명이 없으면 시연 화면까지 갈 수 없습니다.** 등록된 자격증명이 하나도 없으면
+`AuthPage.tsx` 가 vault 단계에 머무르게 하고, 건너뛰는 경로가 없습니다. KIS 키는 서버가 아니라
+그 PC 의 자격 증명 저장소(Windows 자격 증명 관리자 · macOS 키체인)에 들어가므로, 기기를 옮기면
+다시 입력해야 합니다.
+
+**자격증명 저장 시 KIS 서버 검증을 하지 않습니다.** 형식만 확인하고, 토큰 발급이 실패해도
+경고만 남긴 뒤 저장에 성공한 것으로 돌려줍니다. 잘못된 키를 넣어도 등록된 것처럼 보입니다.
 
 ### 알아두실 점
 

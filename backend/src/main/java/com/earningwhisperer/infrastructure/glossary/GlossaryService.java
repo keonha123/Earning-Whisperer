@@ -28,11 +28,13 @@ import java.util.Map;
 public class GlossaryService {
 
     private final Glossary glossary;
+    private final GlossaryTermMatcher matcher;
 
     public GlossaryService(
             ObjectMapper objectMapper,
             @Value("${glossary.path:data/glossary_ko.json}") String path) {
         this.glossary = load(objectMapper, path);
+        this.matcher = new GlossaryTermMatcher(glossary);
         log.info("[Glossary] 용어 사전 로드 - path={} version={} terms={}",
                 path, glossary.version(), glossary.terms().size());
     }
@@ -41,29 +43,9 @@ public class GlossaryService {
         return glossary;
     }
 
-    /** Prefer the longest spelling at each occurrence, without matching inside words. */
-    public List<Glossary.Term> matchingTerms(String text) {
-        record Match(int start, int end, Glossary.Term term) {}
-        List<Match> matches = new ArrayList<>();
-        for (Glossary.Term term : glossary.terms()) {
-            List<String> spellings = new ArrayList<>(term.aliases());
-            spellings.add(term.term());
-            for (String spelling : spellings) {
-                var matcher = java.util.regex.Pattern.compile("(?<![\\p{L}\\p{N}_])"
-                        + java.util.regex.Pattern.quote(spelling) + "(?![\\p{L}\\p{N}_])",
-                        java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE).matcher(text);
-                while (matcher.find()) matches.add(new Match(matcher.start(), matcher.end(), term));
-            }
-        }
-        matches.sort(java.util.Comparator.comparingInt((Match m) -> m.end() - m.start()).reversed()
-                .thenComparingInt(Match::start));
-        List<Match> accepted = new ArrayList<>();
-        for (Match match : matches) {
-            if (accepted.stream().noneMatch(m -> match.start() < m.end() && m.start() < match.end()))
-                accepted.add(match);
-        }
-        accepted.sort(java.util.Comparator.comparingInt(Match::start));
-        return accepted.stream().map(Match::term).distinct().toList();
+    /** 원문에 나온 용어를 찾는다. 규칙은 {@link GlossaryTermMatcher} 참고. */
+    public List<GlossaryTermMatcher.Match> findTerms(String text, int limit) {
+        return matcher.find(text, limit);
     }
 
     /**

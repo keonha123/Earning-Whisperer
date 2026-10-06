@@ -306,3 +306,25 @@ describe('late Korean translation', () => {
     expect(useTranscriptStore.getState().byTicker.get('NVDA')!.segments[0].textKo).toBeUndefined()
   })
 })
+
+describe('batched translation topic', () => {
+  it('applies a late batch once after call end without changing original identities', () => {
+    const store = useTranscriptStore.getState()
+    store.upsertSegment(makeRaw())
+    store.upsertSegment(makeRaw({ sequence: 2, text: 'Second sentence.', is_session_end: true }))
+    store.applyTranslation({ ticker: 'NVDA', call_id: 'NVDA-2025-Q3', sequences: [1, 2], text_ko: '두 문장의 번역' })
+    const rows = useTranscriptStore.getState().byTicker.get('NVDA')!.segments
+    expect(rows.map(s => s.textKo)).toEqual([undefined, '두 문장의 번역'])
+    expect(rows.map(s => s.translationSequences)).toEqual([[1, 2], [1, 2]])
+    expect(rows.map(s => s.text)).toEqual(['Sample segment text.', 'Second sentence.'])
+  })
+  it.each([
+    { call_id: 'other-call' }, { ticker: 'AMD' }, { sequences: [1, 99] },
+    { sequences: [1, 1] }, { sequences: [1.5] }, { text_ko: '' },
+  ])('rejects unmatched or malformed batch %j', (override) => {
+    useTranscriptStore.getState().upsertSegment(makeRaw())
+    const before = useTranscriptStore.getState().byTicker
+    useTranscriptStore.getState().applyTranslation({ ticker: 'NVDA', call_id: 'NVDA-2025-Q3', sequences: [1], text_ko: '번역', ...override })
+    expect(useTranscriptStore.getState().byTicker).toBe(before)
+  })
+})

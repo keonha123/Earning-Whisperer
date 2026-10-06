@@ -14,7 +14,7 @@ interface LiveIndicatorProps {
  *  - active: rgba(239,68,68,.1) 배경 + 빨간 펄스 닷 + sell 컬러 라벨.
  *  - idle: 투명 배경 + 회색 닷 + tertiary 라벨.
  *
- * 사용처: TradingRoomHeader (활성 어닝콜 = 신호 수신 중 ↔ 비수신).
+ * 사용처: TradingRoomHeader (활성 어닝콜 트랜스크립트 수신 중 ↔ 비수신).
  */
 export default function LiveIndicator({
   active,

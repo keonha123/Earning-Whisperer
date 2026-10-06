@@ -31,6 +31,7 @@ export interface TranscriptSegment {
   /** STT 인식 결과 본문 (plain string — XSS 방지 위해 innerHTML 미사용). */
   text: string
   textKo?: string
+  translationSequences?: number[]
   /** 화자 라벨 (선택). */
   speaker?: string
   /** Unix Epoch Second UTC — 백엔드에서 push 한 시각. */
@@ -79,6 +80,7 @@ interface TranscriptState {
    * 6필드 필수 + speaker/is_session_end 옵션. 형식 불일치 시 silent drop.
    */
   upsertSegment: (raw: unknown) => void
+  applyTranslation: (raw: unknown) => void
 
   /** 특정 ticker 의 segments + endedCallIds 만 초기화 (다른 ticker 격리 유지). */
   clearTicker: (ticker: string) => void
@@ -142,6 +144,30 @@ export const useTranscriptStore = create<TranscriptState>((set) => ({
   currentTicker: null,
 
   setCurrentTicker: (ticker) => set({ currentTicker: ticker }),
+
+  applyTranslation: (raw) => set((state) => {
+    if (!raw || typeof raw !== 'object') return state
+    const p = raw as Record<string, unknown>
+    if (typeof p.ticker !== 'string' || typeof p.call_id !== 'string' ||
+        typeof p.text_ko !== 'string' || !p.text_ko.trim() ||
+        !Array.isArray(p.sequences) || p.sequences.length === 0 ||
+        !p.sequences.every((n) => Number.isInteger(n) && n >= 0) ||
+        new Set(p.sequences).size !== p.sequences.length) return state
+    const prev = state.byTicker.get(p.ticker)
+    if (!prev) return state
+    const indices = p.sequences.map((sequence) => prev.segments.findIndex(
+      (s) => s.callId === p.call_id && s.sequence === sequence,
+    ))
+    // Never attach a partial batch to a different call or invent missing speech.
+    if (indices.some((i) => i < 0)) return state
+    const lastIndex = Math.max(...indices)
+    const segments = prev.segments.map((s, i) => indices.includes(i)
+      ? { ...s, textKo: i === lastIndex ? p.text_ko as string : undefined, translationSequences: [...p.sequences as number[]].sort((a, b) => a - b) }
+      : s)
+    const byTicker = new Map(state.byTicker)
+    byTicker.set(p.ticker, { ...prev, segments })
+    return { ...state, byTicker }
+  }),
 
   upsertSegment: (raw) =>
     set((state) => {

@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
     gemini_max_retries: int = Field(default=3, ge=0, le=5, alias="GEMINI_MAX_RETRIES")
     gemini_base_retry_delay: float = Field(default=1.5, ge=0, le=10, alias="GEMINI_BASE_RETRY_DELAY")
-    gemini_request_timeout_seconds: float = Field(default=12.0, gt=0, le=60, alias="GEMINI_REQUEST_TIMEOUT_SECONDS")
-    gemini_attempt_timeout_seconds: float = Field(default=6.0, gt=0, le=30, alias="GEMINI_ATTEMPT_TIMEOUT_SECONDS")
+    gemini_request_timeout_seconds: float = Field(default=20.0, gt=0, le=60, alias="GEMINI_REQUEST_TIMEOUT_SECONDS")
+    gemini_attempt_timeout_seconds: float = Field(default=10.0, gt=0, le=30, alias="GEMINI_ATTEMPT_TIMEOUT_SECONDS")
     # 임베딩 배치의 각 항목이 요청 1건으로 계산된다. 무료 등급 분당 한도를 넘지 않도록
     # 이 값에서 배치 간격을 역산한다. 유료 키로 올리면 대량 인입이 그만큼 빨라진다.
     gemini_embed_requests_per_minute: int = Field(default=90, alias="GEMINI_EMBED_REQUESTS_PER_MINUTE")
@@ -182,7 +182,7 @@ class Settings(BaseSettings):
     transcript_chunk_overlap_chars: int = Field(default=80, ge=0, alias="TRANSCRIPT_CHUNK_OVERLAP_CHARS")
     transcript_diff_retrieval_timeout_seconds: float = Field(default=8.0, gt=0, alias="TRANSCRIPT_DIFF_RETRIEVAL_TIMEOUT_SECONDS")
     transcript_diff_llm_timeout_seconds: float = Field(default=8.0, gt=0, alias="TRANSCRIPT_DIFF_LLM_TIMEOUT_SECONDS")
-    transcript_translation_timeout_seconds: float = Field(default=12.0, gt=0, le=60, alias="TRANSCRIPT_TRANSLATION_TIMEOUT_SECONDS")
+    transcript_translation_timeout_seconds: float = Field(default=20.0, gt=0, le=60, alias="TRANSCRIPT_TRANSLATION_TIMEOUT_SECONDS")
     transcript_qa_timeout_seconds: float = Field(default=25.0, gt=0, le=120, alias="TRANSCRIPT_QA_TIMEOUT_SECONDS")
     external_evidence_retention_days: int = Field(default=365, alias="EXTERNAL_EVIDENCE_RETENTION_DAYS")
     fact_check_news_lookback_days: int = Field(default=30, alias="FACT_CHECK_NEWS_LOOKBACK_DAYS")

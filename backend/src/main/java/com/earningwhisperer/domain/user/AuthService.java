@@ -3,9 +3,6 @@ package com.earningwhisperer.domain.user;
 import com.earningwhisperer.domain.portfolio.AccountType;
 import com.earningwhisperer.domain.portfolio.BrokerAccount;
 import com.earningwhisperer.domain.portfolio.BrokerAccountService;
-import com.earningwhisperer.domain.portfolio.PortfolioSettings;
-import com.earningwhisperer.domain.portfolio.PortfolioSettingsRepository;
-import com.earningwhisperer.domain.portfolio.TradingMode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,13 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final PortfolioSettingsRepository portfolioSettingsRepository;
     private final BrokerAccountService brokerAccountService;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
 
     /**
-     * 회원가입: 이메일 중복 확인 → User 저장 → 기본 PortfolioSettings 생성.
+     * 회원가입: 이메일 중복 확인 → User 저장 → 기본 KIS 모의 BrokerAccount 생성.
      *
      * @return 생성된 User ID
      * @throws IllegalArgumentException 이메일 중복 시
@@ -47,18 +43,8 @@ public class AuthService {
                 .build();
         User saved = userRepository.save(user);
 
-        PortfolioSettings defaultSettings = PortfolioSettings.builder()
-                .user(saved)
-                .buyAmountRatio(0.1)
-                .maxPositionRatio(0.3)
-                .cooldownMinutes(5)
-                .aiScoreThreshold(0.6)
-                .tradingMode(TradingMode.MANUAL)
-                .build();
-        portfolioSettingsRepository.save(defaultSettings);
-
-        // KIS 모의 BrokerAccount 자동 생성 + 활성화 — 신규 사용자가 활성 broker 없는 상태로
-        // 영구 fail-safe HOLD 되는 것을 방지. 사용자는 키 등록 후 즉시 정상 흐름 진입.
+        // KIS 모의 BrokerAccount 자동 생성 + 활성화 — 신규 사용자가 활성 broker 없이
+        // 수동 주문 기록(활성 broker 필수)이 막히는 것을 방지한다.
         BrokerAccount defaultAccount = brokerAccountService.ensure(saved.getId(), AccountType.KIS_PAPER);
         brokerAccountService.activateIfFirst(saved.getId(), defaultAccount.getId());
 

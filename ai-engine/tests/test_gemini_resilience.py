@@ -144,3 +144,39 @@ def test_unexpected_worker_exception_settles_all_waiters(client, monkeypatch):
         assert all(isinstance(result, RuntimeError) for result in results)
         assert not client._inflight_requests
     asyncio.run(scenario())
+
+@pytest.mark.parametrize("requested,expected", [(None,20.0),(4.0,4.0),(15.0,15.0),(90.0,90.0),(1000.0,120.0)])
+def test_explicit_caller_budget_is_not_clamped_to_default(client, monkeypatch, requested, expected):
+    now = [0.0]
+    calls = []
+    monkeypatch.setattr("core.gemini_client.time.monotonic", lambda: now[0])
+    def provider(model, prompt, config):
+        calls.append(config["_attempt_timeout_seconds"])
+        if len(calls) == 1:
+            now[0] = expected - 1
+            raise TimeoutError()
+        return "{}", {}
+    monkeypatch.setattr(client, "_generate_with_modern_sdk", provider)
+    result = client._generate_sync("model", "prompt", {} if requested is None else {"timeout_seconds":requested})
+    assert not result.is_fallback and result.attempts == 2
+    assert calls[1] == 1.0
+
+
+@pytest.mark.parametrize("timeout", [0,-1,float("nan"),float("inf")])
+def test_invalid_caller_timeout_never_starts_provider(client, monkeypatch, timeout):
+    monkeypatch.setattr(client, "_generate_with_modern_sdk", lambda *args: pytest.fail("provider must not run"))
+    with pytest.raises(ValueError, match="finite and positive"):
+        client._generate_sync("model", "prompt", {"timeout_seconds": timeout})
+
+
+def test_default_attempt_allows_observed_nine_second_response(client, monkeypatch):
+    calls = []
+    def provider(model, prompt, config):
+        calls.append(config["_attempt_timeout_seconds"])
+        if config["_attempt_timeout_seconds"] < 9.0:
+            raise TimeoutError()
+        return "{}", {}
+    monkeypatch.setattr(client, "_generate_with_modern_sdk", provider)
+    result = client._generate_sync("model", "prompt", {})
+    assert not result.is_fallback and result.attempts == 1
+    assert calls == [10.0]

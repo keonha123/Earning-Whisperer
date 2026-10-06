@@ -18,6 +18,7 @@ try:
     from services.evidence_retrieval_service import EvidenceRetrievalService
     from services.live_news_fact_check_service import LiveNewsFactCheckService
     from services.redis_signal_publisher import RedisSignalPublisher
+    from services.transcript_translation_service import TranscriptTranslationService
 except ImportError:  # pragma: no cover
     from ..config import Settings
     from ..core.analysis_service import AnalysisService
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover
     from ..services.evidence_retrieval_service import EvidenceRetrievalService
     from ..services.live_news_fact_check_service import LiveNewsFactCheckService
     from ..services.redis_signal_publisher import RedisSignalPublisher
+    from ..services.transcript_translation_service import TranscriptTranslationService
 
 
 DispatchAnalysisFn = Callable[[AnalyzeRequest], Awaitable[dict[str, Any]]]
@@ -89,6 +91,10 @@ def get_transcript_diff_service(app: FastAPI) -> TranscriptDiffService:
     return app.state.transcript_diff_service
 
 
+def get_transcript_translation_service(app: FastAPI) -> TranscriptTranslationService:
+    return app.state.transcript_translation_service
+
+
 def get_control_service(app: FastAPI) -> ControlPlaneService:
     return ControlPlaneService(get_repository(app))
 
@@ -121,4 +127,5 @@ __all__ = [
     "get_repository",
     "get_settings",
     "get_transcript_diff_service",
+    "get_transcript_translation_service",
 ]

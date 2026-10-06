@@ -1,17 +1,15 @@
-"""Translation and grounded QA; no effect on the original transcript stream."""
+"""Grounded QA and legacy glossary; translation has its own authoritative router."""
 from fastapi import APIRouter, Request
 
 try:
     from models.transcript_assistant_models import (
         GlossaryResponse, TranscriptAskRequest, TranscriptAskResponse,
-        TranscriptTranslateRequest, TranscriptTranslateResponse,
     )
     from services.transcript_assistant_service import TranscriptAssistantService
     from services.transcript_glossary import get_glossary
 except ImportError:  # pragma: no cover
     from ...models.transcript_assistant_models import (
         GlossaryResponse, TranscriptAskRequest, TranscriptAskResponse,
-        TranscriptTranslateRequest, TranscriptTranslateResponse,
     )
     from ...services.transcript_assistant_service import TranscriptAssistantService
     from ...services.transcript_glossary import get_glossary
@@ -26,11 +24,6 @@ def _service(request: Request) -> TranscriptAssistantService:
         request.app.state.settings, getattr(request.app.state, "evidence_service", None),
         getattr(request.app.state, "transcript_repository", None),
     )
-
-
-@router.post("/v1/engine/transcript/translate", response_model=TranscriptTranslateResponse)
-async def translate(payload: TranscriptTranslateRequest, request: Request):
-    return await _service(request).translate(payload)
 
 
 @router.get("/v1/engine/glossary", response_model=GlossaryResponse)

@@ -420,7 +420,7 @@ class DemoEarningsCallServiceTest {
 
     /** 비활성 클라이언트. 공개 생성자를 쓰되 enabled=false 라 호출이 발생하지 않는다. */
     private static AiEngineClient disabledClient() {
-        return new AiEngineClient("http://localhost:1", false, false, false, 100);
+        return new AiEngineClient("http://localhost:1", false, false, false, false, 100, 100);
     }
 
     @Test
@@ -515,7 +515,7 @@ class DemoEarningsCallServiceTest {
         final List<String> calls = new CopyOnWriteArrayList<>();
 
         RecordingSummaryService() {
-            super(new AiEngineClient("http://localhost:1", false, false, false, 100), null, null);
+            super(new AiEngineClient("http://localhost:1", false, false, false, false, 100, 100), null, null);
         }
 
         @Override
@@ -531,7 +531,7 @@ class DemoEarningsCallServiceTest {
      * 것은 재생 경로이지 종합 판단이 아니다.
      */
     private EarningsSummaryService noopSummaryService() {
-        return new EarningsSummaryService(new AiEngineClient("http://localhost:1", false, false, false, 100),
+        return new EarningsSummaryService(new AiEngineClient("http://localhost:1", false, false, false, false, 100, 100),
                 null, null);
     }
 

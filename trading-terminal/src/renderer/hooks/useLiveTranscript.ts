@@ -38,8 +38,13 @@ export function useLiveTranscript(ticker: string | null): {
         upsertSegment(payload)
       },
     )
+    const unsubscribeTranslation = ipc.on(
+      IPC_CHANNELS.TRANSCRIPT_TRANSLATION_RECEIVED,
+      (payload: unknown) => useTranscriptStore.getState().applyTranslation(payload),
+    )
     return () => {
       unsubscribe()
+      unsubscribeTranslation()
     }
     // upsertSegment 는 zustand 가 동일 reference 보장.
     // eslint-disable-next-line react-hooks/exhaustive-deps

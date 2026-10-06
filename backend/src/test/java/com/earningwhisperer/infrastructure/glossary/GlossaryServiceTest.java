@@ -14,17 +14,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("GlossaryService 테스트")
 class GlossaryServiceTest {
 
-    @Test
-    void longestNonoverlappingTermsRespectWordBoundaries() {
-        GlossaryService service = new GlossaryService(new ObjectMapper(), "data/glossary_ko.json");
-        assertThat(service.matchingTerms("non-GAAP adjusted EPS and GAAP EPS; XGAAP"))
-                .extracting(Glossary.Term::term).containsExactly("non-GAAP", "adjusted EPS", "GAAP", "EPS");
-        assertThat(service.matchingTerms("non-GAAP"))
-                .extracting(Glossary.Term::term).containsExactly("non-GAAP");
-    }
-
     /** 운영과 같은 조건 — Spring 기본 매퍼는 모르는 필드를 무시한다. 엄격 검사는 서비스가 직접 켠다. */
     private final ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
+
+    @Test
+    void packagedDefinitionsPreserveCanonicalTranslationVocabulary() {
+        Glossary glossary = new GlossaryService(objectMapper, "data/glossary_ko.json").glossary();
+        assertThat(glossary.version()).isEqualTo(2);
+        assertThat(glossary.terms()).filteredOn(t -> t.definitionKo() != null).hasSize(21);
+        assertThat(glossary.terms()).filteredOn(t -> t.term().equals("guidance"))
+                .singleElement().satisfies(t -> {
+                    assertThat(t.ko()).isEqualTo("가이던스");
+                    assertThat(t.definitionKo()).isEqualTo("회사가 제시하는 향후 실적 예상치입니다.");
+                    assertThat(t.whyKo()).isEqualTo("확정 실적과 구분해야 합니다.");
+                    assertThat(t.category()).isEqualTo("guidance");
+                });
+    }
 
     @Test
     @DisplayName("패키징된 사전 파일이 규칙을 통과하고 시연 콜의 핵심 용어를 담고 있다")

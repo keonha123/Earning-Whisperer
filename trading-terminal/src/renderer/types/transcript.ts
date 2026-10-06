@@ -14,6 +14,7 @@ export interface TranscriptLine {
   /** 한 줄 텍스트. plain string 으로만 렌더한다 (XSS 방지 — innerHTML 금지). */
   text: string
   textKo?: string
+  translationSequences?: number[]
   ticker?: string
   callId?: string
   sequence?: number

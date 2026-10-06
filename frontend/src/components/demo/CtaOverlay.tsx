@@ -13,7 +13,7 @@ export default function CtaOverlay() {
       {/* 블러 레이어 */}
       <div className="absolute inset-0 backdrop-blur-md bg-gray-950/60 rounded-xl z-10 flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-sm text-gray-400 text-center">
-          실제 Trading Terminal에서 자동 매매 신호를 받으려면
+          Trading Terminal에서 실시간 어닝콜 분석을 보려면
         </p>
         <h3 className="text-xl font-bold text-white text-center">
           지금 무료로 시작하세요
@@ -33,7 +33,7 @@ export default function CtaOverlay() {
           </Link>
         </div>
         <p className="text-xs text-gray-600 text-center">
-          Free 플랜: 실시간 AI 신호 열람 · Pro 플랜: 자동매매 Trading Terminal
+          Free 플랜: 실시간 AI 신호 열람 · Pro 플랜: Trading Terminal 분석 · 직접 주문
         </p>
       </div>
 
