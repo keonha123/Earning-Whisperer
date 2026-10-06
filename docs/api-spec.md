@@ -810,15 +810,18 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 
 ## 10. [Contract 10] 질의응답 근거 조회 (logothea-assistant ➔ Backend · AI Engine)
 
-어닝콜 질의응답 서비스(logothea-assistant, #112)가 답변 근거를 읽는 내부 계약입니다. 세 서비스 모두 같은 호스트의
-루프백 주소로만 통신하고, 외부(터미널)에는 열리지 않습니다. 근거 시점(`as_of`)은 backend 가 확정해 넘기며, 아래 API 는
+어닝콜 질의응답 서비스(logothea-assistant, #112)가 답변 근거를 읽는 내부 계약입니다. ai-engine 은 `127.0.0.1` 에만
+바인딩되어 같은 호스트에서만 닿습니다. backend 의 `/api/v1/internal/assistant/**` 는 Cloudflare Tunnel 이
+`api.logothea.com` 전체를 backend 로 넘기므로 공개 호스트에서도 닿는 경로이고, 보호는 `X-Internal-Secret` 헤더로
+합니다. 근거 시점(`as_of`)은 backend 가 확정해 넘기며, 아래 API 는
 그 시점 이후의 정보를 돌려주지 않습니다.
 
 ### 10.1. 콜 세그먼트 (`GET /api/v1/internal/assistant/calls/{callId}/segments?until_sequence=`)
 
 - 인증: `X-Internal-Secret` (6.4 와 같음)
 - backend 는 `/api/v1/internal/transcript-segment` 로 받은 세그먼트 중 레지스트리 검증을 통과해 발행한 것만 콜 단위로
-  Redis 에 보관합니다(`app.assistant.segment-ttl-hours`, 기본 48시간). 보관 실패는 자막 발행에 영향을 주지 않습니다.
+  Redis 에 보관합니다(`app.assistant.segment-ttl-hours`, 기본 48시간). 보관은 비동기(단일 스레드, 대기열 1000건)로 처리하므로
+  보관 실패는 자막 발행에 영향을 주지 않으며, Redis 장애 중에는 일부 세그먼트가 빠질 수 있습니다.
 
 ```json
 {
@@ -831,7 +834,7 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 }
 ```
 
-- `until_sequence` 이하만 돌려줍니다. 저장된 마지막이 더 작으면 그만큼만 돌려주고 `last_sequence` 로 알려 줍니다.
+- `until_sequence` 는 필수이고 음수면 `400 {"error": "..."}` 입니다. 그 값 이하만 돌려줍니다. 저장된 마지막이 더 작으면 그만큼만 돌려주고 `last_sequence` 로 알려 줍니다.
 - 저장된 세그먼트가 없으면 `404 {"error": "..."}` 입니다.
 
 ### 10.2. 실적 추정치 (`GET /api/v1/internal/assistant/stocks/{ticker}/estimates?as_of_epoch=`)
@@ -847,7 +850,8 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 }
 ```
 
-- `recent_results` 는 `as_of` 하루 뒤까지 발표된 결과입니다(실적 발표문은 콜 당일 콜보다 먼저 나옵니다).
+- `recent_results` 는 `as_of` 하루 뒤까지 발표된 결과 중 최근 최대 4건입니다(실적 발표문은 콜 당일 콜보다 먼저 나옵니다).
+- `price_reaction_percent` 는 발표 후 7일 종가까지 반영한 값이라, `announced_at` + 7일이 `as_of` 보다 뒤인 결과는 `null` 입니다.
 - `upcoming` 은 `as_of` 하루 전 이후의 가장 이른 일정이며, 없으면 `null` 입니다. 모르는 종목은 `404` 입니다.
 
 ### 10.3. 용어 사전 (`GET /api/v1/internal/assistant/glossary`)
@@ -868,6 +872,7 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 - `published_at <= as_of_epoch` 이고 `as_of_epoch - lookback_days` 이후인 기사만 돌려줍니다. 기존
   `/v1/engine/evidence/search` 는 시점 상한이 없어 질의응답에 쓰지 않습니다.
 - 검색에 실패하면(임베딩 한도 등) `200` 에 `hits: []`, `warnings: ["news_search_failed"]` 입니다.
+- 요청 검증에 실패하면(`top_k`·`lookback_days` 범위, 빈 `query`, 0 이하 `as_of_epoch` 등) `422` 입니다.
 
 ### 10.5. 직전 콜 원문 문장 (`GET /v1/engine/assistant/prior-call-statements?ticker=&before_epoch=`)
 
@@ -880,3 +885,6 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 - `before_epoch` 이전에 발행된 가장 최근 콜의 핵심 문장(#145, 원문 그대로)을 순서대로 돌려줍니다.
 - 직전 콜이 없으면 `available: false`, `warnings: ["prior_call_not_found"]` 입니다. 콜은 있지만 핵심 문장이 없으면
   `available: true`, `statements: []`, `warnings: ["key_statements_not_found"]` 입니다.
+- 저장소가 직전 콜 조회를 지원하지 않으면 `available: false`, `warnings: ["prior_call_lookup_unsupported"]`, 조회 중
+  예외가 나면 `200` 에 `available: false`, `warnings: ["prior_call_lookup_failed"]` 입니다.
+- 요청 검증에 실패하면(`ticker` 누락, 0 이하 `before_epoch` 등) `422` 입니다.
