@@ -5,6 +5,7 @@ import SessionOrderList from './SessionOrderList'
 import { useRefraction } from '../../lib/refraction'
 import { maxOrderQty } from '../../lib/callScreen'
 import type { SessionOrder } from '../../lib/sessionOrders'
+import type { OrderAccount } from '../../hooks/useOrderAccount'
 import { IMMEDIATE_FILL_BUFFER, immediateFillPrice } from '../../../lib/orderPricing'
 
 export type OrderSide = 'BUY' | 'SELL'
@@ -16,8 +17,6 @@ export interface OrderSubmitPayload {
   price: number | null
 }
 
-/** 주문이 나가는 계좌. 패널 맨 위에 크게 보인다. */
-export type OrderAccount = 'KIS_PAPER' | 'KIS_REAL' | 'SELF_PAPER'
 
 interface OrderSheetProps {
   open: boolean
