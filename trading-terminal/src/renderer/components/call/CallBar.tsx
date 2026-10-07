@@ -21,6 +21,9 @@ interface CallBarProps {
   /** 시연 재생 제어. 지정하지 않으면 그리지 않는다. */
   demo?: {
     busy: boolean
+    /** 시연 종목(WMT) 콜 화면인지. 시연 재생은 이 화면에서만 시작한다. */
+    canStart: boolean
+    onStart: () => void
     onStop: () => void
     onRestart: () => void
   }
@@ -103,7 +106,19 @@ export default function CallBar({
                 중지
               </button>
             ) : null}
-            {/* 시연 시작은 홈에서만 한다. 여기서는 시연 콜을 멈추거나 처음부터 다시 재생한다. */}
+            {/* 시연은 시연 종목 콜 화면에서만 시작한다. 시작한 뒤에는 멈추거나 처음부터 다시 재생한다. */}
+            {demo.canStart && !isDemo && (
+              <button
+                type="button"
+                className="gbtn gbtn-sm"
+                onClick={demo.onStart}
+                disabled={demo.busy}
+                title="준비된 어닝콜 스크립트를 재생합니다"
+              >
+                <PlayIcon />
+                시연 재생
+              </button>
+            )}
             {isDemo && (
               <button
                 type="button"
@@ -151,6 +166,14 @@ function PhaseMark({ phase }: { phase: CallPhase }) {
     <span className="text-[12px] font-semibold text-ink-3" role="status">
       {PHASE_LABEL[phase]}
     </span>
+  )
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z" />
+    </svg>
   )
 }
 

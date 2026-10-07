@@ -17,7 +17,7 @@ import CallVerdict from "../components/call/CallVerdict";
 import PriceCard from "../components/call/PriceCard";
 import OrderSheet, { type OrderSubmitPayload } from "../components/call/OrderSheet";
 import { useOrderAccount } from "../hooks/useOrderAccount";
-import { DEMO_START_PARAM, DEMO_START_VALUE } from "../constants/demo";
+import { DEMO_TICKER } from "../constants/demo";
 import { showIpcErrorToast } from "../components/common/Toast";
 import { applyTradeRecords, type SessionOrder, type TradeRecord } from "../lib/sessionOrders";
 import {
@@ -69,7 +69,7 @@ export default function TradingRoomPage() {
   const hasCredentials = useConnectionStore((s) => s.hasCredentials);
   const openDrawer = useDrawerStore((s) => s.open);
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   // ticker 는 ?ticker= 쿼리 파라미터로만 정한다. 없으면 종목 화면으로 보낸다.
   const ticker = searchParams.get("ticker") || null;
@@ -322,22 +322,6 @@ export default function TradingRoomPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // 홈의 `시연 재생` 으로 들어오면(?demo=start) 자막 구독을 건 뒤 재생을 시작한다.
-  // 구독보다 재생이 먼저 시작되면 첫 발언을 놓친다. 구독 요청은 응답을 기다리지 않으므로
-  // 잠깐 두고 시작한다. 시작할 때 표시를 지워 다시 마운트돼도 재생을 또 시작하지 않게 한다.
-  // 표시를 먼저 지우면 이 효과가 정리되면서 타이머가 취소되므로, 지우기는 타이머 안에서 한다.
-  const autoStartDemo = searchParams.get(DEMO_START_PARAM) === DEMO_START_VALUE;
-  useEffect(() => {
-    if (!ticker || !autoStartDemo) return;
-    const t = setTimeout(() => {
-      setSearchParams({ ticker }, { replace: true });
-      void runDemo(restartDemo);
-    }, 800);
-    return () => clearTimeout(t);
-    // runDemo · restartDemo 는 렌더마다 새로 만들어지지만 이 효과는 진입 때 한 번만 돈다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker, autoStartDemo]);
-
   // ticker 없으면 종목 화면으로 — 모든 hooks 이후에 체크
   if (!ticker) return <Navigate to="/stocks" replace />;
 
@@ -504,6 +488,8 @@ export default function TradingRoomPage() {
           orderOpen={orderOpen}
           demo={{
             busy: demoBusy,
+            canStart: ticker === DEMO_TICKER,
+            onStart: () => void runDemo(restartDemo),
             onStop: () => void runDemo(stopDemo),
             onRestart: () => void runDemo(restartDemo),
           }}

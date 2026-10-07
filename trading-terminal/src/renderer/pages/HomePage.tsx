@@ -11,7 +11,6 @@ import { useWatchlist } from '../hooks/useWatchlist'
 import { usePrices } from '../hooks/usePrices'
 import { useEarningsTimeline } from '../hooks/useEarningsTimeline'
 import { ACCOUNT_LABELS, useOrderAccount } from '../hooks/useOrderAccount'
-import { DEMO_START_PARAM, DEMO_START_VALUE, DEMO_TICKER } from '../constants/demo'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { ComingSoon, EmptyState, LoadingBlock } from '../components/common/StateView'
 import Pagination from '../components/common/Pagination'
@@ -30,7 +29,7 @@ type MineTag = '보유' | '관심'
  * 홈 — 어닝콜 중심 첫 화면 (docs/design/screens/home.md).
  *
  * 주인공은 진행 중인 콜과 내 종목(관심 + 보유)의 다가오는 콜이다. 전체 일정과 지난 콜이 뒤따르고,
- * 시장 지수와 계좌 요약은 오른쪽 좁은 열에 둔다. 시연 재생의 진입점은 이 화면 하나뿐이다.
+ * 시장 지수와 계좌 요약은 오른쪽 좁은 열에 둔다.
  *
  * 잔고 동기화(KIS_GET_BALANCE → 보유 종목 시세 폴링 등록)는 앱 첫 화면인 이 화면이 맡는다.
  */
@@ -44,7 +43,6 @@ export default function HomePage() {
   const holdings = usePortfolioStore((s) => s.holdings)
   const { data: timeline, status: timelineStatus, retry: retryTimeline } = useEarningsTimeline()
 
-  const stockList = useStockMarketStore((s) => s.list)
   const loadStockList = useStockMarketStore((s) => s.loadList)
   useEffect(() => {
     void loadStockList()
@@ -64,30 +62,10 @@ export default function HomePage() {
   }, [timeline, mineTags])
 
   const openCall = (ticker: string) => navigate(`/call?ticker=${encodeURIComponent(ticker)}`)
-  const startDemo = () =>
-    navigate(`/call?ticker=${DEMO_TICKER}&${DEMO_START_PARAM}=${DEMO_START_VALUE}`)
-
-  const demoName = stockList.find((s) => s.ticker === DEMO_TICKER)?.companyName ?? 'Walmart'
-  // 색상 유리 주 버튼은 화면에 하나 — 진행 중인 콜이 있으면 그쪽, 없으면 시연 재생.
-  const liveIsPrimary = timeline.live != null
-
   return (
     <div className="flex flex-col gap-6 max-w-[1320px]">
       <header className="flex items-center justify-between gap-4 pt-2">
         <h1 className="text-[24px] font-bold tracking-[-0.02em] text-ink-1">홈</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-[12.5px] text-ink-3">
-            시연 · <span className="num">{DEMO_TICKER}</span> {demoName} 실적 콜 재생
-          </span>
-          <button
-            type="button"
-            onClick={startDemo}
-            className={`gbtn rim gbtn-sm ${liveIsPrimary ? '' : 'gbtn-lapis'}`}
-          >
-            <PlayIcon />
-            시연 재생
-          </button>
-        </div>
       </header>
 
       <div className="grid grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
@@ -522,14 +500,6 @@ function BellIcon() {
         <path d="M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3L4 11zM6.5 14a1.5 1.5 0 0 0 3 0" strokeLinejoin="round" />
       </svg>
     </span>
-  )
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <path d="M5 3.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L5.9 2.7a.6.6 0 0 0-.9.5z" />
-    </svg>
   )
 }
 
