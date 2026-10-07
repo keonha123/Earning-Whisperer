@@ -13,8 +13,15 @@ from .research_backtest_service import ResearchBacktestService
 from .redis_signal_publisher import RedisSignalPublisher
 from .transcript_diff_service import TranscriptDiffService
 from .transcript_ingestion_service import TranscriptIngestionService
+from .company_intelligence_service import CompanyIntelligenceService
+from .evidence_ingestion_service import EvidenceIngestionScheduler, EvidenceIngestionService
+from .live_earnings_session_service import LiveEarningsSessionService
 
 __all__ = [
+    "CompanyIntelligenceService",
+    "EvidenceIngestionScheduler",
+    "EvidenceIngestionService",
+    "LiveEarningsSessionService",
     "CalibrationService",
     "CanonicalBundleService",
     "ControlPlaneService",
