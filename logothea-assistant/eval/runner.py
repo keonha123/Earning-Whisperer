@@ -74,7 +74,7 @@ class AssistantRunner:
     def _collect(self, response: httpx.Response, result: ItemResult, started: float) -> None:
         event: str | None = None
         data_lines: list[str] = []
-        for line in response.iter_lines():
+        for line in _sse_lines(response):
             if line == "":
                 if event is not None and data_lines:
                     try:
@@ -109,3 +109,16 @@ class AssistantRunner:
             result.server_latency_ms = data.get("latency_ms")
         elif event == "error":
             result.error = {"code": data.get("code", "internal"), "message": data.get("message", "")}
+
+
+def _sse_lines(response: httpx.Response):
+    """SSE 줄을 '\n' 으로만 나눈다. httpx.iter_lines 는 U+2028 같은 유니코드 줄 구분 문자에서도 끊어,
+    답 본문에 그 문자가 섞이면 JSON 이 잘린다."""
+    buffer = ""
+    for chunk in response.iter_text():
+        buffer += chunk
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            yield line[:-1] if line.endswith("\r") else line
+    if buffer:
+        yield buffer

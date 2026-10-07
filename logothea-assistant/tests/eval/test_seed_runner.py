@@ -134,7 +134,8 @@ def test_runner_survives_unicode_line_separator_in_delta():
     body = _sse(("meta", {}), ("delta", {"text": "앞\u2028뒤"}),
                 ("done", {"status": "answered", "usage": {}, "warnings": []}))
     result = _run(lambda r: httpx.Response(200, text=body))
-    assert result.error is not None or result.status == "answered"
+    assert result.error is None and result.status == "answered"
+    assert result.answer == "앞\u2028뒤"
 
 
 def test_runner_malformed_frame_shape_is_bad_frame():
