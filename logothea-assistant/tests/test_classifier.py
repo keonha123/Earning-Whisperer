@@ -114,3 +114,19 @@ async def test_glossary_provider_returns_none_on_failure_and_retries_later():
     assert await provider.get() is None
     assert await provider.get() is not None
     assert len(attempts) == 2
+
+
+async def test_anchor_text_is_shown_to_the_classifier():
+    llm = FakeLLM(parsed=Classification(category="answer", glossary_term=None, search_query="q"))
+    anchor = {"sequence": 25, "speaker": "CEO · John Furner", "text": "One plus one does not equal two."}
+
+    await classify(llm, _request(question="'1 더하기 1이 2가 아니다'는 게 무슨 말이야?", anchor_sequence=25, as_of_sequence=30), anchor)
+
+    system = llm.parse_calls[0][0].text
+    assert "One plus one does not equal two." in system and "CEO · John Furner" in system
+
+
+async def test_without_anchor_the_prompt_has_no_anchor_section():
+    llm = FakeLLM(parsed=Classification(category="answer", glossary_term=None, search_query="q"))
+    await classify(llm, _request())
+    assert "고른 대목" not in llm.parse_calls[0][0].text

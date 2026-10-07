@@ -160,3 +160,16 @@ async def test_suggested_question_uses_preset_query_without_classification_call(
     await _collect(_pipeline(llm, engine=engine), _request(question="지금까지 핵심을 요약해 줘", suggested_question_id="summary"))
     assert llm.parse_calls == []
     assert engine.calls[-1][1]["query"] == "earnings call key highlights results"
+
+
+async def test_anchored_question_shows_anchor_text_to_the_classifier():
+    llm = FakeLLM(parsed=_answer(), deltas=["답 [S2]."])
+    await _collect(_pipeline(llm), _request(anchor_sequence=2, question="여기서 말하는 게 뭐야?"))
+    assert "segment 2 text" in llm.parse_calls[0][0].text
+
+
+async def test_anchored_question_still_reports_missing_segments_as_error():
+    llm = FakeLLM(parsed=_answer())
+    events = await _collect(_pipeline(llm, backend=FakeBackend(segments=NOT_FOUND)), _request(anchor_sequence=2))
+    assert events == [("error", {"code": "segments_not_found", "message": "이 콜의 자막을 찾지 못했습니다."})]
+    assert "고른 대목" not in llm.parse_calls[0][0].text
