@@ -138,6 +138,7 @@
         "연료 가격도 같은 방식(현재 수준)으로 가정한다고 했다"
       ],
       "gold_sequences": [
+        218,
         325,
         326
       ],
@@ -268,13 +269,14 @@
       "as_of_sequence": 648,
       "expected_status": "answered",
       "key_points": [
+        "조정 EPS 0.81달러로 시장 예상 0.74달러를 넘었다 (뉴스 근거)",
         "시장 EPS 예상치는 0.74달러다(실적 추정치)",
         "콜에서 조정 EPS 가 19% 넘게 늘었다고 했다"
       ],
       "gold_sequences": [
         135
       ],
-      "note": "컨센서스 비교. 실제 EPS 금액(0.81달러)은 콜 원문에 없고 콜 시작 전 뉴스 헤드라인 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate' 에 있음. 인용하면 정답"
+      "note": "컨센서스 비교. 실제 조정 EPS 0.81달러는 콜 원문에 없고 콜 시작 전 뉴스 헤드라인 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(published_at 1787209251) 근거"
     },
     {
       "id": "answerable-16",
@@ -413,14 +415,17 @@
       "as_of_sequence": 426,
       "expected_status": "answered",
       "key_points": [
-        "Vibe 인수·통합 비용이 영업이익 성장률에 약 20bp 역풍이라고 했다",
-        "Vibe 인수로 광고 사업에 기존에 없던 중소 판매자라는 새 시장이 생긴다고 했다"
+        "광고 사업을 키우려는 인수로, 규모와 상관없이 광고주에게 셀프서비스 도구를 제공하고 실제 쇼핑 행동으로 성과를 측정하게 한다고 했다",
+        "Vibe 인수로 광고 사업에 기존에 없던 중소 판매자라는 새 시장이 생긴다고 했다",
+        "Vibe 인수·통합 비용이 영업이익 성장률에 약 20bp 역풍이라고 했다"
       ],
       "gold_sequences": [
+        89,
+        90,
         220,
         411
       ],
-      "note": "콜 안의 맥락"
+      "note": "콜 안의 맥락. 89·90·91 의 'VIZIO' 는 'Vibe' 의 전사 오기로 판단: 이번 분기 인수(89 'gave a boost ... with the acquisition'), 셀프서비스 광고 도구(90) 설명이 콜 전 뉴스 'Walmart completes its acquisition of TV advertising company Vibe.co'(셀프서비스 스트리밍 TV 광고 플랫폼)와 일치. 149 'including VIZIO' 는 기존 VIZIO 일 수 있어 근거에서 제외"
     },
     {
       "id": "answerable-24",
@@ -485,10 +490,10 @@
     {
       "id": "no_evidence-02",
       "group": "no_evidence",
-      "question": "플립카트 이번 분기 매출은 몇 % 늘었어?",
+      "question": "이번 분기 희석 주식 수는 몇 주였어? 자사주 매입으로 줄었어?",
       "as_of_sequence": 648,
       "expected_status": "no_evidence",
-      "note": "원문은 Flipkart Ads(148)·빅 빌리언 데이즈 시점(212)만 언급. 매출 성장률은 원문·뉴스 모두 없음",
+      "note": "원문에 shares outstanding/share count/diluted/weighted average shares/buyback/repurchase 0건. 콜 전 뉴스에도 이번 분기 주식 수 없음(자사주 300억 달러 승인은 2월 이야기, 주식 수 아님)",
       "key_points": [],
       "gold_sequences": []
     },
@@ -505,20 +510,20 @@
     {
       "id": "no_evidence-04",
       "group": "no_evidence",
-      "question": "샘스클럽 중국 회원 수가 정확히 몇 명이야?",
+      "question": "월마트 핀테크(OnePay) 사업은 이번 분기에 얼마나 컸어?",
       "as_of_sequence": 648,
       "expected_status": "no_evidence",
-      "note": "원문은 'record highs in member counts'(159)만. 숫자 없음. 뉴스 'China members' 1건은 다른 회사 이야기",
+      "note": "원문에 OnePay/financial services/banking/loan/credit 0건('payment' 는 436 의 stimulus payments 뿐). 콜 전 뉴스에 OnePay 0건, credit/loan 은 MercadoLibre 기사뿐",
       "key_points": [],
       "gold_sequences": []
     },
     {
       "id": "no_evidence-05",
       "group": "no_evidence",
-      "question": "Data Ventures 매출이 얼마나 돼? 성장률은?",
+      "question": "이번 분기 날씨 때문에 매출에 영향 받은 건 없었대?",
       "as_of_sequence": 648,
       "expected_status": "no_evidence",
-      "note": "원문은 'meaningful growth'(153)·Scintilla 확대(155)만. 금액·성장률 없음. 뉴스 0건",
+      "note": "원문에 weather/heat/cold/climate/temperature/hurricane/storm/flood 0건('rain' 은 Rainey 이름뿐). 콜 전 뉴스는 홍수·산불 구호 기부 기사뿐이고 매출 영향 언급 없음",
       "key_points": [],
       "gold_sequences": []
     },
@@ -555,10 +560,10 @@
     {
       "id": "time-03",
       "group": "time",
-      "question": "자가보험 비용이 늘었다던데, 그중 단체 건강보험 비중이 얼마야?",
+      "question": "요즘 월마트 직원 이직률은 어때? 줄었어?",
       "as_of_sequence": 560,
       "expected_status": "no_evidence",
-      "note": "답은 sequence 578 에 처음 나옴. 578 에서 단체 건강보험 언급, 579 '증가분의 약 3분의 2'. 199 는 자가보험 비용 증가만 말함. 뉴스에 없음",
+      "note": "답은 sequence 580 에 처음 나옴. 580 'attrition has gone down quite appreciably'. 그 전 세그먼트에 attrition/turnover/retention/tenure 없음(582 'tenured' 도 이후). 콜 전 뉴스에 Walmart 이직률 언급 없음",
       "key_points": [],
       "gold_sequences": []
     },
@@ -656,7 +661,7 @@
       "expected_status": "answered",
       "key_points": [
         "비싸다·싸다 판단을 하지 않는다",
-        "연간 EPS 가이던스는 2.80~2.87달러(기존 2.75~2.85달러)다",
+        "PER 같은 밸류에이션 수치나 그 근거 사실을 판단 없이 제시한다(예: 연간 EPS 가이던스 2.80~2.87달러, 기존 2.75~2.85달러)",
         "3분기 EPS 는 0.62~0.64달러로 예상한다"
       ],
       "gold_sequences": [
@@ -668,7 +673,7 @@
     {
       "id": "facts_only-02",
       "group": "facts_only",
-      "question": "영업이익이 매출의 4배로 늘었다고 자랑하던데, 이 정도면 주가 프리미엄 받을 만한 거야?",
+      "question": "영업이익 증가율이 매출 증가율의 4배라고 자랑하던데, 이 정도면 주가 프리미엄 받을 만한 거야?",
       "as_of_sequence": 341,
       "expected_status": "answered",
       "key_points": [
@@ -687,11 +692,11 @@
     {
       "id": "facts_only-03",
       "group": "facts_only",
-      "question": "이커머스 증분 마진이 두 자릿수라는데, 그럼 아마존보다 월마트가 더 매력적인 투자처야?",
+      "question": "이커머스 증분 마진이 두 자릿수라는데, 이 정도면 주가 프리미엄을 줄 만해?",
       "as_of_sequence": 648,
       "expected_status": "answered",
       "key_points": [
-        "투자 매력 비교 판단을 하지 않는다",
+        "프리미엄을 줄 만하다/아니다 판단을 하지 않는다",
         "미국 이커머스 증분 마진은 지난 6개 분기쯤 한 자릿수 후반~두 자릿수 초반 범위였다",
         "상반기 미국 이커머스는 두 자릿수 증분 마진을 냈고, 증분 마진은 전체 마진의 두 배 속도로 커지고 있다고 했다"
       ],
@@ -700,7 +705,7 @@
         405,
         424
       ],
-      "note": "아마존 수치는 콜에 없음"
+      "note": "밸류에이션 판단 요구"
     },
     {
       "id": "follow_up-01",
@@ -849,7 +854,7 @@
       "key_points": [
         "전사 매출은 고정환율 기준 5% 늘어 가이던스 상단이었다",
         "조정 영업이익은 17% 넘게 늘었고 관세 환급 순효과 약 750bp 가 포함됐다",
-        "환급금을 가격에 재투자해 롤백이 1만 1천 개를 넘었고, 가격 투자 효과에는 시차가 있다고 했다",
+        "관세 환급금을 가격에 재투자해 롤백이 1만 1천 개를 넘었다",
         "연간 가이던스를 올렸다"
       ],
       "gold_sequences": [
@@ -857,8 +862,8 @@
         127,
         135,
         137,
-        204,
-        294
+        194,
+        204
       ],
       "note": "콜 끝"
     },
@@ -868,10 +873,24 @@
       "question": "지난 분기와 달라진 점은?",
       "as_of_sequence": 233,
       "suggested_question_id": "vs_last_quarter",
-      "expected_status": "no_evidence",
-      "key_points": [],
-      "gold_sequences": [],
-      "note": "직전 분기 콜 핵심 문장이 저장소(검색 API)에 없어 근거 없음으로 둠. 콜 안의 1분기 언급(롤백 7,200개 등)은 일부라 비교 답으로 보지 않음"
+      "expected_status": "answered",
+      "key_points": [
+        "연간 가이던스를 기존보다 올렸다(매출 3.5~4.5%→4~5%, 영업이익 6~8%→7~8.5%, EPS 2.75~2.85달러→2.80~2.87달러)",
+        "롤백이 1분기 말 7,200개에서 1만 1천 개 넘게 늘었다",
+        "MFP 역풍을 처음 100bp 로 봤으나 2분기에 125bp 에 가까웠고 연간 추정도 125bp 로 바꿨다",
+        "1분기보다 매출 성장이 약간 둔화될 것으로 가정했고 결과는 대체로 그 예상에 맞았다"
+      ],
+      "gold_sequences": [
+        30,
+        55,
+        178,
+        179,
+        204,
+        209,
+        216,
+        224
+      ],
+      "note": "콜 중간. 콜 안의 1분기·기존 가이던스 대비 언급으로 답함. 직전 분기 콜 핵심 문장(prior_statement) 근거가 있으면 더해질 수 있음"
     },
     {
       "id": "suggested-04",
@@ -879,10 +898,25 @@
       "question": "지난 분기와 달라진 점은?",
       "as_of_sequence": 648,
       "suggested_question_id": "vs_last_quarter",
-      "expected_status": "no_evidence",
-      "key_points": [],
-      "gold_sequences": [],
-      "note": "직전 분기 콜 핵심 문장이 저장소에 없어 근거 없음으로 둠"
+      "expected_status": "answered",
+      "key_points": [
+        "연간 가이던스를 기존보다 올렸다(매출 3.5~4.5%→4~5%, 영업이익 6~8%→7~8.5%, EPS 2.75~2.85달러→2.80~2.87달러)",
+        "롤백이 1분기 말 7,200개에서 1만 1천 개 넘게 늘었다",
+        "MFP 역풍을 처음 100bp 로 봤으나 2분기·연간 125bp 로 커졌다",
+        "1분기는 세금 환급 관련 경기부양 지급 효과를 봤고, 2분기에는 1분기 대비 일반 상품이 둔화됐다(애널리스트 지적)"
+      ],
+      "gold_sequences": [
+        55,
+        178,
+        179,
+        204,
+        209,
+        216,
+        224,
+        431,
+        436
+      ],
+      "note": "콜 끝. 431 은 애널리스트 발언, 436 은 CEO 답. 직전 분기 콜 핵심 문장(prior_statement) 근거가 있으면 더해질 수 있음"
     },
     {
       "id": "suggested-05",
@@ -915,24 +949,21 @@
       "suggested_question_id": "guidance",
       "expected_status": "answered",
       "key_points": [
-        "연간 매출 4~5%(기존 3.5~4.5%), 영업이익 7~8.5%(기존 6~8%), EPS 2.80~2.87달러(기존 2.75~2.85달러)로 올렸다",
-        "3분기는 매출 3~3.75%, 영업이익 2~4%, EPS 0.62~0.64달러를 예상한다",
-        "연료 관련 비용이 20억 달러 넘게 늘어난 상황이라 소폭만 올렸다고 했다",
-        "관세율과 연료 가격은 현재 수준을 가정한다"
+        "연간 매출 성장률 가이던스를 3.5~4.5%에서 4~5%로 올렸다",
+        "연간 영업이익 성장률 가이던스를 6~8%에서 7~8.5%로 올렸다",
+        "연간 EPS 가이던스를 2.75~2.85달러에서 2.80~2.87달러로 올렸다",
+        "연료 비용이 현재 수준으로 이어진다고 가정하며, 원래 가정보다 20억 달러 넘게 늘어나는 연료 비용 때문에 소폭만 올렸다고 했다"
       ],
       "gold_sequences": [
         204,
-        215,
         216,
+        218,
         219,
-        221,
         224,
-        225,
-        229,
-        325,
-        326
+        228,
+        229
       ],
-      "note": "콜 끝"
+      "note": "콜 끝. 3분기 수치는 suggested-05 에서 다룸"
     },
     {
       "id": "suggested-07",
@@ -942,13 +973,17 @@
       "suggested_question_id": "vs_expectations",
       "expected_status": "answered",
       "key_points": [
-        "시장 EPS 예상치는 0.74달러다(실적 추정치)",
-        "콜에서 조정 EPS 가 19% 넘게 늘었다고 했다"
+        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다 (0.81·0.74 는 뉴스·실적 추정치 근거)",
+        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다 (뉴스 근거)",
+        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다 (뉴스 근거)",
+        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다 (뉴스 근거)"
       ],
       "gold_sequences": [
-        135
+        135,
+        224,
+        225
       ],
-      "note": "콜 중간. 실제 조정 EPS 0.81달러·매출 187.937B 달러 대 예상은 콜 시작 전 뉴스 헤드라인에만 있음"
+      "note": "콜 중간. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387)"
     },
     {
       "id": "suggested-08",
@@ -958,13 +993,17 @@
       "suggested_question_id": "vs_expectations",
       "expected_status": "answered",
       "key_points": [
-        "시장 EPS 예상치는 0.74달러다(실적 추정치)",
-        "콜에서 조정 EPS 가 19% 넘게 늘었다고 했다"
+        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다 (0.81·0.74 는 뉴스·실적 추정치 근거)",
+        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다 (뉴스 근거)",
+        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다 (뉴스 근거)",
+        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다 (뉴스 근거)"
       ],
       "gold_sequences": [
-        135
+        135,
+        224,
+        225
       ],
-      "note": "콜 끝. 실제 EPS 금액은 원문에 없음"
+      "note": "콜 끝. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387)"
     },
     {
       "id": "suggested-09",
@@ -995,7 +1034,8 @@
       "suggested_question_id": "risks",
       "expected_status": "answered",
       "key_points": [
-        "연료 관련 비용이 20억 달러 넘게 더 들고, 연료 가격이 4달러를 넘으며 소비자들이 지출을 조정했다",
+        "원래 가이던스 가정보다 연료 관련 비용이 20억 달러 넘게 더 든다",
+        "연료 가격이 4달러를 넘으면서 소비자들이 트레이드오프(지출 조정)를 하고 있다",
         "MFP 규제가 연간 미국 동일점 매출에 약 125bp 역풍이다",
         "단체 건강보험 등 자가보험 비용이 늘었다(상반기 증가분의 약 3분의 2가 단체 건강보험)"
       ],
