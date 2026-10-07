@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ipc, IPC_CHANNELS } from '../lib/ipc'
 import { usePortfolioStore } from '../store/usePortfolioStore'
@@ -14,6 +14,8 @@ import { ACCOUNT_LABELS, useOrderAccount } from '../hooks/useOrderAccount'
 import { DEMO_START_PARAM, DEMO_START_VALUE, DEMO_TICKER } from '../constants/demo'
 import { showIpcErrorToast } from '../components/common/Toast'
 import { ComingSoon, EmptyState, LoadingBlock } from '../components/common/StateView'
+import Pagination from '../components/common/Pagination'
+import { paginateSchedule, type SchedulePageGroup } from '../lib/homeSchedule'
 import { isIpcError } from '../../lib/types/ipcError'
 import type {
   EarningsEvent,
@@ -127,13 +129,7 @@ export default function HomePage() {
             ) : timeline.groups.every((g) => g.events.length === 0) ? (
               <EmptyState message="예정된 실적 콜이 없습니다." />
             ) : (
-              <div className="flex flex-col pb-2">
-                {timeline.groups
-                  .filter((g) => g.events.length > 0)
-                  .map((g) => (
-                    <GroupBlock key={g.kind} group={g} tags={mineTags} onPick={openDrawer} />
-                  ))}
-              </div>
+              <SchedulePager groups={timeline.groups} tags={mineTags} onPick={openDrawer} />
             )}
           </Panel>
 
@@ -252,12 +248,49 @@ function LiveCallCard({
   )
 }
 
-function GroupBlock({
+/** 전체 일정 한 페이지의 행 수. 판이 화면을 넘지 않을 만큼만 둔다. */
+const SCHEDULE_PAGE_SIZE = 8
+
+/**
+ * 전체 일정 — 행 수로 페이지를 나눠 넘긴다. 시즌에는 수백 건이라 한 판에 다 그리면 홈이 끝없이 길어진다.
+ * 판 높이는 한 페이지 분량으로 잡아, 마지막 페이지가 짧아도 페이지 버튼이 위로 튀지 않게 한다.
+ */
+function SchedulePager({
+  groups,
+  tags,
+  onPick,
+}: {
+  groups: readonly EarningsGroup[]
+  tags: ReadonlyMap<string, MineTag>
+  onPick: (ticker: string) => void
+}) {
+  const pages = useMemo(() => paginateSchedule(groups, SCHEDULE_PAGE_SIZE), [groups])
+  const [page, setPage] = useState(0)
+  // 일정이 갱신돼 페이지 수가 줄면 마지막 페이지로 맞춘다
+  const current = Math.min(page, Math.max(0, pages.length - 1))
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex flex-col pb-2 min-h-[456px]">
+        {(pages[current] ?? []).map((g) => (
+          <ScheduleGroupBlock key={`${g.kind}-${g.continued}`} group={g} tags={tags} onPick={onPick} />
+        ))}
+      </div>
+      {pages.length > 1 && (
+        <div className="border-t border-white/[0.06]">
+          <Pagination page={current} totalPages={pages.length} onPageChange={setPage} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScheduleGroupBlock({
   group,
   tags,
   onPick,
 }: {
-  group: EarningsGroup
+  group: SchedulePageGroup<EarningsEvent>
   tags: ReadonlyMap<string, MineTag>
   onPick: (ticker: string) => void
 }) {
@@ -267,7 +300,8 @@ function GroupBlock({
     <div className="flex flex-col">
       <h3 className="px-5 pt-3 pb-1.5 text-[12.5px] font-semibold text-ink-3">
         {group.label}
-        <span className="ml-1.5 font-normal tabular-nums">{group.events.length}</span>
+        <span className="ml-1.5 font-normal tabular-nums">{group.total}</span>
+        {group.continued && <span className="ml-1.5 font-normal">· 이어서</span>}
       </h3>
       <EventList events={group.events} tags={tags} showDate={showDate} onPick={onPick} />
     </div>
@@ -418,7 +452,7 @@ function AccountSummary({
             )}
           </>
         )}
-        <button type="button" className="gbtn rim gbtn-sm self-start" onClick={onMore}>
+        <button type="button" className="gbtn gbtn-olive gbtn-strong gbtn-sm self-start" onClick={onMore}>
           포트폴리오에서 자세히
         </button>
       </div>
