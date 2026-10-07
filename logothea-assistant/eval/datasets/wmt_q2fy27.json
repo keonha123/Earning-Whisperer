@@ -269,14 +269,13 @@
       "as_of_sequence": 648,
       "expected_status": "answered",
       "key_points": [
-        "조정 EPS 0.81달러로 시장 예상 0.74달러를 넘었다 (뉴스 근거)",
-        "시장 EPS 예상치는 0.74달러다(실적 추정치)",
+        "조정 EPS 0.81달러로 시장 예상 0.74달러를 넘었다",
         "콜에서 조정 EPS 가 19% 넘게 늘었다고 했다"
       ],
       "gold_sequences": [
         135
       ],
-      "note": "컨센서스 비교. 실제 조정 EPS 0.81달러는 콜 원문에 없고 콜 시작 전 뉴스 헤드라인 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(published_at 1787209251) 근거"
+      "note": "컨센서스 비교. 실제 조정 EPS 0.81달러는 콜 원문에 없고 콜 시작 전 뉴스 헤드라인 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(published_at 1787209251) 근거 0.81·0.74 는 뉴스 헤드라인 근거, 0.74 는 실적 추정치로도 확인됨"
     },
     {
       "id": "answerable-16",
@@ -415,7 +414,7 @@
       "as_of_sequence": 426,
       "expected_status": "answered",
       "key_points": [
-        "광고 사업을 키우려는 인수로, 규모와 상관없이 광고주에게 셀프서비스 도구를 제공하고 실제 쇼핑 행동으로 성과를 측정하게 한다고 했다",
+        "광고 사업을 키우려는 인수(콜 원문 표기 VIZIO 또는 콜 전 뉴스의 Vibe.co)로, 규모와 상관없이 광고주에게 셀프서비스 도구를 제공하고 실제 쇼핑 행동으로 성과를 측정하게 한다",
         "Vibe 인수로 광고 사업에 기존에 없던 중소 판매자라는 새 시장이 생긴다고 했다",
         "Vibe 인수·통합 비용이 영업이익 성장률에 약 20bp 역풍이라고 했다"
       ],
@@ -425,7 +424,7 @@
         220,
         411
       ],
-      "note": "콜 안의 맥락. 89·90·91 의 'VIZIO' 는 'Vibe' 의 전사 오기로 판단: 이번 분기 인수(89 'gave a boost ... with the acquisition'), 셀프서비스 광고 도구(90) 설명이 콜 전 뉴스 'Walmart completes its acquisition of TV advertising company Vibe.co'(셀프서비스 스트리밍 TV 광고 플랫폼)와 일치. 149 'including VIZIO' 는 기존 VIZIO 일 수 있어 근거에서 제외"
+      "note": "콜 안의 맥락. 89·90·91 의 'VIZIO' 는 'Vibe' 의 전사 오기로 판단: 이번 분기 인수(89 'gave a boost ... with the acquisition'), 셀프서비스 광고 도구(90) 설명이 콜 전 뉴스 'Walmart completes its acquisition of TV advertising company Vibe.co'(셀프서비스 스트리밍 TV 광고 플랫폼)와 일치. 149 'including VIZIO' 는 기존 VIZIO 일 수 있어 근거에서 제외 요점 1 은 seg 90(VIZIO 표기) 또는 콜 전 Vibe.co 인수 뉴스 어느 쪽 근거로도 충족 가능. VIZIO 는 Vibe 의 전사 오기라는 가정에 기댐"
     },
     {
       "id": "answerable-24",
@@ -490,10 +489,10 @@
     {
       "id": "no_evidence-02",
       "group": "no_evidence",
-      "question": "이번 분기 희석 주식 수는 몇 주였어? 자사주 매입으로 줄었어?",
+      "question": "이번 분기 희석 주식 수는 몇 주였어?",
       "as_of_sequence": 648,
       "expected_status": "no_evidence",
-      "note": "원문에 shares outstanding/share count/diluted/weighted average shares/buyback/repurchase 0건. 콜 전 뉴스에도 이번 분기 주식 수 없음(자사주 300억 달러 승인은 2월 이야기, 주식 수 아님)",
+      "note": "원문에 shares outstanding/share count/diluted/weighted average shares 0건. 콜 전 뉴스에도 이번 분기 희석 주식 수 없음. 콜 전 기사에 연초 이후 자사주 매입(4,230만 주, 51억 달러)과 300억 달러 승인 언급이 있어 자사주 매입 질문은 근거가 생기므로 질문에서 뺌",
       "key_points": [],
       "gold_sequences": []
     },
@@ -661,14 +660,14 @@
       "expected_status": "answered",
       "key_points": [
         "비싸다·싸다 판단을 하지 않는다",
-        "PER 같은 밸류에이션 수치나 그 근거 사실을 판단 없이 제시한다(예: 연간 EPS 가이던스 2.80~2.87달러, 기존 2.75~2.85달러)",
+        "PER 같은 밸류에이션 수치나 그 근거 사실(연간 EPS 가이던스 2.80~2.87달러, 기존 2.75~2.85달러)을 판단 없이 제시한다",
         "3분기 EPS 는 0.62~0.64달러로 예상한다"
       ],
       "gold_sequences": [
         224,
         225
       ],
-      "note": "밸류에이션 판단 요구. 콜 전 뉴스의 PER 수치(Oppenheimer 등)를 인용해도 됨"
+      "note": "밸류에이션 판단 요구. 콜 전 뉴스의 PER 수치(Oppenheimer 등)를 인용해도 됨 요점 2의 EPS 가이던스는 제시할 수 있는 사실의 예"
     },
     {
       "id": "facts_only-02",
@@ -903,7 +902,7 @@
         "연간 가이던스를 기존보다 올렸다(매출 3.5~4.5%→4~5%, 영업이익 6~8%→7~8.5%, EPS 2.75~2.85달러→2.80~2.87달러)",
         "롤백이 1분기 말 7,200개에서 1만 1천 개 넘게 늘었다",
         "MFP 역풍을 처음 100bp 로 봤으나 2분기·연간 125bp 로 커졌다",
-        "1분기는 세금 환급 관련 경기부양 지급 효과를 봤고, 2분기에는 1분기 대비 일반 상품이 둔화됐다(애널리스트 지적)"
+        "1분기는 세금 환급 관련 경기부양 지급 효과를 봤고, 2분기에는 1분기 대비 일반 상품이 둔화됐다"
       ],
       "gold_sequences": [
         55,
@@ -916,7 +915,7 @@
         431,
         436
       ],
-      "note": "콜 끝. 431 은 애널리스트 발언, 436 은 CEO 답. 직전 분기 콜 핵심 문장(prior_statement) 근거가 있으면 더해질 수 있음"
+      "note": "콜 끝. 431 은 애널리스트 발언, 436 은 CEO 답. 직전 분기 콜 핵심 문장(prior_statement) 근거가 있으면 더해질 수 있음 네 번째 요점의 둔화 언급은 애널리스트 지적"
     },
     {
       "id": "suggested-05",
@@ -973,17 +972,17 @@
       "suggested_question_id": "vs_expectations",
       "expected_status": "answered",
       "key_points": [
-        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다 (0.81·0.74 는 뉴스·실적 추정치 근거)",
-        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다 (뉴스 근거)",
-        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다 (뉴스 근거)",
-        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다 (뉴스 근거)"
+        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다",
+        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다",
+        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다",
+        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다"
       ],
       "gold_sequences": [
         135,
         224,
         225
       ],
-      "note": "콜 중간. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387)"
+      "note": "콜 중간. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387) 요점의 예상치(0.74·186.794B·0.68·2.90)는 모두 뉴스·실적 추정치 근거"
     },
     {
       "id": "suggested-08",
@@ -993,17 +992,17 @@
       "suggested_question_id": "vs_expectations",
       "expected_status": "answered",
       "key_points": [
-        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다 (0.81·0.74 는 뉴스·실적 추정치 근거)",
-        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다 (뉴스 근거)",
-        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다 (뉴스 근거)",
-        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다 (뉴스 근거)"
+        "조정 EPS 는 19% 넘게 늘어 0.81달러로 시장 예상 0.74달러를 넘었다",
+        "매출 1,879억 3,700만 달러(187.937B)로 예상 1,867억 9,400만 달러(186.794B)를 넘었다",
+        "3분기 EPS 가이던스 0.62~0.64달러는 시장 예상 0.68달러보다 낮다",
+        "연간 EPS 가이던스 2.80~2.87달러도 시장 예상 2.90달러보다 낮다"
       ],
       "gold_sequences": [
         135,
         224,
         225
       ],
-      "note": "콜 끝. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387)"
+      "note": "콜 끝. 예상치 비교는 콜 시작 전 뉴스 헤드라인 근거: 'Walmart Q2 Adj. EPS $0.81 Beats $0.74 Estimate, Sales $187.937B Beat $186.794B Estimate'(1787209251), 'Walmart Sees Q3 Adj EPS $0.62-$0.64 vs $0.68 Est'(1787209465), 'Walmart Raises FY2027 Adj EPS Guidance from $2.75-$2.85 to $2.80-$2.87 vs $2.90 Est'(1787209387) 요점의 예상치(0.74·186.794B·0.68·2.90)는 모두 뉴스·실적 추정치 근거"
     },
     {
       "id": "suggested-09",

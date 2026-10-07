@@ -14,6 +14,8 @@ def _pct(value: float | None) -> str:
 
 def render_markdown(label: str, summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     lines = [f"# 평가 보고서 — {label}", ""]
+    lines += [f"- 생성 모델 {summary.get('generation_model', '-')}, 채점 모델 {summary.get('judge_model', '-')}, "
+              f"커밋 {summary.get('git_sha', '-')}, 질문셋 {summary.get('dataset_items', '-')}문항, call_id {summary.get('call_id', '-')}", ""]
     violations = summary.get("time_violations") or {}
     lines += ["## 시점 위반", ""]
     lines += [f"- {item_id}: {', '.join(markers)}" for item_id, markers in violations.items()] or ["- 없음"]
@@ -21,15 +23,20 @@ def render_markdown(label: str, summary: dict[str, Any], rows: list[dict[str, An
               f"- 문항 {summary['count']}개, 오류 {summary['errors']}개",
               f"- 상태 정확도 {_pct(summary['status_accuracy'])}",
               f"- 거절: 적절 {summary['refusals']['appropriate']} / 부적절 {summary['refusals']['inappropriate']} / 놓침 {summary['refusals']['missed']}",
-              f"- 근거 재현율 {_pct(summary['evidence_recall'])}, 수치 검증 통과율 {_pct(summary['citation_verified_rate'])}"]
+              f"- 근거 재현율 {_pct(summary['evidence_recall'])}",
+              f"- 인용 자체 검사 통과율(assistant 의 표시·수치 검사, 모든 인용) {_pct(summary['assistant_citation_check_rate'])}",
+              f"- 수치 인용 검사 통과율(수치가 있는 문장의 인용만) {_pct(summary['numeric_citation_check_rate'])}"]
     judge = summary.get("judge")
     if judge:
         lines.append(f"- 채점: 요점 충족 {_pct(judge['key_point_coverage'])}, 반대 진술 {_pct(judge['key_point_contradicted'])}, "
                      f"인용 정밀도 {_pct(judge['citation_precision'])} ({judge['judged_items']}문항)")
+        lines.append(f"- 채점 오류 {sum(1 for r in rows if r.get('judge_error'))}문항")
     latency = summary["latency_ms"]
-    lines += [f"- 지연(ms): 첫 토큰 p50 {latency['first_token_p50']} / p95 {latency['first_token_p95']}, "
+    lines += [f"- 지연(ms): 첫 토큰 p50 {latency['first_token_p50']} / p95 {latency['first_token_p95']} "
+              f"(answered 만: p50 {latency.get('answered_first_token_p50')} / p95 {latency.get('answered_first_token_p95')}), "
               f"완료 p50 {latency['total_p50']} / p95 {latency['total_p95']}",
-              f"- 비용: 합계 ${summary['cost_usd']['total']:.4f}, 질문당 ${summary['cost_usd']['per_question']:.5f}",
+              f"- 비용: 합계 ${summary['cost_usd']['total']:.4f}, 질문당 ${summary['cost_usd']['per_question']:.5f}, "
+              f"채점 ${summary['cost_usd'].get('judge_total', 0.0):.4f}",
               "", "## 묶음별", "", "| 묶음 | 문항 | 상태 정확도 | 근거 재현율 |", "|---|---|---|---|"]
     lines += [f"| {group} | {row['count']} | {_pct(row['status_accuracy'])} | {_pct(row['evidence_recall'])} |"
               for group, row in summary["by_group"].items()]

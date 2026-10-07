@@ -6,13 +6,16 @@ import math
 from collections import defaultdict
 from typing import Any
 
+from assistant.citations import extract_quantities, find_markers, split_sentences
 from eval.dataset import EvalItem
 from eval.runner import ItemResult
 from eval.transcript import EvalSegment
 
-# 100만 토큰당 달러(2026-10 공식 가격). cached 입력 할인은 반영하지 않아 비용을 높게 잡는 쪽이다.
+# 100만 토큰당 달러. cached 입력 할인은 반영하지 않아 비용을 높게 잡는 쪽이다.
+# gpt-6-luna 는 2026-10 공식 가격. gpt-5.4-mini 는 공식 가격표 기준값, 확인 후 갱신.
 PRICE_PER_MILLION: dict[str, dict[str, float]] = {
     "gpt-6-luna": {"input": 0.10, "output": 0.50},
+    "gpt-5.4-mini": {"input": 0.25, "output": 2.00},
 }
 
 
@@ -51,8 +54,22 @@ def evidence_recall(item: EvalItem, result: ItemResult) -> float | None:
     return len(cited & set(item.gold_sequences)) / len(item.gold_sequences)
 
 
+def numeric_citations(result: ItemResult) -> list[dict[str, Any]]:
+    """수치가 들어 있는 문장에서 쓰인 표시의 인용만 골라낸다."""
+    numeric_markers: set[str] = set()
+    for sentence in split_sentences(result.answer):
+        if extract_quantities(sentence):
+            numeric_markers.update(find_markers(sentence))
+    return [c for c in result.citations if c.get("marker") in numeric_markers]
+
+
+def _verified_rate(citations: list[dict[str, Any]]) -> float | None:
+    return (sum(1 for c in citations if c.get("verified")) / len(citations)) if citations else None
+
+
 def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[EvalSegment],
-              judgments: dict[str, Any] | None = None, model: str = "gpt-6-luna") -> dict[str, Any]:
+              judgments: dict[str, Any] | None = None, model: str = "gpt-6-luna",
+              judge_usage: dict[str, int] | None = None, judge_model: str = "gpt-5.4-mini") -> dict[str, Any]:
     by_id = {r.item_id: r for r in results}
     pairs = [(i, by_id[i.id]) for i in items if i.id in by_id]
 
@@ -63,7 +80,7 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
             refusals["appropriate"] += 1
         elif r.status == "refused":
             refusals["inappropriate"] += 1
-        elif i.expected_status == "refused":
+        elif i.expected_status == "refused" and r.error is None:
             refusals["missed"] += 1
 
     recalls = [v for i, r in pairs if (v := evidence_recall(i, r)) is not None]
@@ -71,7 +88,11 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
     violations = {i.id: v for i, r in pairs if (v := time_violations(i, r, segments))}
     ok = [r for _, r in pairs if r.error is None]
     costs = [cost_usd(r.usage, model) for _, r in pairs if r.usage is not None]
-    # 인용 검증 통과율은 문항별 평균이 아니라 모든 인용을 합산한 비율이다(인용이 많은 문항이 더 크게 반영된다).
+    numeric = [c for _, r in pairs for c in numeric_citations(r)]
+    answered_first = [r.first_token_ms for _, r in pairs
+                      if r.status == "answered" and r.error is None and r.first_token_ms is not None]
+    judge_cost = cost_usd(judge_usage, judge_model) if judge_usage else 0.0
+    # 인용 검사 통과율은 문항별 평균이 아니라 모든 인용을 합산한 비율이다(인용이 많은 문항이 더 크게 반영된다).
 
     groups: dict[str, list[tuple[EvalItem, ItemResult]]] = defaultdict(list)
     for i, r in pairs:
@@ -92,15 +113,22 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
         "status_accuracy": len(correct) / len(pairs) if pairs else 0.0,
         "refusals": refusals,
         "evidence_recall": _mean(recalls),
-        "citation_verified_rate": (sum(1 for c in citations if c.get("verified")) / len(citations)) if citations else None,
+        "generation_model": model,
+        "judge_model": judge_model,
+        # assistant 자체 코드 검사(표시·수치) 결과이며 judge 의 인용 정밀도와 다르다.
+        "assistant_citation_check_rate": _verified_rate(citations),
+        "numeric_citation_check_rate": _verified_rate(numeric),
         "time_violations": violations,
         "latency_ms": {
             "first_token_p50": percentile([r.first_token_ms for r in ok if r.first_token_ms is not None], 0.5),
             "first_token_p95": percentile([r.first_token_ms for r in ok if r.first_token_ms is not None], 0.95),
+            "answered_first_token_p50": percentile(answered_first, 0.5),
+            "answered_first_token_p95": percentile(answered_first, 0.95),
             "total_p50": percentile([r.total_ms for r in ok], 0.5),
             "total_p95": percentile([r.total_ms for r in ok], 0.95),
         },
-        "cost_usd": {"total": sum(costs), "per_question": (sum(costs) / len(pairs)) if pairs else 0.0},
+        "cost_usd": {"total": sum(costs), "per_question": (sum(costs) / len(pairs)) if pairs else 0.0,
+                     "judge_total": judge_cost},
         "by_group": by_group,
     }
     if judgments:

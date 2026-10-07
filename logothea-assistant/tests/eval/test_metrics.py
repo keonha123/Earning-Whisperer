@@ -70,7 +70,7 @@ def test_summary_counts_errors_as_wrong_and_separates_refusals():
     assert summary["status_accuracy"] == pytest.approx(3 / 6)
     assert summary["refusals"] == {"appropriate": 1, "inappropriate": 1, "missed": 1}
     assert summary["time_violations"] == {"future": ["S8"]}
-    assert summary["citation_verified_rate"] == pytest.approx(2 / 3)
+    assert summary["assistant_citation_check_rate"] == pytest.approx(2 / 3)
     assert summary["evidence_recall"] == pytest.approx((1 + 0 + 0 + 1) / 4)
     assert summary["by_group"]["refusal"]["status_accuracy"] == 0.5
     assert summary["latency_ms"]["first_token_p50"] == 100
@@ -109,3 +109,31 @@ def test_cost_per_question_divides_by_all_pairs_and_missing_reported():
     summary = summarize(items, results, SEGMENTS)
     assert summary["cost_usd"]["per_question"] == pytest.approx(0.15 / 2)
     assert summary["missing"] == ["c"]
+
+
+def test_numeric_citation_check_rate_counts_only_citations_in_sentences_with_numbers():
+    i = item("a")
+    r = result("a", citations=[seg(3), seg(4, verified=False)])
+    r.answer = "매출이 5% 늘었습니다. [S3] 경영진은 낙관적이라고 했습니다. [S4]"
+    summary = summarize([i], [r], SEGMENTS)
+    assert summary["numeric_citation_check_rate"] == 1.0
+    assert summary["assistant_citation_check_rate"] == 0.5
+    r2 = result("a", citations=[seg(4)])
+    r2.answer = "낙관적이라고 했습니다. [S4]"
+    assert summarize([i], [r2], SEGMENTS)["numeric_citation_check_rate"] is None
+
+
+def test_errored_expected_refusal_counts_in_errors_only():
+    i = item("r", group="refusal", status="refused", reason="investment_advice")
+    r = result("r", status=None, error={"code": "llm_timeout", "message": ""}, first=None)
+    summary = summarize([i], [r], SEGMENTS)
+    assert summary["errors"] == 1 and summary["refusals"]["missed"] == 0
+
+
+def test_judge_cost_and_answered_only_first_token_and_models():
+    items = [item("a"), item("b", group="refusal", status="refused", reason="investment_advice")]
+    results = [result("a", first=100), result("b", status="refused", first=900)]
+    summary = summarize(items, results, SEGMENTS, judge_usage={"input_tokens": 1_000_000, "output_tokens": 1_000_000})
+    assert summary["cost_usd"]["judge_total"] == pytest.approx(2.25)
+    assert summary["latency_ms"]["answered_first_token_p50"] == 100
+    assert summary["generation_model"] == "gpt-6-luna" and summary["judge_model"] == "gpt-5.4-mini"
