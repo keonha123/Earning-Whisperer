@@ -1,5 +1,6 @@
 from eval.dataset import EvalItem
-from eval.judge import CitationVerdict, Judgment, PointVerdict, judge_item, should_judge
+from eval.judge import (JUDGE_SYSTEM_PROMPT, CitationVerdict, Judgment, PointVerdict, judge_item,
+                        judge_item_with_issues, normalize_judgment, should_judge)
 from eval.runner import ItemResult
 from tests.fakes import FakeLLM
 
@@ -41,3 +42,40 @@ async def test_judge_sends_points_sentences_and_quotes():
     assert "[S3] 인용 원문: Comp sales for Walmart U.S. were 2.6%, led by transactions." in user.text
     assert "[S3] 쓰인 문장: 미국 기존점 매출은 2.6% 늘었습니다 [S3]." in user.text
     assert "[N1] 쓰인 문장: 거래가 늘었습니다 [S3][N1]." in user.text
+
+
+def test_normalize_fixes_duplicates_missing_out_of_range_and_invented():
+    raw = Judgment(
+        points=[PointVerdict(point_index=1, verdict="present"), PointVerdict(point_index=1, verdict="absent"),
+                PointVerdict(point_index=7, verdict="present")],
+        citations=[CitationVerdict(marker="N1", supported=True), CitationVerdict(marker="N1", supported=False),
+                   CitationVerdict(marker="S9", supported=True)])
+    fixed, issues = normalize_judgment(raw, _item(), _result())
+    assert [(p.point_index, p.verdict) for p in fixed.points] == [(0, "absent"), (1, "present")]
+    assert [(c.marker, c.supported) for c in fixed.citations] == [("S3", False), ("N1", True)]
+    assert "missing point 0" in issues and "duplicate point 1" in issues
+    assert "dropped invented marker S9" in issues and "missing marker S3" in issues
+
+
+async def test_judge_item_with_issues_returns_normalized():
+    llm = FakeLLM(parsed=Judgment(points=[], citations=[]))
+    judgment, _usage, issues = await judge_item_with_issues(llm, _item(), _result())
+    assert len(judgment.points) == 2 and len(judgment.citations) == 2 and issues
+
+
+async def test_prompt_lists_duplicated_marker_once():
+    result = _result(citations=[{"marker": "S3", "quote": "q1"}, {"marker": "S3", "quote": "q1"}])
+    llm = FakeLLM(parsed=Judgment(points=[], citations=[]))
+    await judge_item(llm, _item(), result)
+    assert llm.parse_calls[0][1].text.count("[S3] 인용 원문:") == 1
+
+
+async def test_prompt_without_citations_says_none():
+    llm = FakeLLM(parsed=Judgment(points=[], citations=[]))
+    await judge_item(llm, _item(), _result(citations=[]))
+    assert "인용: 없음" in llm.parse_calls[0][1].text
+
+
+def test_system_prompt_has_strict_rules():
+    for phrase in ("단정해", "일부만 다뤘으면 absent", "반올림", "외부 지식"):
+        assert phrase in JUDGE_SYSTEM_PROMPT

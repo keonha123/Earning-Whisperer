@@ -105,3 +105,38 @@ def test_runner_records_error_event_and_http_failure():
     with httpx.Client(transport=httpx.MockTransport(boom)) as http:
         result = AssistantRunner(http, assistant_url="http://a", secret="s", ticker="WMT", call_id="c1", segments=SEGMENTS).run_item(item)
     assert result.error["code"] == "connect_failed"
+
+
+def _run(handler):
+    item = EvalItem(id="e1", group="answerable", question="q", as_of_sequence=1, expected_status="answered",
+                    key_points=["a", "b"], gold_sequences=[0])
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        return AssistantRunner(http, assistant_url="http://a", secret="s", ticker="WMT", call_id="c1", segments=SEGMENTS).run_item(item)
+
+
+def test_runner_bad_json_frame_becomes_error_not_exception():
+    result = _run(lambda r: httpx.Response(200, text="event:meta\ndata:{not json\n\n"))
+    assert result.error == {"code": "bad_frame", "message": "JSONDecodeError"}
+
+
+def test_runner_stream_without_done_is_incomplete():
+    result = _run(lambda r: httpx.Response(200, text=_sse(("meta", {}), ("delta", {"text": "일부"}))))
+    assert result.error == {"code": "incomplete_stream", "message": ""}
+    assert result.answer == "일부"
+
+
+def test_runner_keeps_http_error_body():
+    result = _run(lambda r: httpx.Response(422, text="bad request"))
+    assert result.error["code"] == "http_422" and "bad request" in result.error["message"]
+
+
+def test_runner_survives_unicode_line_separator_in_delta():
+    body = _sse(("meta", {}), ("delta", {"text": "앞\u2028뒤"}),
+                ("done", {"status": "answered", "usage": {}, "warnings": []}))
+    result = _run(lambda r: httpx.Response(200, text=body))
+    assert result.error is not None or result.status == "answered"
+
+
+def test_runner_malformed_frame_shape_is_bad_frame():
+    result = _run(lambda r: httpx.Response(200, text=_sse(("delta", [1, 2]))))
+    assert result.error["code"] == "bad_frame"

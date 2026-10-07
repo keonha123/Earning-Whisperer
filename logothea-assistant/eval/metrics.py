@@ -36,12 +36,11 @@ def time_violations(item: EvalItem, result: ItemResult, segments: list[EvalSegme
     as_of_epoch = segments[item.as_of_sequence].timestamp
     violations: list[str] = []
     for citation in result.citations:
-        if citation.get("type") == "segment" and citation.get("ref") is not None:
-            if int(citation["ref"]) > item.as_of_sequence:
-                violations.append(citation["marker"])
-        elif citation.get("type") == "news" and citation.get("published_at") is not None:
-            if int(citation["published_at"]) > as_of_epoch:
-                violations.append(citation["marker"])
+        future_segment = (citation.get("type") == "segment" and citation.get("ref") is not None
+                          and int(citation["ref"]) > item.as_of_sequence)
+        future_published = citation.get("published_at") is not None and int(citation["published_at"]) > as_of_epoch
+        if future_segment or future_published:
+            violations.append(citation["marker"])
     return violations
 
 
@@ -71,7 +70,8 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
     citations = [c for _, r in pairs for c in r.citations]
     violations = {i.id: v for i, r in pairs if (v := time_violations(i, r, segments))}
     ok = [r for _, r in pairs if r.error is None]
-    costs = [cost_usd(r.usage, model) for _, r in pairs if r.usage]
+    costs = [cost_usd(r.usage, model) for _, r in pairs if r.usage is not None]
+    # 인용 검증 통과율은 문항별 평균이 아니라 모든 인용을 합산한 비율이다(인용이 많은 문항이 더 크게 반영된다).
 
     groups: dict[str, list[tuple[EvalItem, ItemResult]]] = defaultdict(list)
     for i, r in pairs:
@@ -87,6 +87,7 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
 
     summary: dict[str, Any] = {
         "count": len(pairs),
+        "missing": [i.id for i in items if i.id not in by_id],
         "errors": sum(1 for _, r in pairs if r.error is not None),
         "status_accuracy": len(correct) / len(pairs) if pairs else 0.0,
         "refusals": refusals,
@@ -99,7 +100,7 @@ def summarize(items: list[EvalItem], results: list[ItemResult], segments: list[E
             "total_p50": percentile([r.total_ms for r in ok], 0.5),
             "total_p95": percentile([r.total_ms for r in ok], 0.95),
         },
-        "cost_usd": {"total": sum(costs), "per_question": (sum(costs) / len(costs)) if costs else 0.0},
+        "cost_usd": {"total": sum(costs), "per_question": (sum(costs) / len(pairs)) if pairs else 0.0},
         "by_group": by_group,
     }
     if judgments:

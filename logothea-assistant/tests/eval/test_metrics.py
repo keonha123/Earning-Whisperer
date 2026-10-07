@@ -92,3 +92,20 @@ def test_summary_includes_judge_rates_when_given():
     summary = summarize(items, results, SEGMENTS, judgments)
     assert summary["judge"] == {"judged_items": 2, "key_point_coverage": 0.5, "key_point_contradicted": 0.25,
                                 "citation_precision": 0.5}
+
+
+def test_time_violation_published_at_applies_to_any_citation_once():
+    i = item("a", as_of=5)
+    late = SEGMENTS[5].timestamp + 1
+    both = {"marker": "S3", "type": "segment", "ref": "9", "verified": True, "published_at": late}
+    seg_late_pub = {"marker": "S4", "type": "segment", "ref": "4", "verified": True, "published_at": late}
+    estimate = {"marker": "E1", "type": "estimate", "ref": "x", "verified": True, "published_at": late}
+    assert time_violations(i, result("a", citations=[both, seg_late_pub, estimate, seg(2)]), SEGMENTS) == ["S3", "S4", "E1"]
+
+
+def test_cost_per_question_divides_by_all_pairs_and_missing_reported():
+    items = [item("a"), item("b"), item("c")]
+    results = [result("a"), ItemResult(item_id="b", status=None, error={"code": "x", "message": ""})]
+    summary = summarize(items, results, SEGMENTS)
+    assert summary["cost_usd"]["per_question"] == pytest.approx(0.15 / 2)
+    assert summary["missing"] == ["c"]

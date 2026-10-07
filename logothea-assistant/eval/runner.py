@@ -60,11 +60,14 @@ class AssistantRunner:
             with self._http.stream("POST", self._url, json=payload, headers={"X-Internal-Secret": self._secret},
                                    timeout=90.0) as response:
                 if response.status_code != 200:
-                    result.error = {"code": f"http_{response.status_code}", "message": ""}
+                    body = response.read().decode("utf-8", errors="ignore")[:500]
+                    result.error = {"code": f"http_{response.status_code}", "message": body}
                 else:
                     self._collect(response, result, started)
         except httpx.HTTPError as exc:
             result.error = {"code": "connect_failed", "message": type(exc).__name__}
+        except Exception as exc:  # 한 문항의 예기치 못한 실패가 실행 전체를 멈추지 않게 한다
+            result.error = {"code": "runner_exception", "message": type(exc).__name__}
         result.total_ms = int((self._clock() - started) * 1000)
         return result
 
@@ -74,7 +77,11 @@ class AssistantRunner:
         for line in response.iter_lines():
             if line == "":
                 if event is not None and data_lines:
-                    self._apply(event, json.loads("\n".join(data_lines)), result, started)
+                    try:
+                        self._apply(event, json.loads("\n".join(data_lines)), result, started)
+                    except (ValueError, AttributeError, TypeError, KeyError) as exc:
+                        result.error = {"code": "bad_frame", "message": type(exc).__name__}
+                        return
                 event, data_lines = None, []
             elif line.startswith(":"):
                 continue
@@ -82,6 +89,8 @@ class AssistantRunner:
                 event = line[6:].strip()
             elif line.startswith("data:"):
                 data_lines.append(line[5:].lstrip())
+        if result.status is None and result.error is None:
+            result.error = {"code": "incomplete_stream", "message": ""}
 
     def _apply(self, event: str, data: Any, result: ItemResult, started: float) -> None:
         if event == "meta":
