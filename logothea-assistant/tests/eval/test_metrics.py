@@ -79,7 +79,6 @@ def test_summary_counts_errors_as_wrong_and_separates_refusals():
 
 
 def test_summary_includes_judge_rates_when_given():
-    pytest.importorskip("eval.judge")
     from eval.judge import CitationVerdict, Judgment, PointVerdict
 
     items = [item("a"), item("b")]
