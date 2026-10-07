@@ -15,9 +15,17 @@ from .query import router as query_router
 from .regression import router as regression_router
 from .transcript_diff import router as transcript_diff_router
 from .transcript_translation import router as transcript_translation_router
+from .company_intelligence import router as company_intelligence_router
+from .ingestion import router as ingestion_router
+from .live_sessions import router as live_sessions_router
+from .operations import router as operations_router
 
 ALL_ROUTERS = [
     health_router,
+    ingestion_router,
+    company_intelligence_router,
+    live_sessions_router,
+    operations_router,
     legacy_analysis_router,
     equity_research_router,
     earnings_intelligence_router,

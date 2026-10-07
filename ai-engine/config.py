@@ -141,6 +141,69 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="", alias="QDRANT_URL")
     qdrant_path: str = Field(default="", alias="QDRANT_PATH")
     qdrant_collection_name: str = Field(default="earningwhisperer_evidence", alias="QDRANT_COLLECTION_NAME")
+    evidence_postgres_enabled: bool = Field(
+    default=False,
+    alias="EVIDENCE_POSTGRES_ENABLED",
+)
+evidence_auto_bootstrap: bool = Field(
+    default=False,
+    alias="EVIDENCE_AUTO_BOOTSTRAP",
+)
+evidence_schema_path: str = Field(
+    default="sql/ai_engine_evidence_schema.sql",
+    alias="EVIDENCE_SCHEMA_PATH",
+)
+
+company_intelligence_store_path: str = Field(
+    default="data/runtime/company_intelligence.json",
+    alias="COMPANY_INTELLIGENCE_STORE_PATH",
+)
+
+live_session_store_path: str = Field(
+    default="data/runtime/live_sessions",
+    alias="LIVE_SESSION_STORE_PATH",
+)
+live_session_retention_hours: int = Field(
+    default=168,
+    alias="LIVE_SESSION_RETENTION_HOURS",
+)
+live_session_max_sessions: int = Field(
+    default=500,
+    alias="LIVE_SESSION_MAX_SESSIONS",
+)
+live_session_max_fact_checks_per_chunk: int = Field(
+    default=3,
+    alias="LIVE_SESSION_MAX_FACT_CHECKS_PER_CHUNK",
+)
+live_session_redis_publish_enabled: bool = Field(
+    default=True,
+    alias="LIVE_SESSION_REDIS_PUBLISH_ENABLED",
+)
+
+evidence_sec_user_agent: str = Field(
+    default="",
+    alias="EVIDENCE_SEC_USER_AGENT",
+)
+evidence_http_user_agent: str = Field(
+    default="EarningWhisperer/9.6 evidence-ingestion",
+    alias="EVIDENCE_HTTP_USER_AGENT",
+)
+evidence_http_timeout_seconds: float = Field(
+    default=15.0,
+    alias="EVIDENCE_HTTP_TIMEOUT_SECONDS",
+)
+evidence_sync_enabled: bool = Field(
+    default=False,
+    alias="EVIDENCE_SYNC_ENABLED",
+)
+evidence_sync_interval_seconds: int = Field(
+    default=21600,
+    alias="EVIDENCE_SYNC_INTERVAL_SECONDS",
+)
+evidence_sync_tickers: str = Field(
+    default="",
+    alias="EVIDENCE_SYNC_TICKERS",
+)
     qdrant_transcript_collection_name: str = Field(default="earningwhisperer_transcripts", alias="QDRANT_TRANSCRIPT_COLLECTION_NAME")
     embedding_provider: str = Field(default="hash", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
@@ -174,6 +237,27 @@ class Settings(BaseSettings):
     redis_backup_queue_size: int = Field(default=100, alias="REDIS_BACKUP_QUEUE_SIZE")
     redis_reconnect_delay: float = Field(default=2.0, alias="REDIS_RECONNECT_DELAY")
     redis_socket_timeout_seconds: float = Field(default=1.0, alias="REDIS_SOCKET_TIMEOUT_SECONDS")
+    redis_profile_publish_enabled: bool = Field(
+    default=True,
+    alias="REDIS_PROFILE_PUBLISH_ENABLED",
+)
+redis_profile_enriched_suffix: str = Field(
+    default=":enriched",
+    alias="REDIS_PROFILE_ENRICHED_SUFFIX",
+)
+redis_retry_spool_path: str = Field(
+    default="data/redis_retry_spool.jsonl",
+    alias="REDIS_RETRY_SPOOL_PATH",
+)
+redis_retry_max_entries: int = Field(
+    default=5000,
+    alias="REDIS_RETRY_MAX_ENTRIES",
+)
+redis_retry_auto_flush_limit: int = Field(
+    default=20,
+    alias="REDIS_RETRY_AUTO_FLUSH_LIMIT",
+)
+
 
     app_host: str = Field(default="0.0.0.0", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
@@ -213,6 +297,14 @@ class Settings(BaseSettings):
     @property
     def review_model_candidates_list(self) -> list[str]:
         return [part.strip() for part in self.gemini_review_model_candidates.split(",") if part.strip()]
+
+    @property
+    def evidence_sync_tickers_list(self) -> list[str]:
+    return [
+        part.strip().upper()
+        for part in self.evidence_sync_tickers.split(",")
+        if part.strip()
+    ]
 
     @model_validator(mode="before")
     @classmethod
