@@ -16,7 +16,7 @@ from typing import Any
 
 from assistant.citations import verify_citations
 from assistant.classifier import Classification, GlossaryProvider, classify, glossary_answer
-from assistant.context import ContextAssembler, ContextError
+from assistant.context import BaseSources, ContextAssembler, ContextError
 from assistant.llm import LLMClient, LLMError, StreamDone, TextDelta, Usage
 from assistant.prompts import NO_EVIDENCE_PHRASE, REFUSAL_SUGGESTIONS, REFUSAL_TEXTS, build_generation_messages
 from assistant.schemas import AskRequest
@@ -53,7 +53,7 @@ class AnswerPipeline:
         base_task = asyncio.create_task(self._assembler.gather_base(request))
         try:
             try:
-                classification, classify_usage = await classify(self._llm, request)
+                classification, classify_usage = await classify(self._llm, request, await self._anchor(request, base_task))
             except LLMError as exc:
                 logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
                 yield error_event(exc.code)
@@ -109,6 +109,17 @@ class AnswerPipeline:
             yield self._done(started, usage, category, status=status, warnings=result.warnings)
         finally:
             _discard(base_task)
+
+    async def _anchor(self, request: AskRequest, base_task: asyncio.Task[BaseSources]) -> dict[str, Any] | None:
+        """고른 대목의 원문. 대목이 없거나 근거를 못 읽었으면 None — 그 오류는 생성 단계에서 다시 알린다."""
+        if request.anchor_sequence is None or request.suggested_question_id is not None:
+            return None
+        try:
+            base = await base_task
+        except ContextError:
+            return None
+        return next((row for row in base.segments.get("segments", [])
+                     if int(row["sequence"]) == request.anchor_sequence), None)
 
     async def _glossary_entry(self, classification: Classification) -> dict[str, Any] | None:
         glossary = await self._glossary.get()

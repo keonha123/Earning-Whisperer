@@ -44,19 +44,28 @@ CLASSIFY_SYSTEM_PROMPT = """너는 어닝콜 질의응답 서비스의 질문 �
 glossary_term: glossary 일 때 그 용어의 영어 원형(예: comp sales). 아니면 null.
 search_query: 앞선 대화를 반영해, 질문을 혼자 읽어도 뜻이 통하는 영어 뉴스 검색어로 다시 쓴다. 어느 분류든 채운다."""
 
+# 대목을 고른 질문은 "여기서 말하는 5는 뭐야?"처럼 대목 원문 없이는 뜻이 통하지 않아, 원문을 함께 보여 준다.
+ANCHOR_PROMPT = """
+사용자는 콜의 아래 대목을 골라 질문했다. 이 대목의 표현, 숫자, 문답을 묻는 질문은 answer 다.
+고른 대목({speaker}): {text}"""
+
 
 def history_messages(request: AskRequest) -> list[Message]:
     return [Message(turn.role, turn.text) for turn in request.history]
 
 
-async def classify(llm: LLMClient, request: AskRequest) -> tuple[Classification, Usage]:
+async def classify(llm: LLMClient, request: AskRequest,
+                   anchor: dict[str, Any] | None = None) -> tuple[Classification, Usage]:
     if request.suggested_question_id is not None:
         query = SUGGESTED_SEARCH_QUERIES[request.suggested_question_id]
         return Classification(category="answer", glossary_term=None, search_query=query), Usage()
     if is_explicit_trade_request(request.question):
         return Classification(category="investment_advice", glossary_term=None, search_query=""), Usage()
+    system = CLASSIFY_SYSTEM_PROMPT.format(ticker=request.ticker)
+    if anchor is not None:
+        system += ANCHOR_PROMPT.format(speaker=anchor.get("speaker") or "발언자 미상", text=anchor.get("text") or "")
     messages = [
-        Message("system", CLASSIFY_SYSTEM_PROMPT.format(ticker=request.ticker)),
+        Message("system", system),
         *history_messages(request),
         Message("user", request.question),
     ]
