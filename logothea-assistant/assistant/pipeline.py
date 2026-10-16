@@ -13,9 +13,10 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing
 from typing import Any
 
+from assistant.agent import AgentAnswerer, AgentFinished
 from assistant.citations import verify_citations
 from assistant.classifier import Classification, GlossaryProvider, classify, glossary_answer
-from assistant.context import BaseSources, ContextAssembler, ContextError, meta_payload
+from assistant.context import BaseSources, ContextAssembler, ContextError, Evidence, meta_payload
 from assistant.llm import LLMClient, LLMError, StreamDone, TextDelta, Usage
 from assistant.prompts import NO_EVIDENCE_PHRASE, REFUSAL_SUGGESTIONS, REFUSAL_TEXTS, build_generation_messages
 from assistant.schemas import AskRequest
@@ -40,11 +41,12 @@ def error_event(code: str) -> Event:
 
 class AnswerPipeline:
     def __init__(self, *, llm: LLMClient, assembler: ContextAssembler, glossary: GlossaryProvider,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.monotonic, agent: AgentAnswerer | None = None) -> None:
         self._llm = llm
         self._assembler = assembler
         self._glossary = glossary
         self._clock = clock
+        self._agent = agent
 
     async def run(self, request: AskRequest) -> AsyncIterator[Event]:
         started = self._clock()
@@ -76,6 +78,11 @@ class AnswerPipeline:
                     return
                 category = "answer"
 
+            if self._agent is not None:
+                async for event in self._run_agent(request, base_task, category, usage, started):
+                    yield event
+                return
+
             try:
                 base = await base_task
                 news_hits, news_missing = await self._assembler.gather_news(request, classification.search_query)
@@ -102,12 +109,37 @@ class AnswerPipeline:
                 return
 
             answer = "".join(parts)
-            result = verify_citations(answer, bundle.evidence)
-            yield "citations", result.citations
-            status = "no_evidence" if NO_EVIDENCE_PHRASE in answer and not result.citations else "answered"
-            yield self._done(started, usage, category, status=status, warnings=result.warnings)
+            for event in self._finish(started, usage, category, answer, bundle.evidence, []):
+                yield event
         finally:
             _discard(base_task)
+
+    async def _run_agent(self, request: AskRequest, base_task: asyncio.Task[BaseSources], category: str,
+                         usage: Usage, started: float) -> AsyncIterator[Event]:
+        assert self._agent is not None
+        finished: AgentFinished | None = None
+        try:
+            base = await base_task
+            async with aclosing(self._agent.run(request, base, category, usage)) as events:
+                async for event in events:
+                    if isinstance(event, AgentFinished):
+                        finished = event
+                    else:
+                        yield event
+        except (ContextError, LLMError) as exc:
+            logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
+            yield error_event(exc.code)
+            return
+        assert finished is not None
+        for event in self._finish(started, usage, category, finished.answer, finished.evidence, finished.warnings):
+            yield event
+
+    def _finish(self, started: float, usage: Usage, category: str, answer: str, evidence: dict[str, Evidence],
+                extra_warnings: list[str]) -> list[Event]:
+        result = verify_citations(answer, evidence)
+        status = "no_evidence" if NO_EVIDENCE_PHRASE in answer and not result.citations else "answered"
+        return [("citations", result.citations),
+                self._done(started, usage, category, status=status, warnings=[*extra_warnings, *result.warnings])]
 
     async def _anchor(self, request: AskRequest, base_task: asyncio.Task[BaseSources]) -> dict[str, Any] | None:
         """고른 대목의 원문. 대목이 없거나 근거를 못 읽었으면 None — 그 오류는 생성 단계에서 다시 알린다."""

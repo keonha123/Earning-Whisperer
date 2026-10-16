@@ -1,8 +1,10 @@
+import json
 from contextlib import aclosing
 
+from assistant.agent import AgentAnswerer
 from assistant.classifier import Classification, GlossaryProvider
 from assistant.context import ContextAssembler
-from assistant.llm import LLMError
+from assistant.llm import LLMError, RoundDone, TextDelta, ToolCall, Usage
 from assistant.pipeline import AnswerPipeline
 from assistant.prompts import REFUSAL_TEXTS
 from assistant.schemas import AskRequest
@@ -173,3 +175,45 @@ async def test_anchored_question_still_reports_missing_segments_as_error():
     events = await _collect(_pipeline(llm, backend=FakeBackend(segments=NOT_FOUND)), _request(anchor_sequence=2))
     assert events == [("error", {"code": "segments_not_found", "message": "이 콜의 자막을 찾지 못했습니다."})]
     assert "고른 대목" not in llm.parse_calls[0][0].text
+
+
+def _agent_pipeline(llm, backend=None):
+    backend = backend or FakeBackend(segments=_segments(), glossary=_GLOSSARY)
+    assembler = ContextAssembler(backend, FakeEngine(), timeout_seconds=0.2, news_top_k=6, news_lookback_days=30)
+    ticks = iter([100.0, 101.25])
+    return AnswerPipeline(llm=llm, assembler=assembler, glossary=GlossaryProvider(backend.glossary),
+                          clock=lambda: next(ticks), agent=AgentAnswerer(llm, assembler))
+
+
+async def test_agent_mode_answers_with_tool_evidence_and_same_event_contract():
+    search = ToolCall(call_id="c1", name="search_call", arguments=json.dumps({"query": "comp sales"}))
+    llm = FakeLLM(parsed=_answer(), rounds=[
+        [RoundDone(usage=Usage(10, 1, 0), tool_calls=[search], items=[])],
+        [TextDelta("4.5% 늘었습니다 [S3]."), RoundDone(usage=Usage(20, 2, 0), tool_calls=[], items=[])],
+    ])
+
+    events = await _collect(_agent_pipeline(llm), _request())
+
+    assert [name for name, _ in events] == ["meta", "delta", "citations", "done"]
+    assert events[2][1][0]["marker"] == "S3" and events[2][1][0]["verified"] is True
+    assert events[3][1]["status"] == "answered"
+    assert llm.stream_calls == []  # 고정 방식 생성은 부르지 않는다
+
+
+async def test_agent_mode_keeps_refusals_on_the_classifier_path():
+    llm = FakeLLM(parsed=_answer(category="price_prediction"))
+    events = await _collect(_agent_pipeline(llm), _request(question="주가 오를까?"))
+    assert events[-1][1]["status"] == "refused"
+    assert llm.round_calls == []
+
+
+async def test_agent_mode_llm_failure_is_an_error_event():
+    llm = FakeLLM(parsed=_answer(), round_error=LLMError("llm_timeout", "slow"))
+    events = await _collect(_agent_pipeline(llm), _request())
+    assert events[-1][0] == "error" and events[-1][1]["code"] == "llm_timeout"
+
+
+async def test_agent_mode_missing_segments_is_an_error_before_meta():
+    llm = FakeLLM(parsed=_answer())
+    events = await _collect(_agent_pipeline(llm, backend=FakeBackend(segments=NOT_FOUND)), _request())
+    assert events == [("error", {"code": "segments_not_found", "message": "이 콜의 자막을 찾지 못했습니다."})]

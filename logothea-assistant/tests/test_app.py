@@ -90,7 +90,7 @@ def test_unexpected_pipeline_failure_ends_with_internal_error_event():
 
 
 def test_health():
-    assert _client(StubPipeline()).get("/health").json() == {"status": "ok"}
+    assert _client(StubPipeline()).get("/health").json() == {"status": "ok", "answer_mode": "fixed"}
 
 
 async def test_client_disconnect_closes_the_llm_stream_without_gc():

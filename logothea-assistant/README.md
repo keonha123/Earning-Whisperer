@@ -33,6 +33,7 @@ ai-engine 과 분리한 이유는 부하 형태가 달라서입니다. ai-engine
 ## 실행
 
 환경변수는 `OPENAI_API_KEY`, `INTERNAL_SECRET`(backend 와 같은 값), `BACKEND_BASE_URL`, `AI_ENGINE_BASE_URL` 입니다.
+`ANSWER_MODE` 는 답변 방식으로, `fixed`(기본)는 근거를 미리 모아 넣고 `agent` 는 모델이 도구로 근거를 골라 읽습니다(#194).
 `logothea-assistant/.env` 에 두어도 됩니다.
 
     python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
