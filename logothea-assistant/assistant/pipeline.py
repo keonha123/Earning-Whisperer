@@ -127,11 +127,12 @@ class AnswerPipeline:
                         finished = event
                     else:
                         yield event
+            if finished is None:
+                raise LLMError("llm_failed", "에이전트가 최종 결과 없이 끝났습니다")
         except (ContextError, LLMError) as exc:
             logger.warning("질의응답 실패 code=%s", exc.code, exc_info=True)
             yield error_event(exc.code)
             return
-        assert finished is not None
         for event in self._finish(started, usage, category, finished.answer, finished.evidence, finished.warnings):
             yield event
 

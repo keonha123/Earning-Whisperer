@@ -1,8 +1,9 @@
 import json
+import logging
 
 import pytest
 
-from assistant.agent import MAX_TOOL_ROUNDS, AgentAnswerer, AgentFinished
+from assistant.agent import AGENT_TIME_BUDGET_SECONDS, MAX_TOOL_ROUNDS, AgentAnswerer, AgentFinished
 from assistant.context import BaseSources, ContextAssembler, ContextError
 from assistant.llm import LLMError, RoundDone, TextDelta, ToolCall, Usage
 from assistant.schemas import AskRequest
@@ -24,10 +25,10 @@ def _base(sequences=(1, 2, 3)):
     return BaseSources(segments=payload, estimates=None, prior=None, missing_sources=[])
 
 
-def _answerer(llm, engine=None):
+def _answerer(llm, engine=None, **kwargs):
     assembler = ContextAssembler(FakeBackend(), engine or FakeEngine(), timeout_seconds=0.2, news_top_k=6,
                                  news_lookback_days=30)
-    return AgentAnswerer(llm, assembler)
+    return AgentAnswerer(llm, assembler, **kwargs)
 
 
 def _tool_round(*calls):
@@ -111,3 +112,58 @@ async def test_news_failure_from_a_tool_reaches_meta_missing_sources():
     llm = FakeLLM(rounds=[_tool_round(news), _answer_round("답.")])
     events = await _collect(_answerer(llm, engine=FakeEngine(fail={"news_search"})), _request())
     assert events[0][1]["missing_sources"] == ["news"]
+
+
+async def test_total_tool_call_cap_closes_tools_for_the_next_round_and_warns_once():
+    from assistant.tools import MAX_TOOL_CALLS
+    calls = [ToolCall(call_id=f"c{i}", name="get_estimates", arguments="{}") for i in range(MAX_TOOL_CALLS)]
+    llm = FakeLLM(rounds=[_tool_round(*calls), _answer_round("자료가 부족합니다.")])
+
+    events = await _collect(_answerer(llm), _request())
+
+    assert [allow for _, _, allow in llm.round_calls] == [True, False]
+    assert events[-1].warnings == ["agent_round_limit"]
+
+
+async def test_time_budget_closes_tools_after_the_budget_is_spent():
+    now = [0.0]
+    loop = ToolCall(call_id="c", name="get_estimates", arguments="{}")
+    llm = FakeLLM(rounds=[_tool_round(loop), _answer_round("답.")])
+    original = llm.agent_round
+
+    def slow_round(*args, **kwargs):
+        now[0] = AGENT_TIME_BUDGET_SECONDS + 1  # 첫 라운드가 끝나면 예산을 넘긴 시각이 된다
+        return original(*args, **kwargs)
+
+    llm.agent_round = slow_round
+    events = await _collect(_answerer(llm, clock=lambda: now[0]), _request())
+
+    assert [allow for _, _, allow in llm.round_calls] == [True, False]
+    assert events[-1].warnings == ["agent_round_limit"]
+
+
+async def test_text_written_in_a_tool_round_joins_the_answer_and_is_counted(caplog):
+    search = ToolCall(call_id="c1", name="search_call", arguments=json.dumps({"query": "comp sales"}))
+    tool_round = [TextDelta("찾아보겠습니다. "), *_tool_round(search)]
+    llm = FakeLLM(rounds=[tool_round, _answer_round("4.5% 늘었습니다 [S3].")])
+
+    with caplog.at_level(logging.INFO, logger="assistant.agent"):
+        events = await _collect(_answerer(llm), _request())
+
+    assert events[-1].answer == "찾아보겠습니다. 4.5% 늘었습니다 [S3]."
+    assert "leaked_rounds=1" in caplog.text
+
+
+async def test_tools_never_return_segments_after_the_as_of_sequence():
+    base = _base(sequences=(1, 2, 3, 4, 5))
+    base.segments["segments"][-1]["text"] = "Margin expansion zebra."
+    search = ToolCall(call_id="s", name="search_call", arguments=json.dumps({"query": "zebra"}))
+    read = ToolCall(call_id="r", name="read_call", arguments=json.dumps({"start_sequence": 0, "end_sequence": 10}))
+    llm = FakeLLM(rounds=[_tool_round(search, read), _answer_round("답.")])
+
+    events = await _collect(_answerer(llm), _request(as_of_sequence=3), base=base)
+
+    outputs = [r.output for r in llm.round_calls[1][0][-2:]]
+    assert all("S4" not in out and "S5" not in out and "zebra" not in out for out in outputs)
+    assert "S3" in outputs[1]
+    assert not {"S4", "S5"} & set(events[-1].evidence)

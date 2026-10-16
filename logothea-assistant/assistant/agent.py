@@ -8,7 +8,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,11 +19,13 @@ from assistant.context import (BaseSources, ContextAssembler, ContextError, Evid
 from assistant.llm import LLMClient, LLMError, RoundDone, TextDelta, Usage
 from assistant.prompts import build_agent_messages
 from assistant.schemas import AskRequest
-from assistant.tools import TOOL_SPECS, AgentToolbox
+from assistant.tools import MAX_TOOL_CALLS, TOOL_SPECS, AgentToolbox
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 4
+# 백엔드가 답변 전체를 60초에 끊으므로, 도구 탐색은 35초까지만 하고 마지막 답을 쓸 시간을 남긴다.
+AGENT_TIME_BUDGET_SECONDS = 35
 # 대목 질문은 고른 대목과 앞뒤 두 발언을 처음부터 보여 준다.
 ANCHOR_NEIGHBORS = 2
 
@@ -35,12 +38,15 @@ class AgentFinished:
 
 
 class AgentAnswerer:
-    def __init__(self, llm: LLMClient, assembler: ContextAssembler) -> None:
+    def __init__(self, llm: LLMClient, assembler: ContextAssembler,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self._llm = llm
         self._assembler = assembler
+        self._clock = clock
 
     async def run(self, request: AskRequest, base: BaseSources, category: str,
                   usage: Usage) -> AsyncIterator[tuple[str, dict[str, Any]] | AgentFinished]:
+        started = self._clock()
         segments, incomplete, anchor = segment_scope(base.segments, request)
         if not segments:
             raise ContextError("segments_not_found")
@@ -62,14 +68,20 @@ class AgentAnswerer:
         parts: list[str] = []
         warnings: list[str] = []
         meta_sent = False
+        tools_closed = False
+        leaked_rounds = 0
 
         def meta() -> tuple[str, dict[str, Any]]:
             return "meta", meta_payload(request, int(segments[-1].ref), anchor, [*missing, *toolbox.missing_sources])
 
         for round_index in range(MAX_TOOL_ROUNDS + 1):
-            allow_tools = round_index < MAX_TOOL_ROUNDS
-            if not allow_tools:
+            # 라운드·호출 합계·시간 중 하나라도 상한에 닿으면 도구 없이 답을 쓰게 한다.
+            if round_index >= MAX_TOOL_ROUNDS or self._clock() - started >= AGENT_TIME_BUDGET_SECONDS:
+                tools_closed = True
+            allow_tools = not tools_closed
+            if not allow_tools and "agent_round_limit" not in warnings:
                 warnings.append("agent_round_limit")
+            round_text = False
             done: RoundDone | None = None
             async with aclosing(self._llm.agent_round(items, TOOL_SPECS, allow_tools=allow_tools)) as stream:
                 async for item in stream:
@@ -77,6 +89,7 @@ class AgentAnswerer:
                         if not meta_sent:
                             meta_sent = True
                             yield meta()
+                        round_text = True
                         parts.append(item.text)
                         yield "delta", {"text": item.text}
                     elif isinstance(item, RoundDone):
@@ -86,10 +99,16 @@ class AgentAnswerer:
             usage.add(done.usage)
             if not done.tool_calls or not allow_tools:
                 break
+            if round_text:
+                # 도구 라운드에서 쓴 글도 그대로 스트리밍되어 최종 답에 붙는다. 얼마나 생기는지 로그로 잰다.
+                leaked_rounds += 1
             results = [await toolbox.call(call) for call in done.tool_calls]
+            if len(toolbox.call_names) >= MAX_TOOL_CALLS:
+                tools_closed = True
             items = [*items, *done.items, *results]
 
         if not meta_sent:
             yield meta()
-        logger.info("에이전트 도구 호출 rounds=%d tools=%s", round_index + 1, toolbox.call_names)
+        logger.info("에이전트 도구 호출 rounds=%d tools=%s leaked_rounds=%d", round_index + 1, toolbox.call_names,
+                    leaked_rounds)
         yield AgentFinished(answer="".join(parts), evidence=toolbox.evidence, warnings=warnings)

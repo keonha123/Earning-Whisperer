@@ -100,8 +100,10 @@ async def test_prior_and_estimates_render_preloaded_items():
 async def test_bad_arguments_unknown_tool_and_call_limit_are_reported_not_raised():
     box, _ = _box()
     bad = await box.call(ToolCall(call_id="c1", name="search_call", arguments="{not json"))
+    not_object = [await box.call(ToolCall(call_id="c2", name="search_call", arguments=raw)) for raw in ("[]", "null")]
     unknown = await box.call(_call("delete_everything", {}))
     assert "인자를 읽지 못했습니다" in bad.output
+    assert all("인자를 읽지 못했습니다" in r.output for r in not_object)
     assert "없는 도구" in unknown.output
     for index in range(MAX_TOOL_CALLS):
         await box.call(_call("get_estimates", {}, call_id=f"x{index}"))

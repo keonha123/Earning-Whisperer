@@ -29,7 +29,7 @@ def _schema(properties: dict[str, Any]) -> dict[str, Any]:
 
 
 TOOL_SPECS = [
-    ToolSpec("search_call", "질문 시점까지의 콜 발언에서 키워드로 관련 대목을 찾는다. 콜 원문이 영어라 검색어는 영어로 쓴다.",
+    ToolSpec("search_call", "질문 시점까지의 콜 발언에서 키워드로 관련 대목을 찾는다. 콜 원문이 영어라 검색어는 영어로 쓰고, 어형 변환이 없으므로 콜이 쓴 단어 그대로 쓴다(growth 보다 grew).",
              _schema({"query": {"type": "string", "description": "영어 키워드 검색어"}})),
     ToolSpec("read_call", f"콜 발언을 번호 범위로 차례대로 읽는다. 한 번에 최대 {MAX_READ_SEGMENTS}개.",
              _schema({"start_sequence": {"type": "integer"}, "end_sequence": {"type": "integer"}})),
@@ -43,7 +43,6 @@ TOOL_SPECS = [
 class AgentToolbox:
     def __init__(self, *, segments: list[Evidence], prior: list[Evidence], estimates: list[Evidence],
                  anchor_sequence: int | None, news_search: NewsSearch, as_of_epoch: int) -> None:
-        self._segments = segments
         self._by_sequence = {int(item.ref): item for item in segments}
         self._index = SegmentIndex(segments)
         self._prior = prior
@@ -69,6 +68,8 @@ class AgentToolbox:
         try:
             args = json.loads(call.arguments or "{}")
         except json.JSONDecodeError:
+            args = None
+        if not isinstance(args, dict):
             return "인자를 읽지 못했습니다. JSON 형식으로 다시 부른다."
         if call.name == "search_call":
             hits = self._index.search(str(args.get("query", "")), MAX_SEARCH_HITS)
