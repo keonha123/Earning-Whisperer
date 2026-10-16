@@ -116,20 +116,16 @@ class ContextAssembler:
 
     def build(self, request: AskRequest, base: BaseSources, news_hits: list[dict[str, Any]],
               news_missing: list[str]) -> ContextBundle:
-        segments = segment_evidence(base.segments, request.as_of_sequence)
+        segments, incomplete, anchor = segment_scope(base.segments, request)
         if not segments:
             raise ContextError("segments_not_found")
-        sequences = [int(item.ref) for item in segments]
-        missing = [*base.missing_sources, *news_missing]
-        if any(later - earlier > 1 for earlier, later in zip(sequences, sequences[1:])):
-            missing.append("segments_incomplete")
-        anchor = request.anchor_sequence if request.anchor_sequence in sequences else None
+        missing = [*base.missing_sources, *news_missing, *incomplete]
         return ContextBundle(
             segments=segments,
             news=news_evidence(news_hits, request.as_of_epoch),
             prior=prior_evidence(base.prior),
             estimates=estimate_evidence(base.estimates, request.as_of_epoch),
-            as_of_sequence=sequences[-1],
+            as_of_sequence=int(segments[-1].ref),
             anchor_sequence=anchor,
             missing_sources=missing,
         )
@@ -140,6 +136,21 @@ class ContextAssembler:
         except (TimeoutError, SourceUnavailable) as exc:
             logger.warning("근거 정보원을 읽지 못했습니다: %r", exc)
             return _FAILED
+
+
+def segment_scope(segments_payload: dict[str, Any], request: AskRequest) -> tuple[list[Evidence], list[str], int | None]:
+    """질문 시점까지의 세그먼트, 빠진 구간 표시, 유효한 대목 번호를 돌려준다. 고정·에이전트 방식이 함께 쓴다."""
+    segments = segment_evidence(segments_payload, request.as_of_sequence)
+    sequences = [int(item.ref) for item in segments]
+    incomplete = ["segments_incomplete"] if any(later - earlier > 1 for earlier, later in zip(sequences, sequences[1:])) else []
+    anchor = request.anchor_sequence if request.anchor_sequence in sequences else None
+    return segments, incomplete, anchor
+
+
+def meta_payload(request: AskRequest, as_of_sequence: int, anchor: int | None, missing: list[str]) -> dict[str, Any]:
+    as_of_time = datetime.fromtimestamp(request.as_of_epoch, UTC).isoformat().replace("+00:00", "Z")
+    return {"scope": "anchor" if anchor is not None else "call", "as_of_sequence": as_of_sequence,
+            "as_of_time": as_of_time, "anchor_sequence": anchor, "missing_sources": list(missing)}
 
 
 def segment_evidence(payload: dict[str, Any], as_of_sequence: int) -> list[Evidence]:

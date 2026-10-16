@@ -11,12 +11,11 @@ import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import aclosing
-from datetime import UTC, datetime
 from typing import Any
 
 from assistant.citations import verify_citations
 from assistant.classifier import Classification, GlossaryProvider, classify, glossary_answer
-from assistant.context import BaseSources, ContextAssembler, ContextError
+from assistant.context import BaseSources, ContextAssembler, ContextError, meta_payload
 from assistant.llm import LLMClient, LLMError, StreamDone, TextDelta, Usage
 from assistant.prompts import NO_EVIDENCE_PHRASE, REFUSAL_SUGGESTIONS, REFUSAL_TEXTS, build_generation_messages
 from assistant.schemas import AskRequest
@@ -62,7 +61,7 @@ class AnswerPipeline:
             category = classification.category
 
             if category in REFUSAL_TEXTS:
-                yield "meta", _meta(request, request.as_of_sequence, request.anchor_sequence, [])
+                yield "meta", meta_payload(request, request.as_of_sequence, request.anchor_sequence, [])
                 yield "delta", {"text": REFUSAL_TEXTS[category]}
                 yield self._done(started, usage, category, status="refused", refusal_reason=category,
                                  suggested=REFUSAL_SUGGESTIONS[category])
@@ -71,7 +70,7 @@ class AnswerPipeline:
             if category == "glossary":
                 entry = await self._glossary_entry(classification)
                 if entry is not None:
-                    yield "meta", _meta(request, request.as_of_sequence, request.anchor_sequence, [])
+                    yield "meta", meta_payload(request, request.as_of_sequence, request.anchor_sequence, [])
                     yield "delta", {"text": glossary_answer(entry)}
                     yield self._done(started, usage, category, status="answered")
                     return
@@ -86,7 +85,7 @@ class AnswerPipeline:
                 yield error_event(exc.code)
                 return
 
-            yield "meta", _meta(request, bundle.as_of_sequence, bundle.anchor_sequence, bundle.missing_sources)
+            yield "meta", meta_payload(request, bundle.as_of_sequence, bundle.anchor_sequence, bundle.missing_sources)
             parts: list[str] = []
             try:
                 # 소비하는 쪽이 끊으면 aclosing 이 LLM 스트림을 닫아 공급자 연결과 과금을 멈춘다.
@@ -133,12 +132,6 @@ class AnswerPipeline:
                     list(warnings))
         return "done", {"status": status, "refusal_reason": refusal_reason, "suggested_question_ids": list(suggested),
                         "warnings": list(warnings), "usage": usage.as_dict(), "latency_ms": latency_ms}
-
-
-def _meta(request: AskRequest, as_of_sequence: int, anchor: int | None, missing: list[str]) -> dict[str, Any]:
-    as_of_time = datetime.fromtimestamp(request.as_of_epoch, UTC).isoformat().replace("+00:00", "Z")
-    return {"scope": "anchor" if anchor is not None else "call", "as_of_sequence": as_of_sequence,
-            "as_of_time": as_of_time, "anchor_sequence": anchor, "missing_sources": list(missing)}
 
 
 def _discard(task: asyncio.Task[Any]) -> None:

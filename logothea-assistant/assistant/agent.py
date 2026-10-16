@@ -11,11 +11,10 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 from assistant.context import (BaseSources, ContextAssembler, ContextError, Evidence, estimate_evidence,
-                               prior_evidence, segment_evidence)
+                               meta_payload, prior_evidence, segment_scope)
 from assistant.llm import LLMClient, LLMError, RoundDone, TextDelta, Usage
 from assistant.prompts import build_agent_messages
 from assistant.schemas import AskRequest
@@ -42,14 +41,10 @@ class AgentAnswerer:
 
     async def run(self, request: AskRequest, base: BaseSources, category: str,
                   usage: Usage) -> AsyncIterator[tuple[str, dict[str, Any]] | AgentFinished]:
-        segments = segment_evidence(base.segments, request.as_of_sequence)
+        segments, incomplete, anchor = segment_scope(base.segments, request)
         if not segments:
             raise ContextError("segments_not_found")
-        sequences = [int(item.ref) for item in segments]
-        missing = list(base.missing_sources)
-        if any(later - earlier > 1 for earlier, later in zip(sequences, sequences[1:])):
-            missing.append("segments_incomplete")
-        anchor = request.anchor_sequence if request.anchor_sequence in sequences else None
+        missing = [*base.missing_sources, *incomplete]
 
         async def news_search(query: str) -> tuple[list[dict[str, Any]], list[str]]:
             return await self._assembler.gather_news(request, query)
@@ -69,10 +64,7 @@ class AgentAnswerer:
         meta_sent = False
 
         def meta() -> tuple[str, dict[str, Any]]:
-            as_of_time = datetime.fromtimestamp(request.as_of_epoch, UTC).isoformat().replace("+00:00", "Z")
-            return "meta", {"scope": "anchor" if anchor is not None else "call", "as_of_sequence": sequences[-1],
-                            "as_of_time": as_of_time, "anchor_sequence": anchor,
-                            "missing_sources": [*missing, *toolbox.missing_sources]}
+            return "meta", meta_payload(request, int(segments[-1].ref), anchor, [*missing, *toolbox.missing_sources])
 
         for round_index in range(MAX_TOOL_ROUNDS + 1):
             allow_tools = round_index < MAX_TOOL_ROUNDS
