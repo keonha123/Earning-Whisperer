@@ -68,7 +68,14 @@ logothea-assistant 의 답변 품질을 같은 질문셋으로 반복 측정하�
 .venv/bin/python -m eval compare eval/reports/A-run1.json eval/reports/A-run2.json eval/reports/A-run3.json
 ```
 
-보고서 상단에는 생성 모델, 채점 모델, git 커밋, 질문셋 문항 수, call_id 가 기록됩니다.
+답변 방식을 비교하려면 assistant 를 `ANSWER_MODE=agent` 로 다시 띄운 뒤 같은 명령을 다른 `--label` 로 실행하고 `compare` 로 비교합니다.
+
+```
+ANSWER_MODE=agent .venv/bin/python -m eval run --label agent --yes
+.venv/bin/python -m eval compare eval/reports/*-fixed.json eval/reports/*-agent.json
+```
+
+보고서 상단에는 생성 모델, 채점 모델, git 커밋, 질문셋 문항 수, call_id, 답변 방식이 기록됩니다.
 
 세그먼트 분할 규칙을 바꾸면 질문셋의 sequence 도 다시 맞춰야 합니다. `validate` 로 확인합니다.
 
