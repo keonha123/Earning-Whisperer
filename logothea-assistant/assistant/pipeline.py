@@ -79,8 +79,9 @@ class AnswerPipeline:
                 category = "answer"
 
             if self._agent is not None:
-                async for event in self._run_agent(request, base_task, category, usage, started):
-                    yield event
+                async with aclosing(self._run_agent(request, base_task, category, usage, started)) as agent_events:
+                    async for event in agent_events:
+                        yield event
                 return
 
             try:

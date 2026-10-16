@@ -217,3 +217,14 @@ async def test_agent_mode_missing_segments_is_an_error_before_meta():
     llm = FakeLLM(parsed=_answer())
     events = await _collect(_agent_pipeline(llm, backend=FakeBackend(segments=NOT_FOUND)), _request())
     assert events == [("error", {"code": "segments_not_found", "message": "이 콜의 자막을 찾지 못했습니다."})]
+
+
+async def test_agent_mode_closes_the_round_when_the_consumer_disconnects():
+    llm = FakeLLM(parsed=_answer(), rounds=[
+        [TextDelta("첫 "), TextDelta("둘째 "), TextDelta("셋째"), RoundDone(usage=Usage(1, 1, 0), tool_calls=[], items=[])],
+    ])
+    async with aclosing(_agent_pipeline(llm).run(_request())) as events:
+        async for name, _ in events:
+            if name == "delta":
+                break
+    assert llm.round_closed is True
