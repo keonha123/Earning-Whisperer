@@ -5,6 +5,7 @@ from assistant.context import (
     BaseSources,
     ContextAssembler,
     ContextError,
+    segment_scope,
 )
 from assistant.schemas import AskRequest
 from tests.fakes import NOT_FOUND, FakeBackend, FakeEngine, segments_payload
@@ -115,6 +116,13 @@ def test_build_keeps_anchor_only_if_present():
     assert _assembler().build(_request(anchor_sequence=2), _base(), [], []).anchor_sequence == 2
     gappy = _base(segments=segments_payload([1, 3]))
     assert _assembler().build(_request(anchor_sequence=2), gappy, [], []).anchor_sequence is None
+
+
+def test_segment_scope_reports_gap_and_drops_anchor_not_in_sequences():
+    segments, extra, anchor = segment_scope(segments_payload([1, 3]), _request(anchor_sequence=2))
+    assert [item.ref for item in segments] == ["1", "3"] and extra == ["segments_incomplete"] and anchor is None
+    _, extra, anchor = segment_scope(segments_payload([1, 2, 3]), _request(anchor_sequence=2))
+    assert extra == [] and anchor == 2
 
 
 def test_build_drops_news_after_as_of_and_numbers_contiguously():

@@ -1,6 +1,8 @@
 import json
 from datetime import date
 
+import httpx
+
 from eval.__main__ import estimate_cost_usd, main
 from eval.report import render_markdown, write_report
 
@@ -132,3 +134,22 @@ def test_judge_client_is_created_per_run_and_judged_each_run(tmp_path, monkeypat
     assert main(["run", "--label", "x", "--runs", "2", "--judge", "--yes"]) == 0
     assert len(made) == 2 and len(judged) == 2 and judged[0] is not judged[1]
     assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_fetch_answer_mode_reads_health_and_falls_back_to_unknown():
+    ok = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok", "answer_mode": "agent"})))
+    old = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok"})))
+    down = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    non_dict = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[])))
+    from eval.__main__ import fetch_answer_mode
+    assert fetch_answer_mode(ok, "http://a") == "agent"
+    assert fetch_answer_mode(old, "http://a") == "unknown"
+    assert fetch_answer_mode(down, "http://a") == "unknown"
+    assert fetch_answer_mode(non_dict, "http://a") == "unknown"
+
+
+def test_report_header_shows_answer_mode():
+    from eval.report import render_markdown
+    summary = {**SUMMARY, "answer_mode": "agent"}
+    text = render_markdown("x", summary, ROWS)
+    assert "답변 방식 agent" in text

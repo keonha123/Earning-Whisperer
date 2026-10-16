@@ -55,6 +55,18 @@ def git_short_sha() -> str:
         return "unknown"
 
 
+def fetch_answer_mode(http: httpx.Client, assistant_url: str) -> str:
+    try:
+        response = http.get(f"{assistant_url}/health", timeout=5.0)
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, dict):
+            return "unknown"
+        return str(body.get("answer_mode") or "unknown")
+    except (httpx.HTTPError, ValueError):
+        return "unknown"
+
+
 async def _judge_all(llm, items, results) -> tuple[dict[str, Judgment], dict[str, list[str]], dict[str, str], dict[str, int]]:
     """한 이벤트 루프(= 한 회차)에서 모든 채점을 돌린다. 클라이언트는 회차마다 새로 만들어 넘긴다."""
     judgments: dict[str, Judgment] = {}
@@ -133,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
 
     settings = Settings()
     with httpx.Client(timeout=30.0) as http:
+        answer_mode = fetch_answer_mode(http, ASSISTANT_URL)
+        print(f"답변 방식: {answer_mode}")
         for run_index in range(args.runs):
             call_id = new_call_id()
             seed_segments(http, backend_url=settings.backend_base_url, secret=settings.internal_secret,
@@ -162,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
                 done_items = items[: len(results)]
                 summary = summarize(items, results, segments, judgments or None, judge_usage=judge_usage,
                                     judge_model=JUDGE_MODEL)
-                summary.update({"git_sha": git_short_sha(), "dataset_items": len(dataset.items), "call_id": call_id})
+                summary.update({"git_sha": git_short_sha(), "dataset_items": len(dataset.items), "call_id": call_id, "answer_mode": answer_mode})
                 rows = [{"id": i.id, "group": i.group, "expected_status": i.expected_status,
                          "time_violations": time_violations(i, r, segments), **asdict(r),
                          "judgment": judgments[i.id].model_dump() if i.id in judgments else None,

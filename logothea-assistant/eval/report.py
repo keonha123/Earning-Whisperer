@@ -14,7 +14,7 @@ def _pct(value: float | None) -> str:
 
 def render_markdown(label: str, summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:
     lines = [f"# 평가 보고서 — {label}", ""]
-    lines += [f"- 생성 모델 {summary.get('generation_model', '-')}, 채점 모델 {summary.get('judge_model', '-')}, "
+    lines += [f"- 답변 방식 {summary.get('answer_mode', '-')}, 생성 모델 {summary.get('generation_model', '-')}, 채점 모델 {summary.get('judge_model', '-')}, "
               f"커밋 {summary.get('git_sha', '-')}, 질문셋 {summary.get('dataset_items', '-')}문항, call_id {summary.get('call_id', '-')}", ""]
     violations = summary.get("time_violations") or {}
     lines += ["## 시점 위반", ""]

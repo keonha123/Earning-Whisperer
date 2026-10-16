@@ -13,6 +13,7 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
+from assistant.agent import AgentAnswerer
 from assistant.classifier import GlossaryProvider
 from assistant.clients import AiEngineClient, BackendClient
 from assistant.config import Settings, get_settings
@@ -51,7 +52,8 @@ def build_pipeline(settings: Settings) -> tuple[AnswerPipeline, httpx.AsyncClien
                        timeout_seconds=settings.openai_timeout_seconds)
     assembler = ContextAssembler(backend, engine, timeout_seconds=settings.context_timeout_seconds,
                                  news_top_k=settings.news_top_k, news_lookback_days=settings.news_lookback_days)
-    return AnswerPipeline(llm=llm, assembler=assembler, glossary=GlossaryProvider(backend.glossary)), http
+    agent = AgentAnswerer(llm, assembler) if settings.answer_mode == "agent" else None
+    return AnswerPipeline(llm=llm, assembler=assembler, glossary=GlossaryProvider(backend.glossary), agent=agent), http
 
 
 def create_app(settings: Settings | None = None, pipeline: AnswerPipeline | None = None) -> FastAPI:
@@ -75,7 +77,7 @@ def create_app(settings: Settings | None = None, pipeline: AnswerPipeline | None
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "answer_mode": settings.answer_mode}
 
     @app.post("/v1/assistant/ask", dependencies=[Depends(require_internal_secret)])
     async def ask(body: AskRequest) -> StreamingResponse:

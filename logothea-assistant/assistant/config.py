@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     # gpt-6-luna 는 추론 강도 기본값이 medium 이라, 지정하지 않으면 추론 토큰 과금과 첫 토큰 지연이 늘어난다.
     classify_reasoning_effort: str = "none"
     generate_reasoning_effort: str = "none"
+    # 답변 방식. fixed 는 근거를 미리 모아 넣는 1단계, agent 는 모델이 도구로 근거를 골라 읽는 2단계(#194).
+    answer_mode: Literal["fixed", "agent"] = "fixed"
     openai_timeout_seconds: float = 30.0
 
     # backend 의 INTERNAL_SECRET 과 같은 값. backend → assistant 요청 확인과 assistant → backend 내부 API 호출에 함께 쓴다.

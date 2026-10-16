@@ -19,6 +19,8 @@ class FakeLLM:
         parse_error: Exception | None = None,
         stream_error: Exception | None = None,
         fail_after: int = 0,
+        rounds=(),
+        round_error: Exception | None = None,
     ) -> None:
         self.parsed = parsed
         self.deltas = list(deltas)
@@ -30,6 +32,10 @@ class FakeLLM:
         self.parse_calls: list[list[Message]] = []
         self.stream_calls: list[list[Message]] = []
         self.stream_closed = False
+        self.rounds = [list(r) for r in rounds]
+        self.round_error = round_error
+        self.round_calls: list[tuple[list, list, bool]] = []
+        self.round_closed = False
 
     async def parse(self, messages, schema):
         self.parse_calls.append(messages)
@@ -49,6 +55,16 @@ class FakeLLM:
             yield StreamDone(self.stream_usage)
         finally:
             self.stream_closed = True
+
+    async def agent_round(self, items, tools, *, allow_tools):
+        self.round_calls.append((list(items), list(tools), allow_tools))
+        try:
+            if self.round_error is not None:
+                raise self.round_error
+            for item in self.rounds.pop(0):
+                yield item
+        finally:
+            self.round_closed = True
 
 
 NOT_FOUND = object()
