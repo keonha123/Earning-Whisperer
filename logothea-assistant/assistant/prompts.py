@@ -50,6 +50,16 @@ GENERATE_SYSTEM_PROMPT = f"""너는 Logothea 의 어닝콜 질의응답 도우�
 7. 핵심부터 3~6문장으로 짧게 답한다. 항목이 여럿이면 짧은 목록을 쓴다."""
 
 
+# 규칙은 고정 방식과 같고, 자료를 도구로 찾는 방법만 덧붙인다. 두 방식의 차이가 "무엇을 읽는가" 에만 있도록 하기 위함이다.
+AGENT_SYSTEM_PROMPT = GENERATE_SYSTEM_PROMPT + """
+자료 찾기
+- 자료는 도구로 찾는다. 도구 결과의 <evidence> 안 item id 가 근거 표시다. 도구 결과에 없는 표시는 쓰지 않는다.
+- 콜 발언은 search_call(영어 키워드)로 찾고, 앞뒤 맥락이 필요하면 read_call 로 번호 범위를 읽는다. 요약처럼 콜 전체를 봐야 하는 질문은 read_call 로 나눠 읽는다.
+- 뉴스(search_news), 지난 분기 콜(get_prior_call), 시장 예상·실적(get_estimates)은 질문에 필요할 때만 부른다.
+- 서로 관계없는 도구는 한 번에 함께 부른다.
+- 도구를 부르는 동안에는 글을 쓰지 않는다. 답은 자료를 다 모은 뒤 한 번에 쓴다."""
+
+
 def build_generation_messages(request: AskRequest, bundle: ContextBundle, category: str) -> list[Message]:
     # 뉴스 표시(N1…)는 질문마다 다시 매겨진다. 앞선 답의 표시를 그대로 보내면 모델이 지금은 다른 기사를 가리키는
     # 표시를 재사용할 수 있으므로, 앞선 답에서는 표시를 지운다.
@@ -60,6 +70,22 @@ def build_generation_messages(request: AskRequest, bundle: ContextBundle, catego
         Message("user", render_evidence(bundle)),
         *history,
         Message("user", _render_question(request, bundle, category)),
+    ]
+
+
+def build_agent_messages(request: AskRequest, *, preload: str, first_marker: str, last_marker: str,
+                         anchor_sequence: int | None, category: str, missing: list[str]) -> list[Message]:
+    history = [Message(m.role, _strip_markers(m.text)) if m.role == "assistant" else m
+               for m in history_messages(request)]
+    lines = _scope_lines(request, anchor_sequence, first_marker, last_marker, category, missing)
+    if preload:
+        lines.append("고른 대목과 앞뒤 발언:")
+        lines.append(preload)
+    lines.append(f"질문: {request.question}")
+    return [
+        Message("system", AGENT_SYSTEM_PROMPT.format(ticker=request.ticker)),
+        *history,
+        Message("user", "\n".join(lines)),
     ]
 
 
@@ -94,11 +120,18 @@ def _strip_markers(text: str) -> str:
 
 
 def _render_question(request: AskRequest, bundle: ContextBundle, category: str) -> str:
+    lines = _scope_lines(request, bundle.anchor_sequence, bundle.segments[0].marker, bundle.segments[-1].marker,
+                         category, bundle.missing_sources)
+    lines.append(f"질문: {request.question}")
+    return "\n".join(lines)
+
+
+def _scope_lines(request: AskRequest, anchor_sequence: int | None, first: str, last: str, category: str,
+                 missing: list[str]) -> list[str]:
     lines = []
-    if bundle.anchor_sequence is not None:
-        lines.append(f"질문 범위: 사용자가 고른 대목 [S{bundle.anchor_sequence}] 중심. 필요하면 다른 자료도 쓴다.")
+    if anchor_sequence is not None:
+        lines.append(f"질문 범위: 사용자가 고른 대목 [S{anchor_sequence}] 중심. 필요하면 다른 자료도 쓴다.")
     else:
-        first, last = bundle.segments[0].marker, bundle.segments[-1].marker
         lines.append(f"질문 범위: 질문 시점까지 나온 콜 전체([{first}]~[{last}]).")
     if request.call_ended:
         lines.append("콜은 끝났습니다. 근거가 없을 때 \"아직 콜에서 언급되지 않았습니다.\" 는 쓰지 않는다.")
@@ -106,11 +139,10 @@ def _render_question(request: AskRequest, bundle: ContextBundle, category: str) 
         lines.append("콜은 아직 진행 중입니다. 질문 시점 뒤에 나올 수 있는 내용이면 \"아직 콜에서 언급되지 않았습니다.\" 를 덧붙인다.")
     if category == "facts_only":
         lines.append("이 질문에는 판단(비싸다·싸다, 사라·팔라) 없이 사실과 수치만 답한다.")
-    if bundle.missing_sources:
-        labels = ", ".join(_MISSING_LABELS.get(name, name) for name in bundle.missing_sources)
+    if missing:
+        labels = ", ".join(_MISSING_LABELS.get(name, name) for name in missing)
         lines.append(f"불러오지 못한 자료: {labels}. 이 자료가 필요한 질문이면 불러오지 못했다고 밝힌다.")
-    lines.append(f"질문: {request.question}")
-    return "\n".join(lines)
+    return lines
 
 
 def _item(item: Evidence, attrs: dict[str, str | None]) -> str:
