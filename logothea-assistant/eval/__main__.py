@@ -59,7 +59,10 @@ def fetch_answer_mode(http: httpx.Client, assistant_url: str) -> str:
     try:
         response = http.get(f"{assistant_url}/health", timeout=5.0)
         response.raise_for_status()
-        return str(response.json().get("answer_mode") or "unknown")
+        body = response.json()
+        if not isinstance(body, dict):
+            return "unknown"
+        return str(body.get("answer_mode") or "unknown")
     except (httpx.HTTPError, ValueError):
         return "unknown"
 

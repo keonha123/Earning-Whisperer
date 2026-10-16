@@ -140,10 +140,12 @@ def test_fetch_answer_mode_reads_health_and_falls_back_to_unknown():
     ok = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok", "answer_mode": "agent"})))
     old = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "ok"})))
     down = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    non_dict = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[])))
     from eval.__main__ import fetch_answer_mode
     assert fetch_answer_mode(ok, "http://a") == "agent"
     assert fetch_answer_mode(old, "http://a") == "unknown"
     assert fetch_answer_mode(down, "http://a") == "unknown"
+    assert fetch_answer_mode(non_dict, "http://a") == "unknown"
 
 
 def test_report_header_shows_answer_mode():
