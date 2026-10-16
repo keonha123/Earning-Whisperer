@@ -173,3 +173,58 @@ def test_usage_add_and_as_dict():
     total = Usage(1, 2, 3)
     total.add(Usage(10, 20, 30))
     assert total.as_dict() == {"input_tokens": 11, "output_tokens": 22, "cached_tokens": 33}
+
+
+from assistant.llm import RoundDone, ToolCall, ToolResult, ToolSpec
+
+_TOOLS = [ToolSpec(name="search_call", description="콜 검색",
+                   parameters={"type": "object", "properties": {"query": {"type": "string"}},
+                               "required": ["query"], "additionalProperties": False})]
+
+
+async def test_agent_round_sends_tools_and_returns_calls_and_replayable_items():
+    call_item = SimpleNamespace(type="function_call", id="fc_1", call_id="call_1", name="search_call",
+                                arguments='{"query": "comp sales"}', status="completed")
+    reasoning = SimpleNamespace(type="reasoning", model_dump=lambda **_: {"type": "reasoning", "id": "rs_1",
+                                                                          "encrypted_content": "x"})
+    final = SimpleNamespace(usage=_raw_usage(), output=[reasoning, call_item])
+    responses = FakeResponses(stream=FakeStream([], final))
+
+    items = [item async for item in _client(responses).agent_round(
+        [Message("user", "질문"), ToolResult(call_id="call_0", output="결과")], _TOOLS, allow_tools=True)]
+
+    assert len(items) == 1 and isinstance(items[0], RoundDone)
+    done = items[0]
+    assert done.tool_calls == [ToolCall(call_id="call_1", name="search_call", arguments='{"query": "comp sales"}')]
+    assert done.items == [{"type": "reasoning", "id": "rs_1", "encrypted_content": "x"},
+                          {"type": "function_call", "call_id": "call_1", "name": "search_call",
+                           "arguments": '{"query": "comp sales"}'}]
+    kwargs = responses.stream_kwargs
+    assert kwargs["input"] == [{"role": "user", "content": "질문"},
+                               {"type": "function_call_output", "call_id": "call_0", "output": "결과"}]
+    assert kwargs["tools"] == [{"type": "function", "name": "search_call", "description": "콜 검색",
+                                "parameters": _TOOLS[0].parameters, "strict": True}]
+    assert kwargs["tool_choice"] == "auto"
+    assert kwargs["store"] is False
+    assert kwargs["include"] == ["reasoning.encrypted_content"]
+
+
+async def test_agent_round_streams_text_and_replays_message_as_assistant_text():
+    message = SimpleNamespace(type="message", content=[SimpleNamespace(type="output_text", text="답 [S1].")])
+    final = SimpleNamespace(usage=_raw_usage(), output=[message])
+    stream = FakeStream([SimpleNamespace(type="response.output_text.delta", delta="답 [S1].")], final)
+    responses = FakeResponses(stream=stream)
+
+    items = [item async for item in _client(responses).agent_round([Message("user", "q")], _TOOLS, allow_tools=False)]
+
+    assert items[0] == TextDelta("답 [S1].")
+    assert items[1].tool_calls == []
+    assert items[1].items == [{"role": "assistant", "content": "답 [S1]."}]
+    assert responses.stream_kwargs["tool_choice"] == "none"
+
+
+async def test_agent_round_maps_errors():
+    responses = FakeResponses(stream_error=openai.APIConnectionError(request=_REQUEST))
+    with pytest.raises(LLMError) as info:
+        [item async for item in _client(responses).agent_round([Message("user", "q")], _TOOLS, allow_tools=True)]
+    assert info.value.code == "llm_failed"
