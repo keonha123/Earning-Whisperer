@@ -116,7 +116,7 @@ class ContextAssembler:
 
     def build(self, request: AskRequest, base: BaseSources, news_hits: list[dict[str, Any]],
               news_missing: list[str]) -> ContextBundle:
-        segments = _segment_evidence(base.segments, request.as_of_sequence)
+        segments = segment_evidence(base.segments, request.as_of_sequence)
         if not segments:
             raise ContextError("segments_not_found")
         sequences = [int(item.ref) for item in segments]
@@ -126,9 +126,9 @@ class ContextAssembler:
         anchor = request.anchor_sequence if request.anchor_sequence in sequences else None
         return ContextBundle(
             segments=segments,
-            news=_news_evidence(news_hits, request.as_of_epoch),
-            prior=_prior_evidence(base.prior),
-            estimates=_estimate_evidence(base.estimates, request.as_of_epoch),
+            news=news_evidence(news_hits, request.as_of_epoch),
+            prior=prior_evidence(base.prior),
+            estimates=estimate_evidence(base.estimates, request.as_of_epoch),
             as_of_sequence=sequences[-1],
             anchor_sequence=anchor,
             missing_sources=missing,
@@ -142,7 +142,7 @@ class ContextAssembler:
             return _FAILED
 
 
-def _segment_evidence(payload: dict[str, Any], as_of_sequence: int) -> list[Evidence]:
+def segment_evidence(payload: dict[str, Any], as_of_sequence: int) -> list[Evidence]:
     rows = sorted((row for row in payload.get("segments", []) if int(row["sequence"]) <= as_of_sequence),
                   key=lambda row: int(row["sequence"]))
     result: list[Evidence] = []
@@ -158,7 +158,7 @@ def _segment_evidence(payload: dict[str, Any], as_of_sequence: int) -> list[Evid
     return result
 
 
-def _news_evidence(hits: list[dict[str, Any]], as_of_epoch: int) -> list[Evidence]:
+def news_evidence(hits: list[dict[str, Any]], as_of_epoch: int) -> list[Evidence]:
     result: list[Evidence] = []
     for hit in hits:
         published = int(hit.get("published_at") or 0)
@@ -171,7 +171,7 @@ def _news_evidence(hits: list[dict[str, Any]], as_of_epoch: int) -> list[Evidenc
     return result
 
 
-def _prior_evidence(payload: dict[str, Any] | None) -> list[Evidence]:
+def prior_evidence(payload: dict[str, Any] | None) -> list[Evidence]:
     if not payload or not payload.get("available"):
         return []
     statements = sorted(payload.get("statements", []), key=lambda row: row.get("order") or 0)
@@ -183,7 +183,7 @@ def _prior_evidence(payload: dict[str, Any] | None) -> list[Evidence]:
     ]
 
 
-def _estimate_evidence(payload: dict[str, Any] | None, as_of_epoch: int) -> list[Evidence]:
+def estimate_evidence(payload: dict[str, Any] | None, as_of_epoch: int) -> list[Evidence]:
     if not payload:
         return []
     result: list[Evidence] = []

@@ -64,21 +64,29 @@ def build_generation_messages(request: AskRequest, bundle: ContextBundle, catego
 
 
 def render_evidence(bundle: ContextBundle) -> str:
-    lines = ["<evidence>"]
-    for item in bundle.segments:
-        attrs = {"speaker": item.speaker, "time": _clock(item.start_ms)}
-        if item.marker == f"S{bundle.anchor_sequence}":
-            attrs["anchor"] = "true"
-        lines.append(_item(item, attrs))
-    for item in bundle.prior:
-        lines.append(_item(item, {"quarter": item.title, "speaker": item.speaker}))
-    for item in bundle.estimates:
-        lines.append(_item(item, {}))
     # 뉴스는 질문마다 달라지므로 맨 뒤에 둔다. 앞부분이 같으면 프롬프트 캐시가 맞는다.
-    for item in bundle.news:
-        lines.append(_item(item, {"title": item.title, "source": item.source, "published": _date(item.published_at)}))
+    return render_items([*bundle.segments, *bundle.prior, *bundle.estimates, *bundle.news], bundle.anchor_sequence)
+
+
+def render_items(items: list[Evidence], anchor_sequence: int | None) -> str:
+    lines = ["<evidence>"]
+    for item in items:
+        lines.append(_item(item, _attrs(item, anchor_sequence)))
     lines.append("</evidence>")
     return "\n".join(lines)
+
+
+def _attrs(item: Evidence, anchor_sequence: int | None) -> dict[str, str | None]:
+    if item.type == "segment":
+        attrs = {"speaker": item.speaker, "time": _clock(item.start_ms)}
+        if item.marker == f"S{anchor_sequence}":
+            attrs["anchor"] = "true"
+        return attrs
+    if item.type == "prior_statement":
+        return {"quarter": item.title, "speaker": item.speaker}
+    if item.type == "news":
+        return {"title": item.title, "source": item.source, "published": _date(item.published_at)}
+    return {}
 
 
 def _strip_markers(text: str) -> str:
