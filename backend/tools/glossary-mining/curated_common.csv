@@ -1,0 +1,220 @@
+canonical,aliases,category,companies,mt_risk,fp_risk,existing
+guidance,guidances,common,444,H,H,True
+incremental margin,,common,443,H,H,False
+balance sheet,balance sheets,common,433,L,L,False
+cash flow,cash flows,common,423,L,L,False
+macro,macros,common,418,M,M,False
+headwind,headwinds,common,405,H,M,True
+run rate,,common,399,H,M,True
+basis points,basis point,common,398,M,L,True
+sequentially,linked quarter|quarter-over-quarter,common,392,H,M,True
+tailwind,tailwinds,common,386,H,M,True
+transactions,,common,382,M,M,True
+marketplace,marketplaces,common,381,L,M,True
+organic growth,,common,376,H,M,True
+capital allocation,capital allocations,common,370,M,L,False
+non-GAAP,,common,367,L,L,True
+GAAP,,common,365,L,L,True
+market share,,common,362,L,L,True
+EPS,,common,353,L,L,True
+accretive,accretion|margin accretive,common,351,H,M,False
+capital expenditures,capex|capital expenditure,common,350,M,L,True
+share repurchases,share repurchase,common,331,M,L,True
+comp sales,comparable sales|comps|like-for-like|same-store sales,common,325,H,H,True
+utilization,capacity utilization|utilization rate|utilizations,common,290,H,M,False
+inflection point,inflection points,common,290,M,M,False
+annualized,,common,287,M,L,False
+interest expense,net interest expense,common,280,M,L,False
+penetration,penetration rate|penetration rates|underpenetrated,common,277,H,M,False
+one-time items,,common,276,M,M,True
+liquidity,,common,263,M,M,False
+fiscal year,,common,261,M,M,True
+net income,,common,261,L,L,True
+diluted EPS,,common,257,M,M,False
+EBITDA,,common,255,M,L,True
+operating leverage,fixed cost leverage,common,255,H,L,True
+backlog,backlogs,common,250,M,M,True
+working capital,net working capital,common,250,M,L,True
+restructuring,restructuring charge|restructuring charges|restructurings,common,244,M,M,False
+operating margin,operating margins,common,241,L,L,True
+gross margin,gross margins,common,239,L,L,True
+discretionary spending,,common,239,M,M,False
+FX,currency translation,common,234,M,L,False
+synergies,cost synergies|revenue synergies,common,234,M,M,False
+OpEx,,common,231,L,L,False
+share repurchase authorization,buyback authorization,common,226,M,M,False
+recurring revenue,recurring revenues,common,225,M,M,False
+pull-forward,,common,217,H,M,False
+headcount,headcounts,common,215,M,L,False
+effective tax rate,effective tax rates,common,212,M,L,False
+operating income,operating profit|operating profits,common,210,L,L,True
+deferred revenue,,common,209,M,M,False
+CAGR,cagrs,common,209,M,L,False
+trailing twelve months,LTM,common,207,M,M,False
+product mix,mix shift|mix shifts,common,206,H,M,True
+cyclical,,common,204,M,M,False
+SG&A,,common,199,M,L,True
+lumpy,,common,198,H,M,False
+depreciation,,common,197,L,L,False
+price realization,price realizations,common,194,H,M,False
+dilutive,dilution,common,191,H,M,False
+TAM,tams,common,190,M,L,False
+amortization,,common,189,M,M,False
+inorganic growth,,common,186,M,L,False
+monetization,monetizations|monetize,common,180,M,M,False
+lapping,,common,177,H,H,False
+adjusted EPS,,common,172,L,L,True
+end markets,,common,169,H,M,False
+interest income,,common,166,L,L,False
+issuance,issuances,common,164,M,M,False
+exit rate,,common,164,H,L,False
+operating cash flow,operating cash flows,common,163,L,L,True
+debt maturities,,common,162,M,M,False
+cost of capital,,common,159,M,L,False
+capital structure,capital structures,common,158,L,L,False
+trough,,common,153,M,M,False
+income statement,,common,153,L,L,False
+net debt,,common,152,L,L,False
+bookings,,common,151,H,M,False
+dividend payout ratio,payout ratio|payout ratios,common,150,M,M,False
+capital return,shareholder return|shareholder returns,common,149,M,M,False
+leverage ratio,leverage ratios|net leverage ratio,common,145,H,M,False
+return on investment,return on investments,common,145,L,L,True
+adjusted EBITDA,,common,144,L,L,False
+investment grade,,common,143,M,L,False
+divestiture,divestitures,common,142,M,L,False
+hedging,,common,137,M,M,False
+pricing power,,common,135,M,L,True
+pent-up demand,,common,134,M,L,False
+rationalization,rationalizations,common,134,H,M,False
+throughput,throughputs,common,133,M,M,False
+cohort,cohorts,common,132,M,M,False
+pro forma,,common,131,H,L,False
+adjusted operating income,,common,130,L,L,True
+earnings power,,common,129,H,L,False
+ROIC,return on capital|roics,common,128,M,L,False
+constant currency,,common,127,H,L,True
+valuation multiple,,common,127,M,M,False
+churn,,common,126,H,M,True
+breakeven,breakevens,common,125,M,L,False
+top line,,common,125,H,M,True
+COGS,cost of revenue|cost of sales,common,124,M,L,False
+EBIT,,common,123,L,L,False
+ESG,,common,120,L,L,False
+reported basis,,common,117,M,L,False
+SKU,,common,114,L,L,False
+accounts receivable,accounts receivables,common,114,M,L,False
+diluted share count,diluted shares|diluted shares outstanding,common,113,M,L,False
+flywheel,,common,113,H,L,False
+gross profit,gross profits,common,112,L,L,True
+EMEA,,common,111,M,L,False
+deleveraging,,common,110,H,L,False
+payback period,,common,108,M,M,False
+price elasticity,,common,107,M,M,False
+EBITDA margin,ebitda margins,common,105,L,L,False
+free cash flow conversion,cash conversion,common,105,M,L,False
+JV,,common,104,M,L,False
+input costs,input cost,common,104,M,L,False
+accrual,accruals,common,104,M,M,False
+destocking,,common,102,H,L,False
+KPI,,common,101,L,L,False
+overhang,,common,100,H,M,False
+tough comparison,tough comps,common,99,H,M,False
+revolving credit facility,,common,97,H,L,False
+greenfield,greenfields,common,97,H,L,False
+OEM,oems,common,96,L,L,False
+non-cash charge,,common,93,M,L,False
+Form 10-Q,,common,91,M,L,False
+net sales,,common,90,L,L,True
+go-to-market,,common,90,M,L,False
+hyperscaler,,common,87,H,L,False
+fulfillment,,common,86,M,M,True
+year-over-year,,common,86,L,L,True
+retention rate,,common,83,M,M,False
+customer acquisition cost,,common,81,M,M,False
+net debt to EBITDA,debt to EBITDA|debt-to-EBITDA,common,78,M,L,False
+intangible assets,intangible asset,common,76,M,L,False
+midpoint of guidance,,common,76,M,L,False
+secular growth,secular tailwind,common,74,H,M,False
+ASP,asps,common,73,M,L,False
+commercial paper,,common,72,H,L,False
+higher for longer,,common,71,H,L,False
+share of wallet,,common,70,H,L,False
+fair value,,common,70,M,M,False
+ROE,return on equity|roes,common,69,M,L,False
+SaaS,,common,67,L,L,False
+D&A,,common,67,M,L,False
+revenue recognition,,common,67,M,L,False
+channel inventory,,common,66,M,L,False
+capital intensity,capital intensive,common,66,M,L,False
+back-half weighted,,common,66,H,M,False
+cannibalization,,common,64,H,M,False
+fixed income,,common,61,M,L,False
+accounts payable,,common,61,M,L,False
+restocking,,common,61,M,M,False
+mid single digits,mid single digit,common,61,H,L,False
+forward-looking statements,,common,60,M,L,False
+Net Promoter Score,NPS,common,60,M,L,False
+low double digits,,common,60,H,M,False
+customer lifetime value,,common,58,M,L,False
+total shareholder return,TSR|total shareholder returns,common,58,M,L,False
+high single digits,high single digit,common,57,H,M,False
+vertical integration,vertically integrated,common,56,M,L,False
+counterparty,,common,56,M,L,False
+aftermarket,,common,54,M,L,False
+IRR,irrs,common,54,L,L,False
+bad debt,bad debt expense,common,53,M,L,False
+margin compression,,common,53,M,L,False
+free cash flow,,common,52,L,L,True
+omnichannel,,common,51,M,L,True
+promotional environment,,common,51,M,L,False
+SMB,smbs,common,50,L,L,False
+deferred tax,deferred taxes,common,50,M,L,False
+book value,,common,49,M,L,False
+implied guidance,,common,49,M,L,False
+total cost of ownership,TCO,common,48,M,L,False
+attach rate,attach rates,common,48,H,L,False
+bolt-on acquisition,tuck-in acquisition,common,47,H,L,False
+dividend yield,,common,46,L,L,False
+securitization,securitizations,common,44,M,L,False
+long-term algorithm,growth algorithm,common,44,H,M,False
+continuing operations,,common,42,M,M,False
+yield curve,,common,42,M,L,False
+high yield,,common,42,M,M,False
+Treasuries,,common,42,H,M,False
+intrinsic value,,common,42,M,L,False
+replacement cycle,replacement cycles,common,41,M,M,False
+short-term investments,,common,41,L,L,False
+inventory turns,,common,40,M,L,False
+cost of debt,,common,40,M,L,False
+low single digits,low single digit,common,39,M,M,False
+federal funds rate,fed funds rate|fed funds rates,common,39,M,L,False
+investor day,,common,39,M,L,False
+DSO,dsos,common,37,H,L,False
+capital discipline,,common,37,M,L,False
+refinancing,,common,37,M,L,False
+maintenance capex,,common,37,M,L,False
+seasonality,,common,37,M,M,False
+pre-tax income,,common,36,L,L,False
+accelerated share repurchase,accelerated share repurchases,common,36,M,L,False
+cost takeout,cost takeouts,common,36,H,M,False
+inventory correction,inventory corrections,common,35,M,L,False
+brownfield,,common,35,H,L,False
+countercyclical,,common,35,M,L,False
+NPV,present value,common,35,M,L,False
+non-core assets,non-core asset|noncore assets,common,33,M,L,False
+hurdle rate,hurdle rates,common,33,H,L,False
+inventory days,days of inventory,common,31,M,L,False
+mark to market,,common,31,M,L,False
+maturity profile,,common,30,M,L,False
+GFC,,common,29,H,L,False
+WACC,,common,27,M,L,False
+interest rate swap,,common,24,M,L,False
+book value per share,,common,21,M,L,False
+markdowns,markdown,common,18,H,M,False
+retail media,,common,16,M,L,True
+net cash position,,common,16,M,L,False
+quantitative tightening,,common,16,M,L,False
+countervailing duties,,common,15,H,L,False
+unplanned outages,unplanned outage,common,12,M,L,False
+capital efficiency,,common,7,M,L,False
