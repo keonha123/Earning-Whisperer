@@ -30,7 +30,7 @@ public record Glossary(
      * @param ko           번역에 고정할 한국어. 필수.
      * @param definitionKo 정의. 선택 — 비어 있으면 번역 고정에만 쓰이고 하이라이팅하지 않는다.
      * @param whyKo        왜 중요한지. 선택.
-     * @param category     분류 (retail, guidance, metric, accounting, capital, regulation).
+     * @param category     분류 (retail, guidance, metric, market, accounting, capital, regulation).
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Term(

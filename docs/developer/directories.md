@@ -35,7 +35,8 @@
 | `infrastructure/` | 외부 연동. `aiengine`(ai-engine 클라이언트), `demo`(시연 재생), `websocket`(STOMP 발행), `finnhub`, `fmp`, `oauth`, `security`, `redis` 등 |
 | `presentation/` | REST 컨트롤러. `/api/v1/**` 경로별 패키지 |
 | `global/` | 공통 설정(`config/`), 예외 처리, 기반 엔티티 |
-| `src/main/resources/data/` | 시연 스크립트(`demo-earnings-call.json`), 종목 목록(`sp500.csv`) |
+| `src/main/resources/data/` | 시연 스크립트(`demo-earnings-call.json`), 종목 목록(`sp500.csv`), 용어 사전(`glossary_ko.json`) |
+| `tools/glossary-mining/` | 어닝콜 자막에서 용어 사전 후보를 뽑고 효과를 재는 스크립트. 방법과 결과는 폴더의 `README.md` |
 
 ## ai-engine
 

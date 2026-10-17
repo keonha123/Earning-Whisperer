@@ -1,0 +1,273 @@
+canonical,aliases,category,companies,mt_risk,fp_risk,existing
+price/mix,,consumer,58,H,M,False
+CPG,cpgs,consumer,43,M,L,False
+DTC,,consumer,29,M,L,False
+fill rate,,consumer,25,M,L,False
+incrementality,,consumer,24,H,L,False
+premiumization,,consumer,23,M,L,False
+household penetration,,consumer,22,M,L,False
+QSR,qsrs,consumer,20,M,L,False
+carryover pricing,,consumer,18,H,L,False
+revenue growth management,RGM,consumer,15,M,L,False
+points of distribution,,consumer,14,H,M,False
+route to market,,consumer,12,H,L,False
+shelf resets,,consumer,10,H,M,False
+trade inventory,,consumer,8,M,M,False
+downstream,,energy,120,H,M,False
+upstream,,energy,97,M,M,False
+forward curve,forward curves,energy,66,H,L,False
+LNG,,energy,46,L,L,False
+cost curve,,energy,45,H,L,False
+midstream,,energy,36,H,L,False
+offtake,offtake agreement|offtakes,energy,35,H,M,False
+acreage,,energy,33,M,M,False
+FID,fids,energy,31,M,L,False
+carbon sequestration,,energy,31,M,M,False
+feedstock,feedstocks,energy,28,M,L,False
+nameplate capacity,,energy,25,H,M,False
+debottlenecking,,energy,24,H,L,False
+NGL,ngls,energy,20,M,L,False
+frac,fracs,energy,20,M,L,False
+SMR,smrs,energy,19,M,L,False
+curtailment,,energy,18,H,M,False
+Bcf,,energy,18,M,L,False
+SAF,,energy,18,M,L,False
+reinvestment rate,reinvestment rates,energy,18,M,L,False
+WTI,,energy,16,M,L,False
+LOE,loes,energy,16,M,L,False
+sustaining capital,sustaining capex,energy,16,M,L,False
+laterals,,energy,14,H,M,False
+base dividend,,energy,13,M,L,False
+MMBtu,,energy,13,M,L,False
+contango,,energy,13,H,L,False
+BOE,boes,energy,12,M,L,False
+renewable natural gas,RNG,energy,12,M,L,False
+RINs,,energy,11,M,L,False
+backwardation,,energy,11,H,L,False
+fractionation,,energy,10,M,L,False
+DUCs,,energy,10,M,L,False
+takeaway capacity,,energy,10,H,M,False
+TTF,,energy,8,M,L,False
+netbacks,netback,energy,8,H,L,False
+EOR,,energy,7,M,L,False
+crack spread,,energy,7,H,L,False
+CCUS,,energy,7,M,L,False
+proppant,,energy,7,M,L,False
+distillate,,energy,6,M,L,False
+strip pricing,,energy,5,H,M,False
+type curve,,energy,5,H,L,False
+net interest income,NII,financials,148,H,M,False
+underwriting,,financials,113,H,M,False
+tranche,tranches,financials,87,M,L,False
+net flows,net inflow|net inflows,financials,85,M,M,False
+repo,,financials,76,H,L,False
+asset class,,financials,59,M,L,False
+loan originations,,financials,57,H,M,False
+unrealized gains/losses,unrealized losses,financials,56,M,M,False
+swaps,,financials,55,M,M,False
+middle market,,financials,45,M,L,False
+repricing,,financials,44,M,M,False
+common equity,,financials,43,M,L,False
+investment income,,financials,42,M,L,False
+floating rate debt,,financials,40,M,L,False
+delinquencies,,financials,38,M,L,False
+fee revenue,fee income|fee revenues,financials,38,M,L,False
+variable rate,,financials,38,M,M,False
+AUM,,financials,36,H,L,False
+risk-adjusted returns,,financials,35,M,L,False
+capital markets,,financials,34,M,L,False
+C&I,,financials,34,M,M,False
+prepayment,prepayments,financials,34,M,M,False
+net interest margin,NIM|net interest margins,financials,32,M,L,False
+SOFR,,financials,32,M,L,False
+CRE,,financials,31,M,L,False
+credit spreads,,financials,31,M,L,False
+coverage ratio,coverage ratios,financials,30,M,M,False
+redemptions,,financials,30,M,M,False
+senior unsecured,,financials,30,M,L,False
+FDIC,,financials,28,L,L,False
+asset quality,,financials,28,M,L,False
+CECL,,financials,27,M,L,False
+vintages,,financials,25,H,M,False
+notional,,financials,25,M,M,False
+AOCI,,financials,23,M,L,False
+risk-weighted assets,RWA|risk-weighted asset|rwas,financials,22,M,L,False
+FICO,ficos,financials,21,L,L,False
+CET1,,financials,20,M,L,False
+preferred equity,,financials,20,M,L,False
+net charge-offs,net charge-off,financials,19,M,L,False
+efficiency ratio,efficiency ratios,financials,19,M,L,False
+deposit beta,deposit betas,financials,19,H,L,False
+AFS,,financials,19,H,L,False
+CCAR,,financials,19,H,L,False
+stress capital buffer,,financials,19,M,L,False
+alternative investments,alternative assets|alts,financials,19,H,M,False
+money market funds,money market fund,financials,18,L,L,False
+noninterest income,,financials,17,M,L,False
+direct lending,,financials,15,M,L,False
+tangible book value,tangible common equity,financials,15,M,L,False
+SCB,,financials,14,H,L,False
+LCR,,financials,14,H,L,False
+deposit franchise,deposit franchises,financials,14,H,L,False
+asset sensitive,,financials,14,H,L,False
+ROTCE,,financials,13,H,L,False
+noninterest-bearing deposits,,financials,13,M,L,False
+mezzanine,,financials,11,H,L,False
+reimbursement,reimbursements,health,92,M,M,False
+GLP-1,,health,73,M,L,False
+payer,commercial payers,health,69,H,M,False
+deductibles,,health,33,M,L,False
+Medicaid,,health,32,L,L,False
+readout,data readout|readouts,health,32,H,M,False
+biologics,biologic,health,31,M,L,False
+unmet need,unmet needs,health,30,M,M,False
+acuity,,health,23,H,M,False
+generics,,health,22,M,M,False
+biosimilar,biosimilars,health,21,M,L,False
+prior authorization,prior authorizations,health,21,M,L,False
+preclinical,,health,20,L,L,False
+formulary,,health,20,H,L,False
+PBM,pbms,health,19,H,L,False
+Medicare Advantage,,health,19,M,L,False
+Medicare Part D,,health,19,M,L,False
+primary endpoint,primary endpoints,health,18,M,L,False
+procedure volumes,procedure volume,health,17,M,L,False
+specialty pharmacy,,health,16,M,L,False
+FDA clearance,,health,16,M,L,False
+label expansion,indication expansion,health,16,H,L,False
+KOLs,,health,15,H,L,False
+pivotal trial,pivotal trials,health,13,M,L,False
+registrational,,health,13,H,L,False
+secondary endpoint,,health,13,M,L,False
+fixed cost absorption,absorption,industrials,105,H,M,False
+price/cost,price/cost spread,industrials,63,H,L,False
+order rates,,industrials,39,M,L,False
+long-cycle,,industrials,37,H,M,False
+short cycle,,industrials,28,H,M,False
+MRO,,industrials,23,H,L,False
+incident rate,incident rates|recordable incident rate,industrials,16,H,M,False
+pre-buy,,industrials,10,M,L,False
+book of business,,insurance,94,H,M,False
+reserving,,insurance,41,H,M,False
+actuarial,,insurance,36,M,L,False
+reinsurance,,insurance,35,M,L,False
+property and casualty,,insurance,27,H,M,False
+loss ratio,loss ratios,insurance,27,M,L,False
+expense ratio,expense ratios,insurance,25,M,M,False
+net investment income,,insurance,24,M,L,False
+social inflation,,insurance,16,H,L,False
+loss cost,loss costs,insurance,15,M,L,False
+written premium,written premiums,insurance,14,H,L,False
+earned premium,earned premiums,insurance,13,H,L,False
+occupancy rate,,real_estate,79,M,M,False
+multifamily,,real_estate,56,M,L,False
+FFO,core FFO,real_estate,52,H,L,False
+REIT,reits,real_estate,46,L,L,False
+dispositions,,real_estate,44,H,M,False
+lease rollover,,real_estate,41,H,H,False
+unlevered,,real_estate,37,H,L,False
+rent escalators,,real_estate,36,H,M,False
+net operating income,NOI|nois,real_estate,35,H,L,False
+cap rate,implied cap rate|stabilized cap rate,real_estate,31,H,L,False
+loan-to-value,LTV|ltvs,real_estate,30,H,M,False
+lease expirations,lease expiration,real_estate,28,M,M,False
+capital recycling,,real_estate,24,H,L,False
+AFFO,,real_estate,22,H,L,False
+CMBS,,real_estate,20,H,L,False
+same-store NOI,,real_estate,18,H,L,False
+market rent,market rents,real_estate,15,M,M,False
+yield on cost,development yield|stabilized yield|stabilized yields,real_estate,15,H,L,False
+same-store revenue,,real_estate,12,M,L,False
+effective rent,net effective rent|net effective rents,real_estate,12,H,L,False
+leasing spreads,blended lease spread|re-leasing spreads|renewal spread|renewal spreads,real_estate,12,H,L,False
+net lease,triple net,real_estate,11,H,L,False
+ground lease,ground leases,real_estate,10,M,L,False
+in-place rents,,real_estate,10,H,L,False
+net absorption,,real_estate,7,H,L,False
+promotional activity,,retail,136,M,M,False
+easy comparison,easy comps,retail,91,H,M,False
+conversion rate,conversion rates,retail,83,M,M,False
+remodel,remodels,retail,34,M,M,False
+DCs,,retail,34,H,M,False
+anniversarying,,retail,27,H,M,False
+two-year stack,,retail,24,H,M,False
+inventory digestion,digestion,semis,53,H,M,False
+fab,fabs,semis,48,H,M,False
+GPU,gpus,semis,45,L,L,False
+accelerators,,semis,45,H,M,False
+pushouts,pushout,semis,40,H,M,False
+wafer,wafers,semis,26,M,L,False
+underutilization,,semis,26,M,L,False
+foundry,,semis,24,M,L,False
+ASIC,,semis,20,M,L,False
+NAND,,semis,16,L,L,False
+accelerated computing,,semis,16,M,L,False
+ratable revenue,ratably,software,74,H,L,False
+linearity,,software,66,H,L,False
+ERP,erps,software,64,L,L,False
+on-prem,,software,44,M,L,False
+billings,,software,43,M,M,False
+annual recurring revenue,ARR,software,35,M,L,True
+ACV,,software,33,H,L,False
+total contract value,,software,32,M,M,False
+upselling,,software,30,M,L,False
+RPO,,software,23,H,L,False
+win rate,,tech,56,M,L,False
+inference,inferencing,tech,49,H,M,False
+sales cycle elongation,,tech,39,H,M,False
+agentic AI,,tech,38,H,L,False
+AI workloads,ai workload,tech,38,M,M,False
+refresh cycle,refresh cycles,tech,38,M,M,False
+colocation,colocations,tech,28,M,L,False
+ADAS,,tech,23,M,L,False
+foundation model,,tech,19,M,L,False
+programmatic advertising,,telecom_media,81,H,L,False
+ARPU,arpus,telecom_media,36,H,L,False
+net adds,,telecom_media,20,H,M,False
+gross adds,,telecom_media,12,H,M,False
+wireline,,telecom_media,11,M,L,False
+ARPA,,telecom_media,11,M,L,False
+tentpole,,telecom_media,10,H,L,False
+MAU,,telecom_media,10,M,L,False
+CPM,,telecom_media,7,M,L,False
+SVOD,,telecom_media,6,M,L,False
+MVNO,,telecom_media,6,M,L,False
+postpaid,,telecom_media,5,M,L,False
+AVOD,,telecom_media,5,M,L,False
+interconnection,interconnections,utilities,39,M,M,False
+grid hardening,system hardening,utilities,36,H,M,False
+load growth,,utilities,33,H,M,False
+FERC,,utilities,32,M,L,False
+rate base,rate base growth,utilities,31,H,L,False
+PPA,ppas,utilities,29,H,L,False
+decoupling,,utilities,28,H,M,False
+rate case,GRC|base rate case|base rate cases|general rate case|general rate cases|rate case settlement|rate cases,utilities,27,H,L,False
+dispatchable,dispatchable generation,utilities,27,H,L,False
+PTC,ptcs,utilities,26,H,L,False
+combined cycle,,utilities,25,M,L,False
+FFO to debt,,utilities,24,M,L,False
+transferability,tax credit transferability,utilities,23,H,M,False
+ITC,itcs,utilities,23,H,L,False
+baseload,,utilities,23,M,L,False
+integrated resource plan,IRP|integrated resource plans|irps,utilities,20,H,L,False
+equity ratio,equity layer|equity ratios,utilities,19,H,L,False
+regulatory lag,,utilities,18,H,L,False
+RTO,rtos,utilities,17,H,M,False
+resource adequacy,,utilities,16,H,L,False
+weather-normalized,weather normalization,utilities,15,H,L,False
+prudence review,,utilities,15,H,L,False
+tax equity,,utilities,14,H,L,False
+capacity factor,,utilities,14,M,L,False
+repowering,,utilities,13,M,L,False
+cost of service,cost of services,utilities,13,M,L,False
+undergrounding,,utilities,12,M,L,False
+PUC,,utilities,12,M,L,False
+capacity auction,capacity auctions,utilities,12,M,L,False
+ratemaking,,utilities,12,M,L,False
+revenue requirement,,utilities,11,H,L,False
+AFUDC,,utilities,11,H,L,False
+peaker,,utilities,9,H,L,False
+CCGT,,utilities,9,M,L,False
+interconnection queue,interconnection queues,utilities,9,M,L,False
+IPP,,utilities,9,M,L,False
+authorized ROE,allowed ROE,utilities,9,M,L,False

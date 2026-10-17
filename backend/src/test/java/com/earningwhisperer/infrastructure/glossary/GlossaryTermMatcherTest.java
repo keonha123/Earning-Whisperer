@@ -46,6 +46,15 @@ class GlossaryTermMatcherTest {
     }
 
     @Test
+    @DisplayName("non- 바로 뒤는 잡지 않고, 다른 하이픈 뒤는 잡는다")
+    void 하이픈_접두() {
+        assertThat(spellings("non-operating income rose")).isEmpty();
+        assertThat(spellings("Non-operating income rose")).isEmpty();
+        assertThat(spellings("operating income rose")).containsExactly("operating income");
+        assertThat(spellings("low-to-mid operating income growth")).containsExactly("operating income");
+    }
+
+    @Test
     @DisplayName("같은 용어가 여러 표기로 나와도 한 번만 담는다")
     void 중복_제거() {
         assertThat(spellings("comps were strong; comparable sales and comp sales again"))
