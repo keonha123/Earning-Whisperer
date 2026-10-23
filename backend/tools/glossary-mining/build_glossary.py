@@ -27,6 +27,8 @@ REMOVE_ALIASES = {
     "net debt to EBITDA": ["net leverage ratio"],  # leverage ratio 의 별칭이다
     "customer lifetime value": ["LTV"],         # 부동산 · 대출의 loan-to-value 와 겹친다
 }
+# 기존 항목 중 뺀 것. 한 회사만 쓰는 표현은 업종 공통 사전에 넣지 않는다.
+REMOVE_EXISTING = {"rollbacks"}  # 월마트의 할인 행사 이름
 FIELD_FIXES = {
     "aftermarket": {"category": "metric"},
 }
@@ -92,6 +94,7 @@ def dump(glossary: dict) -> str:
 
 def main():
     glossary = json.load(open(GLOSSARY))
+    glossary["terms"] = [t for t in glossary["terms"] if t["term"] not in REMOVE_EXISTING]
     owners: dict[str, str] = {}
 
     def claim(spelling: str, term: str) -> bool:
