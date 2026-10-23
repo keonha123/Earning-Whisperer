@@ -45,6 +45,34 @@ python -m pytest -q
 `data/pytest_tmp` 로 지정합니다. `tests/manual_nvda_fact_check.py` 는 파일명이 `test_` 로 시작하지 않아
 기본 수집 대상이 아닙니다.
 
+### logothea-assistant
+
+```bash
+cd logothea-assistant
+.venv/bin/python -m pytest -q
+```
+
+가짜 LLM 과 가짜 내부 API 로 돌아 OpenAI, backend, ai-engine 을 부르지 않습니다. API 키 없이 돕니다.
+
+답변 품질은 단위 테스트와 별도로 평가 하네스(`logothea-assistant/eval/`, #182)로 잽니다. WMT 2분기(FY27) 콜을
+649개 문장 세그먼트로 고정하고 60문항 질문셋에 답하게 한 뒤, 상태 정확도, 정답 요점 충족, 근거 재현율, 인용
+정밀도, 시점 위반, 지연, 질문당 비용을 계산합니다. 정답 요점 충족과 인용 정밀도는 LLM 이 채점합니다. 실제
+OpenAI 를 부르고 로컬 스택 전체가 필요하며, `run` 은 `--yes` 없이 실행하면 예상 비용만 출력합니다. 절차는
+`eval/README.md` 에 있습니다.
+
+2026-10-07 에 고정 방식(`ANSWER_MODE=fixed`)으로 한 번 실행한 기준 점수입니다(#191, 커밋 `fca7b1b`, #184 반영 전). 정답 요점 충족과 인용 정밀도는 채점한
+43문항 기준입니다. 콜 하나와 설계자가 단 라벨
+기준이고, 반복 실행 편차와 채점기 검수는 아직 하지 않았습니다(#197).
+
+| 지표 | 값 |
+|---|---|
+| 시점 위반 | 0건. 다만 뉴스 발행 시각이 앞당겨 저장된 기사는 이 지표로 잡지 못합니다(#196) |
+| 상태 정확도 | 91.7% |
+| 정답 요점 충족 | 64.1% |
+| 인용 정밀도 | 76.8% |
+| 완료 시간 p50 / p95 | 3.9초 / 5.8초 |
+| 질문당 비용 | 약 $0.002 |
+
 ### data_pipeline
 
 `data_pipeline/tests/` 의 테스트는 대부분 `unittest` 로 작성되어 있고 `data_pipeline.*` 패키지 경로로 import 하므로
@@ -54,7 +82,7 @@ python -m pytest -q
 ## CI
 
 `.github/workflows/test.yml` 의 `test` 워크플로가 모든 PR 과 `main` 푸시에서 돕니다. 같은 브랜치에 연달아
-푸시하면 앞선 실행을 취소합니다. 세 잡은 서로 독립이라 병렬로 돌고 한 잡이 실패해도 나머지 결과를 볼 수
+푸시하면 앞선 실행을 취소합니다. 네 잡은 서로 독립이라 병렬로 돌고 한 잡이 실패해도 나머지 결과를 볼 수
 있습니다.
 
 | 잡 | 환경 | 실행 내용 |
@@ -62,6 +90,7 @@ python -m pytest -q
 | `backend` | ubuntu, JDK 17 (temurin) | `./gradlew test`. 실패해도 테스트 보고서를 artifact `backend-test-results` 로 7일 보관 |
 | `terminal` | ubuntu, Node 20 | `npm install --ignore-scripts` → `npm run typecheck` → `npm test` |
 | `ai-engine` | ubuntu, Python 3.12 | `pip install -r requirements.txt` → `python -m pytest -q` |
+| `logothea-assistant` | ubuntu, Python 3.12 | `pip install -r requirements.txt` → `python -m pytest -q` |
 
 data_pipeline 과 frontend 는 CI 대상이 아닙니다. terminal 잡이 `npm ci` 대신 `npm install` 을 쓰는 이유는
 `package.json` 과 `package-lock.json` 이 맞지 않아 `npm ci` 가 실패하기 때문입니다.

@@ -23,6 +23,7 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`install/desktop-app.md`](install/desktop-app.md) | 데스크톱 앱 설치 |
 | [`features/live-transcript.md`](features/live-transcript.md) | 어닝콜 자막 |
 | [`features/fact-check.md`](features/fact-check.md) | 실시간 팩트체크 |
+| [`features/assistant.md`](features/assistant.md) | 어닝콜 질의응답 |
 | [`features/earnings-summary.md`](features/earnings-summary.md) | 종합 판단(회피 탐지, 관련 종목 영향, 손절·익절 계획) |
 | [`features/trading.md`](features/trading.md) | 사용자가 직접 내는 KIS 주문(모의·실전) |
 | [`features/market.md`](features/market.md) | 대시보드와 마켓 |
@@ -64,6 +65,7 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`adr/0003`](adr/0003-fact-check-with-evidence-retrieval-and-llm.md) | 근거 검색과 LLM 판정으로 팩트체크 |
 | [`adr/0004`](adr/0004-replay-past-earnings-call-for-demo.md) | 시연에 과거 어닝콜 재생 |
 | [`adr/0005`](adr/0005-support-only-user-placed-orders.md) | 매매는 사용자 직접 주문만 지원 |
+| [`adr/0006`](adr/0006-answer-questions-in-separate-assistant-service.md) | 질의응답을 별도 서비스에서 답변 |
 | [`demo/README.md`](demo/README.md) | 시연 데이터와 팩트체크 정확도 실측 기록 |
 | [`../infra/DEPLOY.md`](../infra/DEPLOY.md) | 시연 서버 배포와 운영 |
 
@@ -75,7 +77,7 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | 이슈·브랜치·커밋·PR 규칙 |
 | [`../.github/CODEOWNERS`](../.github/CODEOWNERS) | 모듈별 리뷰 담당자 |
 | [`../.github/pull_request_template.md`](../.github/pull_request_template.md) | PR 본문 양식 |
-| [`../backend/`](../backend/), [`../trading-terminal/`](../trading-terminal/), [`../ai-engine/`](../ai-engine/), [`../data_pipeline/`](../data_pipeline/) | 각 모듈의 README |
+| [`../backend/`](../backend/), [`../trading-terminal/`](../trading-terminal/), [`../ai-engine/`](../ai-engine/), [`../logothea-assistant/`](../logothea-assistant/), [`../data_pipeline/`](../data_pipeline/) | 각 모듈의 README |
 
 날짜를 붙인 계획·작업 문서는 저장소에 넣지 않습니다. 설계 문서는 날짜 없이 주제 이름으로 두고 내용을 갱신해
 관리합니다.
