@@ -151,8 +151,8 @@ python3.12 -m venv .venv
 
 | 변수 | 기본값 | 용도 |
 |---|---|---|
-| `OPENAI_API_KEY` | (없음) | 답변 생성에 쓰는 OpenAI 키 |
-| `INTERNAL_SECRET` | (없음) | backend 의 `INTERNAL_SECRET` 과 같은 값. 다르면 backend 요청을 401 로 거부합니다 |
+| `OPENAI_API_KEY` | 필수. 비어 있으면 서비스가 뜨지 않습니다 | 답변 생성에 쓰는 OpenAI 키 |
+| `INTERNAL_SECRET` | 필수. 비어 있으면 서비스가 뜨지 않습니다 | backend 의 `INTERNAL_SECRET` 과 같은 값. 다르면 backend 요청을 401 로 거부합니다 |
 | `BACKEND_BASE_URL` | `http://127.0.0.1:8082` | 콜 세그먼트 · 실적 추정치 · 용어 사전을 읽을 backend 주소 |
 | `AI_ENGINE_BASE_URL` | `http://127.0.0.1:8000` | 뉴스 검색 · 직전 콜 문장을 읽을 ai-engine 주소 |
 | `ANSWER_MODE` | `fixed` | 답변 방식. `agent` 는 모델이 도구로 근거를 골라 읽습니다 |
