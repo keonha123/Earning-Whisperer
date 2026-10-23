@@ -26,7 +26,7 @@ Closes #
 ## 계약 변경
 
 <!--
-이 저장소는 5개 모듈이 API · STOMP · DB 로 연결되어 있고 모듈마다 담당자가
+이 저장소는 6개 모듈이 API · STOMP · DB 로 연결되어 있고 모듈마다 담당자가
 다릅니다. 계약이 바뀌면 다른 사람의 코드가 조용히 깨질 수 있어서 따로 적습니다.
 바뀐 것이 없으면 "없음" 으로 두셔도 됩니다.
 -->
@@ -49,6 +49,8 @@ Closes #
 ### backend
 
 ### ai-engine
+
+### logothea-assistant
 
 ### trading-terminal
 

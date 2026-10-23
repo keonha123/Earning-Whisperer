@@ -949,6 +949,6 @@ OpenAI 키가 없으면 `gemini`를 쓴다. 무료 등급 Gemini 키로 `gemini-
 | `error` | `{code, message}` — `code` 는 `segments_not_found`, `context_unavailable`, `llm_timeout`, `llm_failed`, `llm_unparsable`, `internal` 입니다 |
 
 - `refusal_reason` 은 `investment_advice`, `price_prediction`, `out_of_scope` 이며, `suggested_question_ids` 로 대신 볼 만한 추천 질문을 알려 줍니다.
-- `warnings` 는 `uncited_number`(근거 표시 없이 수치를 말한 문장), `number_mismatch`, `unknown_marker:<표시>` 입니다.
+- `warnings` 는 `uncited_number`(근거 표시 없이 수치를 말한 문장), `number_mismatch`, `unknown_marker:<표시>` 입니다. 답변 방식이 `agent`(`ANSWER_MODE=agent`)이면 도구 사용 상한(라운드 · 호출 수 · 시간)에 닿아 도구 없이 답을 마무리했을 때 `agent_round_limit` 이 더해집니다.
 - 근거 수집은 정보원마다 3초, OpenAI 호출은 1회 30초가 상한입니다. 세그먼트를 읽지 못하면 `error` 이고, 나머지 정보원은 빼고 답합니다.
 - 연결이 끊기면 진행 중인 생성 호출도 닫습니다.

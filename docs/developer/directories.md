@@ -11,6 +11,7 @@
 | `trading-terminal/` | Electron 데스크톱 앱. 화면, KIS 주문, backend 연결 |
 | `backend/` | Spring Boot 서버. 인증, 어닝콜 세션, STOMP 전달, 주문 기록, 시장 데이터 수집 |
 | `ai-engine/` | FastAPI 서버. 주장 추출, 근거 검색, LLM 판정, 종합 판단 |
+| `logothea-assistant/` | FastAPI 서버. 어닝콜 질의응답 |
 | `data_pipeline/` | Python 수집기. 실적 일정·뉴스 수집, 웹캐스트 캡처와 Whisper 음성 인식 |
 | `infra/` | 로컬·시연 서버용 docker compose, 배포 스크립트 |
 | `docs/` | 프로젝트 문서, 모듈 간 계약(`api-spec.md`), 시연 자료(`demo/`) |
@@ -31,8 +32,8 @@
 
 | 폴더 | 설명 |
 |---|---|
-| `domain/` | `src/main/java/com/earningwhisperer/` 아래 패키지입니다. 엔티티와 도메인 서비스. `user`, `trade`, `portfolio`, `stock`, `market`, `earnings`, `transcript`, `watchlist`, `signal` |
-| `infrastructure/` | 외부 연동. `aiengine`(ai-engine 클라이언트), `demo`(시연 재생), `websocket`(STOMP 발행), `finnhub`, `fmp`, `oauth`, `security`, `redis` 등 |
+| `domain/` | `src/main/java/com/earningwhisperer/` 아래 패키지입니다. 엔티티와 도메인 서비스. `user`, `trade`, `portfolio`, `stock`, `market`, `earnings`, `transcript`, `watchlist`, `signal`, `assistant`(질의응답 요청과 하루 한도) |
+| `infrastructure/` | 외부 연동. `aiengine`(ai-engine 클라이언트), `demo`(시연 재생), `websocket`(STOMP 발행), `assistant`(logothea-assistant 스트림 클라이언트), `finnhub`, `fmp`, `oauth`, `security`, `redis` 등 |
 | `presentation/` | REST 컨트롤러. `/api/v1/**` 경로별 패키지 |
 | `global/` | 공통 설정(`config/`), 예외 처리, 기반 엔티티 |
 | `src/main/resources/data/` | 시연 스크립트(`demo-earnings-call.json`), 종목 목록(`sp500.csv`), 용어 사전(`glossary_ko.json`) |
@@ -48,6 +49,14 @@
 | `repositories/`, `db/`, `sql/` | PostgreSQL 이벤트 저장소와 Qdrant 근거 저장소 접근, 스키마 |
 | `models/` | 요청·응답 pydantic 모델 |
 | `tools/` | 백테스트, 호환성 검증 스크립트 |
+| `tests/` | pytest 테스트 |
+
+## logothea-assistant
+
+| 폴더 | 설명 |
+|---|---|
+| `assistant/` | 서비스 코드. 엔드포인트(`app.py`), 단계 조립(`pipeline.py`), 분류, 근거 수집, 프롬프트와 인용 검증, OpenAI 어댑터, 에이전트 방식(`agent.py`, `tools.py`) |
+| `eval/` | 답변 품질 평가 하네스. 고정 세그먼트와 질문셋은 `eval/datasets/`, 사용법은 `eval/README.md` |
 | `tests/` | pytest 테스트 |
 
 ## data_pipeline

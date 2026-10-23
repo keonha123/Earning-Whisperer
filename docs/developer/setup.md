@@ -1,6 +1,6 @@
 # 로컬 개발 환경
 
-이 문서는 backend, ai-engine, trading-terminal 을 개발 PC 에서 띄우고 시연 어닝콜로 동작을 확인하는 방법을
+이 문서는 backend, ai-engine, logothea-assistant, trading-terminal 을 개발 PC 에서 띄우고 시연 어닝콜로 동작을 확인하는 방법을
 다룹니다. 처음 저장소를 받은 팀원과 기여자를 위한 문서입니다. 폴더 구성은 [directories.md](directories.md),
 테스트 실행은 [testing.md](testing.md)를 참고합니다.
 
@@ -10,7 +10,7 @@
 |---|---|---|---|
 | JDK | 17 | backend | `build.gradle` 의 toolchain, CI `temurin 17` |
 | Node.js | 20 | trading-terminal | CI `setup-node` 버전. `engines` 필드와 `.nvmrc` 는 없습니다 |
-| Python | 3.12 | ai-engine, data_pipeline | CI `setup-python` 버전. `.python-version` 은 없습니다 |
+| Python | 3.12 | ai-engine, logothea-assistant, data_pipeline | CI `setup-python` 버전. `.python-version` 은 없습니다 |
 | Docker, Docker Compose | - | 로컬 인프라 | `infra/docker-compose.yml` |
 | C++ 빌드 도구 | - | trading-terminal | keytar 네이티브 모듈 재빌드. Windows 는 Visual Studio Build Tools, macOS 는 Xcode Command Line Tools |
 | Gradle | wrapper | backend | `backend/gradlew` 가 저장소에 있어 따로 설치하지 않습니다 |
@@ -65,7 +65,7 @@ Spring Boot 는 `backend/.env` 파일을 직접 읽지 않습니다. `backend/.e
 | `CORS_ALLOWED_ORIGINS` | 허용 출처 목록 | 아니요 |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URIS` | Google OAuth | OAuth 로그인을 쓸 때만 |
 | `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `KAKAO_REDIRECT_URIS` | Kakao OAuth | OAuth 로그인을 쓸 때만 |
-| `INTERNAL_SECRET` | `/api/v1/internal/**` 호출용 `X-Internal-Secret` 값. 비어 있으면 해당 경로를 모두 막습니다 | data_pipeline·ai-engine 이 backend 를 호출할 때만 |
+| `INTERNAL_SECRET` | `/api/v1/internal/**` 호출용 `X-Internal-Secret` 값. 비어 있으면 해당 경로를 모두 막습니다 | data_pipeline·ai-engine·logothea-assistant 가 backend 를 호출할 때만 |
 | `FINNHUB_API_KEY`, `FMP_API_KEY` | 어닝 일정, S&P 500 동기화 스케줄러. 비어 있으면 키가 필요한 동기화 스케줄러와 Finnhub WebSocket(종목 시세)이 꺼집니다 | 아니요 |
 | `TRADE_MANUAL_PENDING_TTL_SECONDS` | 체결을 기다리는 수동 주문(PENDING)의 만료 시간(초). 주석 처리되어 있습니다 | 아니요 (기본값 `86400`) |
 
@@ -79,6 +79,10 @@ Spring Boot 는 `backend/.env` 파일을 직접 읽지 않습니다. `backend/.e
 | `AI_ENGINE_TIMEOUT_MS` | `50000` | ai-engine 읽기 타임아웃 |
 | `DEMO_SCRIPT_PATH` | `data/demo-earnings-call.json` | 시연 스크립트(classpath 기준) |
 | `DEMO_SEGMENT_INTERVAL_MS` | `6000` | 시연 세그먼트 발행 간격 |
+| `ASSISTANT_BASE_URL` | `http://127.0.0.1:8100` | logothea-assistant 주소 |
+| `ASSISTANT_DAILY_LIMIT` | `50` | 사용자별 하루 질문 수(한국 시간 날짜 기준) |
+| `ASSISTANT_STREAM_TIMEOUT_SECONDS` | `60` | 질의응답 답변 스트림 전체 상한 |
+| `ASSISTANT_SEGMENT_TTL_HOURS` | `48` | 질의응답 근거로 쓰는 콜 단위 세그먼트 기록의 보관 시간 |
 
 ### 실행
 
@@ -130,6 +134,28 @@ uvicorn main:app --reload
 | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL` | `gemini`, `gemini-embedding-001` | 임베딩 모델 |
 | `GEMINI_PRIMARY_MODEL`, `GEMINI_REVIEW_MODEL` | `gemini-3.1-flash-lite`, `gemini-3.6-flash` | 판정 모델 |
 | `FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS`, `FACT_CHECK_LLM_TIMEOUT_SECONDS` | `25.0`, `25.0` | 주장 추출·검증 타임아웃 |
+
+## logothea-assistant
+
+어닝콜 질의응답(#112)을 답하는 서비스입니다. 질의응답을 확인할 때만 띄웁니다. 띄우지 않으면 질문할 때 연결
+오류 문구가 나오고, 다른 기능에는 영향이 없습니다.
+
+```bash
+cd logothea-assistant
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn assistant.main:app --host 127.0.0.1 --port 8100
+```
+
+환경변수는 셸이나 `logothea-assistant/.env`(git 에서 제외됨)로 넣습니다. `.env.example` 은 없습니다.
+
+| 변수 | 기본값 | 용도 |
+|---|---|---|
+| `OPENAI_API_KEY` | (없음) | 답변 생성에 쓰는 OpenAI 키 |
+| `INTERNAL_SECRET` | (없음) | backend 의 `INTERNAL_SECRET` 과 같은 값. 다르면 backend 요청을 401 로 거부합니다 |
+| `BACKEND_BASE_URL` | `http://127.0.0.1:8082` | 콜 세그먼트 · 실적 추정치 · 용어 사전을 읽을 backend 주소 |
+| `AI_ENGINE_BASE_URL` | `http://127.0.0.1:8000` | 뉴스 검색 · 직전 콜 문장을 읽을 ai-engine 주소 |
+| `ANSWER_MODE` | `fixed` | 답변 방식. `agent` 는 모델이 도구로 근거를 골라 읽습니다 |
 
 ## trading-terminal
 

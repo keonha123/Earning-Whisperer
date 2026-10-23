@@ -23,14 +23,14 @@ EarningWhisperer 에 코드나 문서를 보태려는 팀원과 기여자를 위
   (예: `keonha/fix/macos-drag-region`).
 - 커밋 메시지는 `종류(범위): 요약` 형식입니다. 요약은 한국어 습니다체로 씁니다. 이 규칙은 이 문서를 만든 시점부터 적용하며 이전 커밋은 문체가 섞여 있습니다.
   - 종류: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
-  - 범위: `backend`, `terminal`, `ai-engine`, `data-pipeline`, `infra`, `ci`, `repo`
+  - 범위: `backend`, `terminal`, `ai-engine`, `assistant`, `data-pipeline`, `infra`, `ci`, `repo`
   - 예: `fix(terminal): macOS 에서만 창 드래그 영역을 둡니다`
 
 ## PR
 
 - PR 하나에는 한 가지 변경만 담습니다.
 - 본문은 [PR 템플릿](.github/pull_request_template.md)의 항목을 채웁니다. 확인하지 못한 것은 "미확인" 으로 남깁니다.
-- `.github/workflows/test.yml` 의 `test` 워크플로(backend·ai-engine 테스트, trading-terminal 타입 검사와 테스트)가 통과한 뒤 머지합니다.
+- `.github/workflows/test.yml` 의 `test` 워크플로(backend·ai-engine·logothea-assistant 테스트, trading-terminal 타입 검사와 테스트)가 통과한 뒤 머지합니다.
   지금은 브랜치 보호로 강제하지 않습니다.
 - 코드를 바꾸면 그 코드를 설명하는 문서도 같은 PR 에서 고칩니다. 계약이 바뀌면 `docs/api-spec.md` 도 고칩니다.
   문서 운영 규칙은 [`docs/README.md`](docs/README.md) 에 있습니다.
@@ -43,6 +43,6 @@ EarningWhisperer 에 코드나 문서를 보태려는 팀원과 기여자를 위
 
 | 모듈 | 담당 |
 |---|---|
-| backend, trading-terminal, infra, docs, .github | @keonha123 |
+| backend, trading-terminal, logothea-assistant, infra, docs, .github | @keonha123 |
 | ai-engine | @james10419, @yytss3 |
 | data_pipeline | @dheorb |

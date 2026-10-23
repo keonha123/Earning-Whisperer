@@ -13,7 +13,8 @@ EarningWhisperer 는 미국 기업의 어닝콜 발언을 문장 단위로 받�
 놓고 종합 판단(방향, 등급, 답변 회피, 관련 종목 영향, 손절·익절 계획)을 만듭니다. 사용자는 같은 화면에서
 KIS 계좌로 주문합니다. 주문은 서버를 거치지 않고 사용자 PC 에서 KIS 로 나갑니다. 현재 시연에서는 STT 대신
 backend 가 녹취록 발췌를 재생하고, 재생한 발언의 팩트체크·종합 판단은 ai-engine 이 그때그때 만듭니다. STT 가
-쓰는 인입 경로(`TranscriptService`)는 자막만 발행하며 아직 ai-engine 을 호출하지 않습니다.
+쓰는 인입 경로(`TranscriptService`)는 자막만 발행하며 아직 ai-engine 을 호출하지 않습니다. 콜 내용을 묻는
+질의응답은 별도 서비스 logothea-assistant 가 답하고, backend 가 요청을 받아 답변 스트림을 중계합니다.
 
 ```mermaid
 flowchart LR
@@ -36,6 +37,7 @@ flowchart LR
             BS["Finnhub · FMP 스케줄러"]
         end
         A["ai-engine (FastAPI)"]
+        AS["logothea-assistant (FastAPI)"]
         MY[("MySQL")]
         RD[("Redis")]
         PG[("PostgreSQL")]
@@ -47,6 +49,7 @@ flowchart LR
     FH["Finnhub"]
     FMP["FMP"]
     GM["Gemini"]
+    OA["OpenAI"]
 
     M -- "REST" --> BC
     BW -- "/topic/transcript · factcheck<br/>evaluation · transcript-diff<br/>transcript-translation<br/>market/indices · prices" --> M
@@ -63,6 +66,10 @@ flowchart LR
     P --- MY
     A --- QD
     A -- "판정 · 임베딩" --> GM
+    BC -- "/v1/assistant/ask (SSE)" --> AS
+    AS -- "/api/v1/internal/assistant/**" --> BC
+    AS -- "/v1/engine/assistant/**" --> A
+    AS -- "답변 생성" --> OA
     P -- "/api/v1/internal/transcript-segment" --> BC
     P -- "/api/v1/integration/collector/news<br/>earnings-transcripts" --> A
 ```
@@ -90,6 +97,8 @@ backend 와 통신합니다.
 | KIS 실시간 체결통보 | `src/main/services/KisWebSocketService.ts` |
 | 관심·보유 종목 시세 폴링 | `src/main/services/PricePoller.ts` |
 | Google·Kakao 로그인(PKCE, 루프백 리다이렉트) | `src/main/services/OAuthService.ts` |
+| 질의응답 SSE 수신과 취소 | `src/main/services/AssistantStreamService.ts`, `src/main/ipc/assistantHandlers.ts`, `src/lib/sse.ts` |
+| 질의응답 화면 상태와 문구 | `src/renderer/store/useAssistantStore.ts`, `src/renderer/constants/assistant.ts`, `components/call/AssistantPanel.tsx` |
 | IPC 채널 이름과 핸들러 | `src/lib/ipcChannels.ts` (`IPC_CHANNELS`), `src/main/ipc/*Handlers.ts` |
 | main 프로세스 상태(토큰, 계좌 유형, 주문 진행 여부) | `src/main/store/mainState.ts` |
 | 화면 상태 | `src/renderer/store/use*Store.ts` (zustand) |
@@ -117,6 +126,8 @@ Spring Boot 3.3, Java 17 서버로 인증, 어닝콜 세그먼트 인입과 STOM
 | 세그먼트 검증(sequence 단조성, 세션 종료)과 STOMP 발행 | `TranscriptService`, `TranscriptSessionRegistry`, `TranscriptPublisher` |
 | data_pipeline 세그먼트 인입 | `TranscriptInternalController`, `InternalSecretFilter` |
 | ai-engine 호출 | `AiEngineClient` (`LiveFactCheckModels`, `EarningsSummaryModels`, `TranscriptDiffModels`, `TranscriptTranslationModels`) |
+| 질의응답 요청·하루 한도·답변 중계 | `AssistantController`, `AssistantAskService`, `RedisAssistantQuota`, `AssistantRelay`, `AssistantStreamClient` |
+| 질의응답 근거용 세그먼트 저장과 내부 API | `RedisTranscriptSegmentStore`, `AssistantInternalController`, `AssistantContextQueryService` |
 | 콜 종료 후 종합 판단 | `EarningsSummaryService`, `EarningsSummaryPublisher` |
 | STOMP 설정과 인증 | `WebSocketConfig`, `StompJwtChannelInterceptor` |
 | 로그인, JWT, refresh token | `AuthController`, `OAuthController`, `AuthService`, `JwtProvider`, `RefreshTokenService`, `RedisRefreshTokenRepository` |
@@ -143,8 +154,36 @@ FastAPI 서버이고 포트는 8000 입니다. 진입점은 `main.py` 의 `app` 
 | 설정 | `config.py` (`GEMINI_API_KEY`, `DATABASE_URL`, `QDRANT_URL`, `EMBEDDING_PROVIDER` 등) |
 
 backend 가 호출하는 엔드포인트는 `/v1/engine/live-fact-check/sentence`, `/v1/engine/analyze`,
-`/v1/engine/earnings/intelligence`, `/v1/engine/transcript/diff`, `/v1/engine/evidence/readiness` 다섯 개입니다
-(`AiEngineClient` 상수).
+`/v1/engine/earnings/intelligence`, `/v1/engine/transcript/diff`, `/v1/engine/transcript/translate`,
+`/v1/engine/evidence/readiness` 여섯 개입니다(`AiEngineClient` 상수). logothea-assistant 는 질의응답 근거를 찾을
+때 `/v1/engine/assistant/news-search`, `/v1/engine/assistant/prior-call-statements` 를 부릅니다
+(`api/routers/assistant_retrieval.py`).
+
+### logothea-assistant
+
+어닝콜 질의응답(#112)을 답하는 FastAPI 서비스이고 포트는 8100 입니다. `127.0.0.1` 에만 바인딩하고 backend 의
+요청만 받습니다. 사용자 인증, 하루 한도, 질문 시점 확정은 backend 가 맡습니다. 답변은 OpenAI Responses API
+(`gpt-6-luna`)로 만듭니다. ai-engine 과 나눈 이유는 [ADR 0006](../adr/0006-answer-questions-in-separate-assistant-service.md)에
+있습니다.
+
+한 질문은 분류, 근거 수집, 생성, 인용 검증 순서로 처리합니다. 매매 권유 · 주가 예측 · 범위 밖 질문은 생성 없이
+정해진 문구로 답합니다. 근거는 정보원마다 3초 안에 오지 않으면 빼고 진행합니다. 인용 검증은 답에 쓴 근거
+표시가 실제 근거인지, 인용 문장의 수치가 원문에 있는지 코드로 확인합니다.
+
+답변 방식은 `ANSWER_MODE` 로 고릅니다. `fixed`(기본)는 근거를 미리 모아 프롬프트에 넣습니다. `agent`(#200)는
+모델이 도구 5개(콜 검색, 범위 읽기, 뉴스 검색, 지난 분기, 추정치)로 근거를 골라 읽고, 도구 라운드 4회 · 호출 8회 ·
+35초가 상한입니다. `agent` 는 비교 평가(#194) 전이라 기본값이 아닙니다. 두 방식의 SSE 형식은 같습니다.
+
+| 찾는 것 | 위치 |
+|---|---|
+| 엔드포인트(`POST /v1/assistant/ask`, `/health`), 내부 비밀 확인 | `assistant/app.py` |
+| 단계 조립 | `assistant/pipeline.py` |
+| 질문 분류 | `assistant/classifier.py`, `assistant/rules.py` |
+| 근거 수집 | `assistant/context.py`, `assistant/clients.py` |
+| 생성 프롬프트, 인용 검증 | `assistant/prompts.py`, `assistant/citations.py` |
+| LLM 인터페이스와 OpenAI 어댑터 | `assistant/llm.py`, `assistant/openai_client.py` |
+| 에이전트 방식 | `assistant/agent.py`, `assistant/tools.py`, `assistant/segment_search.py` |
+| 설정 | `assistant/config.py` |
 
 ### data_pipeline
 
@@ -218,6 +257,37 @@ ai-engine 의 `/v1/engine/live-fact-check/sentence` 는 항상 HTTP 200 을 돌�
 나머지 문장은 `DISCARDED` 로 버려지므로 시연 스크립트의 세그먼트 수를 3의 배수로 맞춥니다. 종합 판단은
 별도 `demo-call-summary` 스레드에서 돌아갑니다. 그 사이 같은 종목이 다시 재생되면 이전 회차 판단은 발행하지 않습니다.
 
+### 어닝콜 질의응답
+
+터미널의 질문은 backend 를 거쳐 logothea-assistant 로 갑니다. backend 는 발행한 세그먼트를 Redis 에 콜 단위로
+쌓아 두고(`transcript:segments:{callId}`, 마지막 세그먼트 기준 48시간), 질문이 오면 질문 시점과 콜 종료 여부를
+정합니다. 터미널이 보낸 세그먼트 번호는 저장된 마지막 세그먼트 이하로 낮춰 쓰고, 근거 시각은 그 세그먼트의
+발행 시각으로 정합니다. 계약은
+[`docs/api-spec.md`](../api-spec.md) 7.10절과 10장에 있습니다.
+
+```mermaid
+sequenceDiagram
+    participant M as terminal main
+    participant B as backend
+    participant S as logothea-assistant
+    participant A as ai-engine
+    participant O as OpenAI
+
+    M->>B: POST /api/v1/assistant/ask (JWT)
+    Note over B: 질문 시점 확정 → 동시 질문 잠금 → 하루 한도 차감(Redis)
+    B->>S: POST /v1/assistant/ask (X-Internal-Secret)
+    S->>B: 콜 세그먼트 · 실적 추정치 · 용어 사전 (내부 API)
+    S->>A: 시점 조건 뉴스 검색 · 직전 콜 문장
+    S->>O: 분류 · 답변 생성 (스트리밍)
+    S-->>B: SSE meta → delta … → citations → done
+    B-->>M: 같은 이벤트를 그대로 중계 (2초 하트비트)
+```
+
+- 세그먼트가 없거나(404) 종목이 맞지 않거나(400) 이미 답을 받는 중이면(409) 하루 한도를 차감하지 않습니다.
+- backend 는 스트림 전체를 60초(`ASSISTANT_STREAM_TIMEOUT_SECONDS`)에 끊고, OpenAI 호출 하나는 30초가 상한입니다.
+- 터미널에서 취소하거나 새 질문을 보내면 backend 연결이 닫히고, 이어서 assistant 연결과 OpenAI 스트림이 닫힙니다.
+- 대화 기록은 터미널 메모리에만 있고, 후속 질문 때 같은 대화의 앞선 질문과 답을 함께 보냅니다.
+
 ### 수동 주문
 
 주문은 terminal main 프로세스가 KIS 로 직접 보내고 결과를 backend 에 기록합니다. backend 는 KIS 를
@@ -252,7 +322,7 @@ backend 기록과 포트폴리오 동기화는 비동기로 보냅니다. 기록
 
 ## 배포 구성
 
-시연 서버는 EC2 인스턴스 한 대입니다. backend 와 ai-engine 은 systemd 서비스로, 저장소는 docker compose
+시연 서버는 EC2 인스턴스 한 대입니다. backend 와 ai-engine, logothea-assistant 는 systemd 서비스로, 저장소는 docker compose
 컨테이너로 돌아갑니다. 외부 요청은 Cloudflare Tunnel 로만 들어옵니다. 절차와 운영은
 [`infra/DEPLOY.md`](../../infra/DEPLOY.md) 를 참고합니다.
 
@@ -283,9 +353,11 @@ flowchart LR
     AE --> QD
 ```
 
-보안 그룹은 SSH 만 엽니다. backend 와 ai-engine 은 루프백 주소만 듣고 컨테이너 포트도 `127.0.0.1` 에만
+보안 그룹은 SSH 만 엽니다. backend, ai-engine, logothea-assistant 는 루프백 주소만 듣고 컨테이너 포트도 `127.0.0.1` 에만
 바인딩합니다. 터널 라우팅은 `infra/aws/cloudflared-config.yml`, backend·ai-engine systemd 유닛은
 `infra/aws/*.service` 에 있습니다. cloudflared 유닛은 `cloudflared service install` 이 만든 것이라 저장소에 없습니다.
+logothea-assistant 는 시연 서버에서 `earning-whisperer-assistant` systemd 서비스(`127.0.0.1:8100`)로 돌지만,
+유닛 파일과 배포 스크립트 지원은 아직 저장소에 없습니다(#198).
 
 ## 불변식
 
@@ -341,7 +413,8 @@ ai-engine 사이 계약은 9절에 있습니다. 직전 콜 대조(`transcript-d
 | `/topic/prices` | `StockPricePublisher` | 변경된 종목 시세(1초 주기) | 터미널 |
 | `/topic/live/demo`, `/topic/live/demo/price` | `DemoReplayService`, `DemoPriceService` | 웹 frontend 쇼케이스용. 이 문서 범위 밖 | 웹 |
 
-Redis 는 refresh token 저장(`RedisRefreshTokenRepository`)과 Pub/Sub `market-indices` 채널에 씁니다.
+Redis 는 refresh token 저장(`RedisRefreshTokenRepository`), Pub/Sub `market-indices` 채널, 질의응답의 콜 단위
+세그먼트 기록(`RedisTranscriptSegmentStore`)과 하루 한도·동시 질문 잠금(`RedisAssistantQuota`)에 씁니다.
 `MarketIndicesScheduler` 가 Finnhub 시세를 1분마다 발행하고 `MarketIndicesSubscriber` 가 받아 캐시와 STOMP 로
 넘깁니다. ai-engine 은 `redis_signal_publisher.py` 로 `trading-signals` 채널에 발행할 수 있지만 backend 는 이
 채널을 구독하지 않습니다(`RedisConfig`).
@@ -350,9 +423,10 @@ Redis 는 refresh token 저장(`RedisRefreshTokenRepository`)과 Pub/Sub `market
 
 | 모듈 | 출처 |
 |---|---|
-| backend | `application.yml` 의 `${ENV:기본값}`. 주요 변수는 `DB_URL`, `REDIS_HOST`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `KAKAO_CLIENT_ID`, `FINNHUB_API_KEY`, `FMP_API_KEY`, `AI_ENGINE_BASE_URL`, `AI_ENGINE_TIMEOUT_MS`, `INTERNAL_SECRET`. 서버에서는 systemd 의 `EnvironmentFile` 로 주입합니다 |
+| backend | `application.yml` 의 `${ENV:기본값}`. 주요 변수는 `DB_URL`, `REDIS_HOST`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `KAKAO_CLIENT_ID`, `FINNHUB_API_KEY`, `FMP_API_KEY`, `AI_ENGINE_BASE_URL`, `AI_ENGINE_TIMEOUT_MS`, `INTERNAL_SECRET`, `ASSISTANT_BASE_URL`, `ASSISTANT_DAILY_LIMIT`. 서버에서는 systemd 의 `EnvironmentFile` 로 주입합니다 |
 | trading-terminal | dev 는 `.env.local` > `.env`, 패키징 빌드는 빌드 시점 값을 번들에 넣습니다(`loadEnv.ts`). 주요 변수는 `BACKEND_URL`, `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_KAKAO_CLIENT_ID` |
 | ai-engine | `config.py`(pydantic-settings), 예시는 `ai-engine/.env.example` |
+| logothea-assistant | `assistant/config.py`(pydantic-settings), `logothea-assistant/.env`. `OPENAI_API_KEY`, `INTERNAL_SECRET`(backend 와 같은 값), `BACKEND_BASE_URL`, `AI_ENGINE_BASE_URL`, `ANSWER_MODE` |
 | data_pipeline | `.env`(python-dotenv). `DB_URL`, `AI_ENGINE_URL`, `BACKEND_URL`, `INTERNAL_SECRET` 등 |
 
 `FINNHUB_API_KEY` 나 `FMP_API_KEY` 가 비어 있으면 키가 필요한 동기화 스케줄러와 Finnhub WebSocket(종목 시세)이

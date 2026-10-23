@@ -22,6 +22,7 @@ EarningWhisperer 는 어닝콜 발언을 문장 단위로 받아 화면에 자�
 |---|---|
 | [어닝콜 자막](docs/features/live-transcript.md) | 발언을 발화자와 함께 실시간으로 표시하고, 한국어 번역과 어려운 용어의 쉬운 설명을 함께 보여 줍니다 |
 | [실시간 팩트체크](docs/features/fact-check.md) | 세 문장마다 사실 주장을 뽑아 뉴스 근거로 판정하고, 판정 이유를 한국어로 출처와 함께 보여 줍니다 |
+| [어닝콜 질의응답](docs/features/assistant.md) | 지금까지 나온 콜 내용을 물으면 질문 시점까지의 발언과 자료만 근거로, 근거 위치와 함께 답합니다 |
 | [종합 판단](docs/features/earnings-summary.md) | 콜이 끝나면 강세·약세·중립 판단, 촉매 유형, 리스크, 등급을 정리합니다 |
 | 답변 회피 탐지 | 애널리스트 질문의 핵심 주제를 답변이 비켜 갔는지 점수와 누락 주제로 보여 줍니다 |
 | 관련 종목 영향 | 공급망·경쟁 관계 종목에 미칠 영향을 방향과 근거로 정리합니다 |
@@ -44,6 +45,7 @@ flowchart LR
     subgraph Server["서버"]
         B["backend<br/>Spring Boot"]
         A["ai-engine<br/>FastAPI"]
+        S["logothea-assistant<br/>FastAPI"]
         DB[("MySQL · Redis")]
         V[("Qdrant · PostgreSQL")]
     end
@@ -51,6 +53,7 @@ flowchart LR
     P["data_pipeline<br/>Python"]
     KIS["KIS OpenAPI<br/>모의투자"]
     LLM["Gemini"]
+    OA["OpenAI"]
 
     T -- "REST · STOMP" --> B
     T -- "주문" --> KIS
@@ -58,15 +61,20 @@ flowchart LR
     B --- DB
     A --- V
     A -- "판정 · 임베딩" --> LLM
+    B -- "질의응답 요청" --> S
+    S -- "콜 자막 · 추정치 조회" --> B
+    S -- "근거 검색" --> A
+    S -- "답변 생성" --> OA
     P -- "녹취록" --> B
     P -- "뉴스 근거 적재" --> A
 ```
 
 | 모듈 | 역할 |
 |---|---|
-| [`trading-terminal`](trading-terminal) | 데스크톱 앱입니다. 자막·팩트체크·종합 판단 화면과 KIS 주문을 맡습니다 |
-| [`backend`](backend) | 인증, 어닝콜 세션 관리, 실시간 전달(STOMP), 주문 기록, 시장 데이터 수집을 맡습니다 |
+| [`trading-terminal`](trading-terminal) | 데스크톱 앱입니다. 자막·팩트체크·종합 판단·질의응답 화면과 KIS 주문을 맡습니다 |
+| [`backend`](backend) | 인증, 어닝콜 세션 관리, 실시간 전달(STOMP), 질의응답 중계, 주문 기록, 시장 데이터 수집을 맡습니다 |
 | [`ai-engine`](ai-engine) | 주장 추출, 근거 검색, LLM 판정, 종합 판단을 맡습니다 |
+| [`logothea-assistant`](logothea-assistant) | 어닝콜 질의응답을 맡습니다 |
 | [`data_pipeline`](data_pipeline) | 웹캐스트 음성 인식(Whisper), 실적 일정·뉴스 수집을 맡습니다 |
 | [`infra`](infra) | 시연 서버 배포 스크립트와 docker compose 설정입니다 |
 
