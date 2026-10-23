@@ -200,7 +200,7 @@ sequenceDiagram
         A-->>B: 직전 콜 대조 결과
         B-->>M: STOMP /topic/transcript-diff/{ticker}
     end
-    Note over B: 세그먼트를 묶어(3개 · 10초 · 세션 종료) 번역 전용 스레드로 넘김
+    Note over B: 세그먼트를 묶어(3개 · 10초 · 1,200자 · 세션 종료) 번역 전용 스레드로 넘김
     B->>A: POST /v1/engine/transcript/translate (묶음 원문 + 사전 용어)
     A-->>B: 한국어 번역문
     B-->>M: STOMP /topic/transcript-translation/{ticker}
