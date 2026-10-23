@@ -15,7 +15,9 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li>대표 표기와 별칭을 모두 찾고, 대소문자는 가리지 않는다.</li>
- *   <li>단어 경계에서만 잡는다. {@code sales} 가 {@code wholesales} 안에서 잡히지 않는다.</li>
+ *   <li>단어 경계에서만 잡는다. {@code sales} 가 {@code wholesales} 안에서 잡히지 않는다.
+ *       {@code non-} 바로 뒤도 잡지 않는다. "non-operating expenses" 의 "operating expenses" 는 영업비용이 아니다.
+ *       다른 하이픈 뒤는 잡는다. "low-to-mid single digits" 의 "mid single digits" 는 그 뜻 그대로다.</li>
  *   <li>겹치면 긴 표기가 이긴다. "adjusted operating income" 이 잡힌 자리에서 "operating income" 을
  *       따로 잡지 않는다. 짧은 쪽까지 보내면 LLM 이 같은 구절에 번역어 두 개를 끼워 넣는다.</li>
  * </ul>
@@ -82,7 +84,7 @@ public final class GlossaryTermMatcher {
 
     private static Entry entry(String spelling, String ko) {
         Pattern pattern = Pattern.compile(
-                "(?<![\\p{Alnum}])" + Pattern.quote(spelling) + "(?![\\p{Alnum}])",
+                "(?<![\\p{Alnum}])(?<!\\bnon-)" + Pattern.quote(spelling) + "(?![\\p{Alnum}])",
                 Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
         return new Entry(spelling, ko, pattern);
     }
