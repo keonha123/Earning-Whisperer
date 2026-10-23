@@ -398,9 +398,8 @@ logothea-assistant 는 시연 서버에서 `earning-whisperer-assistant` systemd
 backend 는 Spring simple broker 를 씁니다(`/topic`, `/queue`, 사용자 목적지 접두사 `/user`). `/queue`·`/user` 로
 보내는 곳은 지금 없습니다([ADR 0001](../adr/0001-use-stomp-for-realtime-delivery.md) 후속 조치). 터미널은
 `/ws-native`(native WebSocket)로, 웹 클라이언트는 `/ws`(SockJS)로 붙습니다. 터미널은 재연결한 뒤 종목별 구독을
-복구합니다. 메시지 형식은 [`docs/api-spec.md`](../api-spec.md) 4.4~4.7절, backend 와
-ai-engine 사이 계약은 9절에 있습니다. 직전 콜 대조(`transcript-diff`)와 `/topic/prices` 는 아직 api-spec 에
-없습니다.
+복구합니다. 메시지 형식은 [`docs/api-spec.md`](../api-spec.md) 4장, backend 와
+ai-engine 사이 계약은 9장에 있습니다.
 
 | 목적지 | 발행 클래스 | 내용 | 구독 |
 |---|---|---|---|
@@ -411,7 +410,7 @@ ai-engine 사이 계약은 9절에 있습니다. 직전 콜 대조(`transcript-d
 | `/topic/evaluation/{ticker}` | `EarningsSummaryPublisher` | 콜 종료 후 종합 판단 | 터미널 |
 | `/topic/market/indices` | `MarketIndicesPublisher` | 지수 ETF 5종(SPY, QQQ, DIA, IWM, VIXY) | 터미널 |
 | `/topic/prices` | `StockPricePublisher` | 변경된 종목 시세(1초 주기) | 터미널 |
-| `/topic/live/demo`, `/topic/live/demo/price` | `DemoReplayService`, `DemoPriceService` | 웹 frontend 쇼케이스용. 이 문서 범위 밖 | 웹 |
+| `/topic/live/demo`, `/topic/live/demo/price` | `DemoReplayService`, `DemoPriceService` | 웹 frontend 쇼케이스용. 이 문서 범위 밖 | 없음(웹은 연결하지 않음) |
 
 Redis 는 refresh token 저장(`RedisRefreshTokenRepository`), Pub/Sub `market-indices` 채널, 질의응답의 콜 단위
 세그먼트 기록(`RedisTranscriptSegmentStore`)과 하루 한도·동시 질문 잠금(`RedisAssistantQuota`)에 씁니다.
