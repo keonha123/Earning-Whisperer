@@ -106,7 +106,7 @@ curl http://localhost:8082/actuator/health
 
 ## ai-engine
 
-ai-engine 은 팩트체크와 종합 판단을 만듭니다. 트랜스크립트 재생만 확인할 때는 띄우지 않고 backend 에
+ai-engine 은 직전 콜 대조, 자막 번역, 종합 판단과 화면에 표시하지 않는 팩트체크를 만듭니다. 트랜스크립트 재생만 확인할 때는 띄우지 않고 backend 에
 `AI_ENGINE_FACT_CHECK_ENABLED=false`, `AI_ENGINE_SUMMARY_ENABLED=false` 를 주면 됩니다. 직전 콜 대조 호출은
 별도 설정(`ai-engine.transcript-diff-enabled`)이라 계속 나가지만, 실패해도 재생에는 영향이 없습니다.
 
@@ -189,8 +189,9 @@ curl -X POST http://localhost:8082/api/v1/auth/signup \
   -d '{"email":"dev@example.org","password":"password1234","nickname":"dev"}'
 ```
 
-로그인 뒤에는 KIS 자격증명 등록 화면이 나옵니다. 모의투자나 실전투자 중 한쪽의 App Key, App Secret,
-계좌번호(숫자 8자리 또는 10자리)를 넣어야 대시보드로 넘어갑니다. 저장 직후 KIS 토큰 발급이 실패해도 저장은
+로그인 뒤 이 PC 에 KIS 키가 없으면 `주문용 KIS 키 등록` 화면이 나옵니다. 모의투자나 실전투자 중 한쪽의 App Key,
+App Secret, 계좌번호(숫자 8자리 또는 10자리)를 넣고 `저장하고 시작` 을 누르거나 `나중에` 로 건너뛰면 홈으로
+넘어갑니다. 키는 주문할 때만 필요합니다. 저장 직후 KIS 토큰 발급이 실패해도 저장은
 완료되며, 이후 KIS 를 호출할 때 발급을 다시 시도합니다.
 
 OAuth 로그인은 터미널이 `http://localhost:9000/auth/callback` 을 redirect URI 로 씁니다(`OAuthService`).
@@ -233,14 +234,15 @@ BACKEND_URL=https://api.logothea.com
    콜 1건에 Gemini 약 6회를 동시에 호출하며, 추출에 10초 안팎이 더 걸립니다. 응답의
    `key_statement_counts` 가 저장된 문장 수입니다. 이 도구의 `--purge` 는 저장된 핵심 문장도 함께 지웁니다.
 3. 터미널에 로그인합니다.
-4. 홈 오른쪽 위의 "시연 재생" 버튼을 누릅니다. WMT 콜 화면이 열리면서 터미널이
-   `POST /api/v1/demo/earnings-call/start` 를 호출하고 backend 의 `DemoEarningsCallService` 가
+4. `종목` 에서 WMT 를 찾아 종목 브리핑의 `콜 화면 열기` 로 WMT 콜 화면에 들어간 뒤 콜 바의 `시연 재생` 을
+   누릅니다. 터미널이 `POST /api/v1/demo/earnings-call/start` 를 호출하고 backend 의 `DemoEarningsCallService` 가
    `backend/src/main/resources/data/demo-earnings-call.json`(월마트 2026-08-20 콜, 24개 세그먼트)을 6초 간격으로
    재생합니다.
-5. 트랜스크립트는 `/topic/transcript/{ticker}`, 팩트체크는 `/topic/factcheck/{ticker}`, 종합 판단은
-   `/topic/evaluation/{ticker}` 로 화면에 들어옵니다.
+5. 트랜스크립트는 `/topic/transcript/{ticker}`, 번역은 `/topic/transcript-translation/{ticker}`, 직전 콜 대조는
+   `/topic/transcript-diff/{ticker}`, 종합 판단은 `/topic/evaluation/{ticker}` 로 화면에 들어옵니다. 팩트체크
+   `/topic/factcheck/{ticker}` 는 터미널이 구독만 하고 화면에는 그리지 않습니다.
 
-<!-- 스크린샷: 시연 재생 중인 트레이딩룸 (트랜스크립트·팩트체크 패널) -->
+<!-- 스크린샷: 시연 재생 중인 콜 화면 (자막, 직전 콜 대조) -->
 
 재생 상태는 `GET /api/v1/demo/earnings-call/status?ticker=WMT` 로 볼 수 있습니다(JWT 필요). 같은 종목이 재생
 중일 때 다시 시작하면 409 를 돌려줍니다. 근거 저장소가 비어 있으면 재생은 시작되고 터미널에 경고 토스트가
@@ -263,9 +265,9 @@ BACKEND_URL=https://api.logothea.com
 
 `trading-terminal/.env.example` 의 `BACKEND_URL` 이 시연 서버 주소입니다. 복사한 `.env.local` 에서 바꿔야 합니다.
 
-### 팩트체크가 화면에 나오지 않음
+### 팩트체크 결과가 발행되지 않음
 
-backend 의 `AI_ENGINE_TIMEOUT_MS` 는 ai-engine 의 주장 추출과 검증 타임아웃 합보다 커야 합니다. 더 짧으면
+팩트체크는 화면에 그리지 않지만 시연 재생 중에 backend 가 계속 호출합니다. backend 의 `AI_ENGINE_TIMEOUT_MS` 는 ai-engine 의 주장 추출과 검증 타임아웃 합보다 커야 합니다. 더 짧으면
 ai-engine 이 작업 중일 때 backend 가 먼저 포기해 팩트체크가 조용히 사라집니다(`application.yml` 주석).
 또 `FACT_CHECK_EXTRACTION_TIMEOUT_SECONDS` 를 5.0 으로 두면 실측에서 `claim_extraction_failed` 가 났습니다.
 

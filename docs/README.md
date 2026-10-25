@@ -22,11 +22,11 @@ EarningWhisperer 저장소의 문서가 어디에 있고 어떤 규칙으로 관
 | [`install/requirements.md`](install/requirements.md) | OS·네트워크·계정 요구사항 |
 | [`install/desktop-app.md`](install/desktop-app.md) | 데스크톱 앱 설치 |
 | [`features/live-transcript.md`](features/live-transcript.md) | 어닝콜 자막 |
-| [`features/fact-check.md`](features/fact-check.md) | 실시간 팩트체크 |
+| [`features/transcript-diff.md`](features/transcript-diff.md) | 직전 콜 대조 |
 | [`features/assistant.md`](features/assistant.md) | 어닝콜 질의응답 |
 | [`features/earnings-summary.md`](features/earnings-summary.md) | 종합 판단(회피 탐지, 관련 종목 영향, 손절·익절 계획) |
 | [`features/trading.md`](features/trading.md) | 사용자가 직접 내는 KIS 주문(모의·실전) |
-| [`features/market.md`](features/market.md) | 대시보드와 마켓 |
+| [`features/market.md`](features/market.md) | 홈과 종목 |
 
 ### 제품·디자인 문서
 
