@@ -1,11 +1,11 @@
 # Logothea
 
-[![test](https://github.com/keonha123/Earning-Whisperer/actions/workflows/test.yml/badge.svg)](https://github.com/keonha123/Earning-Whisperer/actions/workflows/test.yml)
-[![release](https://img.shields.io/github/v/release/keonha123/Earning-Whisperer?include_prereleases)](https://github.com/keonha123/Earning-Whisperer/releases)
+[![test](https://github.com/keonha123/Logothea/actions/workflows/test.yml/badge.svg)](https://github.com/keonha123/Logothea/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/keonha123/Logothea?include_prereleases)](https://github.com/keonha123/Logothea/releases)
 
 미국 기업의 어닝콜을 실시간 자막으로 보여 주고, 경영진 발언을 직전 분기 발언과 대조하는 어닝콜 분석 데스크톱 앱입니다.
 
-Logothea(로고테아)의 이전 이름은 EarningWhisperer 입니다. 저장소 이름, 패키지 이름, 코드 식별자에는 이전 이름이 남아 있습니다.
+Logothea(로고테아)의 이전 이름은 EarningWhisperer 입니다. 패키지 이름과 코드 식별자에는 이전 이름이 남아 있습니다.
 이름의 유래와 표기 기준은 [브랜드](docs/design/brand.md)에 있습니다.
 
 ## 소개
@@ -83,7 +83,7 @@ flowchart LR
 
 ## 시작하기
 
-**앱 사용**: [릴리스 페이지](https://github.com/keonha123/Earning-Whisperer/releases)에서 Windows 설치 파일을
+**앱 사용**: [릴리스 페이지](https://github.com/keonha123/Logothea/releases)에서 Windows 설치 파일을
 받아 실행합니다. 현재 `v0.1.0-rc1` 은 검증 중인 시험판이며 시연 서버 주소가 설치본에 들어 있습니다.
 설치부터 시연 재생까지는 [빠른 시작](docs/overview/quick-start.md)에 정리되어 있습니다.
 

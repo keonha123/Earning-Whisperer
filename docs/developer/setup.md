@@ -18,8 +18,8 @@
 ## 저장소 받기
 
 ```bash
-git clone https://github.com/keonha123/Earning-Whisperer.git
-cd Earning-Whisperer
+git clone https://github.com/keonha123/Logothea.git
+cd Logothea
 ```
 
 ## 인프라 기동
