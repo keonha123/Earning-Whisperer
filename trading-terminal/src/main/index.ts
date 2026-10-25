@@ -115,7 +115,7 @@ function createTray() {
     ? nativeImage.createEmpty()
     : icon.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE })
   tray = new Tray(trayIcon)
-  tray.setToolTip('EarningWhisperer Terminal')
+  tray.setToolTip('Logothea')
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '열기', click: () => mainWindow?.show() },
