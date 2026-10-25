@@ -62,5 +62,5 @@ Get-FileHash .\EarningWhisperer.Terminal.Setup.0.1.0.exe -Algorithm SHA256
 2. Windows 설정의 설치된 앱 목록에서 `EarningWhisperer Terminal` 을 찾아 제거합니다.
 
 KIS API 키와 액세스 토큰은 앱 폴더가 아니라 Windows 자격 증명 저장소에 `EarningWhisperer` 이름으로
-저장됩니다. 키까지 지우려면 제거 전에 앱의 `설정` → `KIS Open API 연동` 에서 모의·실전 카드의 `삭제` 를
+저장됩니다. 키까지 지우려면 제거 전에 앱의 `설정` → `KIS 연동` → `API 키` 에서 모의·실전 행의 `삭제` 를
 누릅니다.

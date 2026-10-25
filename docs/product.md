@@ -40,11 +40,11 @@ J2 와 J3 이 제품의 중심입니다. J1 은 그 입구이고 J4·J5 는 보�
 | 기능 | 해결하는 일 | 상태 |
 |---|---|---|
 | 어닝콜 자막 | J2 | 구현. [어닝콜 자막](features/live-transcript.md) |
-| 직전 콜 대조 | J2 | 구현. 지난 콜 발언과 비교해 개선·후퇴·변화 없음 등으로 분류합니다([지난 분기 대비](features/fact-check.md#지난-분기-대비)) |
+| 직전 콜 대조 | J2 | 구현. 지난 콜 발언과 비교해 개선·후퇴·변화 없음 등으로 분류합니다([직전 콜 대조](features/transcript-diff.md)) |
 | 종합 판단(실행 판단, 질문 회피, 파급 영향, 손절·익절 계획) | J3 | 구현. [종합 판단](features/earnings-summary.md) |
 | KIS 계좌 직접 주문(모의·실전) | J4 | 구현. [KIS 주문](features/trading.md) |
 | 자체 페이퍼 계정 | J4 | 구현, 존속 미정. KIS 키 없이 앱 안에서 가상으로 체결합니다([UX 문서](design/ux.md#아직-정하지-않은-것)) |
-| 실적 일정, 종목 정보, 시세 | J1 | 구현. [대시보드와 마켓](features/market.md) |
+| 실적 일정, 종목 정보, 시세 | J1 | 구현. [홈과 종목](features/market.md) |
 | 시연 재생 | J6 | 구현. 지난 어닝콜 녹취록을 서버가 재생합니다([ADR 0004](adr/0004-replay-past-earnings-call-for-demo.md)) |
 | 자막 한국어 번역 | J2 | 구현. 원문 몇 문장을 묶어 번역하므로 원문보다 몇 초 늦게 붙습니다([번역과 용어 설명](features/live-transcript.md#번역과-용어-설명)) |
 | 용어 설명 보기 | J2 | 구현. 번역문의 어려운 용어를 누르면 쉬운 설명이 나옵니다. 사전은 업종을 가리지 않는 공통 용어 232개입니다([번역과 용어 설명](features/live-transcript.md#번역과-용어-설명)) |
@@ -62,5 +62,5 @@ J2 와 J3 이 제품의 중심입니다. J1 은 그 입구이고 J4·J5 는 보�
 | 제외하는 것 | 이유 |
 |---|---|
 | 서버가 주문을 지시하는 기능 | 매매는 사용자가 직접 낸 주문만 지원합니다([ADR 0005](adr/0005-support-only-user-placed-orders.md)) |
-| 실시간 뉴스 대조 팩트체크 | 2026-10-06 제외하기로 정했습니다. 발언 검증은 직전 콜 대조로 합니다. 현재 코드와 [실시간 팩트체크](features/fact-check.md) 문서, [ADR 0003](adr/0003-fact-check-with-evidence-retrieval-and-llm.md)에는 아직 남아 있으며, 기능을 제거할 때 함께 정리하고 ADR 0003 은 새 ADR 로 대체합니다 |
+| 실시간 뉴스 대조 팩트체크 | 2026-10-06 제외하기로 정했습니다. 발언 검증은 직전 콜 대조로 합니다. 콜 화면에는 더 이상 표시하지 않습니다. backend · ai-engine 코드와 [ADR 0003](adr/0003-fact-check-with-evidence-retrieval-and-llm.md)에는 아직 남아 있으며, 코드를 제거할 때 함께 정리하고 ADR 0003 은 새 ADR 로 대체합니다 |
 | 웹 버전 | 이 문서는 데스크톱 앱만 다룹니다. 저장소의 `frontend/` 는 존속 여부가 정해지지 않았습니다 |

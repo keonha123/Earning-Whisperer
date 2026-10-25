@@ -23,7 +23,7 @@
 |---|---|
 | `src/main/` | main process. `ipc/`(IPC 핸들러), `services/`(`BackendClient`, `StompService`, `KisService`, `OAuthService` 등), `store/`, `loadEnv.ts` |
 | `src/preload/` | renderer 에 노출하는 IPC 브리지 |
-| `src/renderer/` | React 화면. `pages/`, `components/`, `hooks/`, `store/`(zustand), `types/` |
+| `src/renderer/` | React 화면. `pages/`, `components/`, `hooks/`, `store/`(zustand), `types/`. `components/` 는 화면별로 `auth`, `call`(콜 화면), `common`, `dashboard`(종목 브리핑 `CompanyDrawer`), `layout`(사이드바), `market`, `portfolio`, `settings`, `trading`(발화자 프로필) 으로 나뉩니다 |
 | `src/lib/` | main 과 renderer 가 함께 쓰는 IPC 채널 이름, 타입, 주문 가격 계산 |
 | `src/test/` | vitest 공통 설정(`setup.ts`)과 테스트 도구 |
 | `resources/` | 앱 아이콘 |

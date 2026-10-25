@@ -8,11 +8,12 @@ EarningWhisperer 의 모듈 구성과 모듈 사이의 흐름을 설명합니다
 
 ## 조감도
 
-EarningWhisperer 는 미국 기업의 어닝콜 발언을 문장 단위로 받아 데스크톱 터미널에 자막으로 띄우고 세
-문장마다 사실 주장을 뽑아 수집해 둔 뉴스 근거로 판정한 결과를 함께 보여 줍니다. 콜이 끝나면 발언 전체를
+EarningWhisperer 는 미국 기업의 어닝콜 발언을 문장 단위로 받아 데스크톱 터미널에 자막으로 띄우고, 한국어
+번역과 직전 분기 콜 발언과의 대조(직전 콜 대조)를 함께 보여 줍니다. 콜이 끝나면 발언 전체를
 놓고 종합 판단(방향, 등급, 답변 회피, 관련 종목 영향, 손절·익절 계획)을 만듭니다. 사용자는 같은 화면에서
 KIS 계좌로 주문합니다. 주문은 서버를 거치지 않고 사용자 PC 에서 KIS 로 나갑니다. 현재 시연에서는 STT 대신
-backend 가 녹취록 발췌를 재생하고, 재생한 발언의 팩트체크·종합 판단은 ai-engine 이 그때그때 만듭니다. STT 가
+backend 가 녹취록 발췌를 재생하고, 재생한 발언의 직전 콜 대조·종합 판단은 ai-engine 이 그때그때 만듭니다. 뉴스 대조 팩트체크도 호출하지만
+화면에는 표시하지 않습니다. STT 가
 쓰는 인입 경로(`TranscriptService`)는 자막만 발행하며 아직 ai-engine 을 호출하지 않습니다. 콜 내용을 묻는
 질의응답은 별도 서비스 logothea-assistant 가 답하고, backend 가 요청을 받아 답변 스트림을 중계합니다.
 
@@ -87,7 +88,7 @@ backend 와 통신합니다.
 |---|---|---|
 | main | `src/main/index.ts` | 창 생성, IPC 핸들러 등록, 네트워크·키체인 접근 |
 | preload | `src/preload/index.ts` | `contextBridge` 로 `window.terminalApi`(`invoke`, `on`, `platform`)만 노출 |
-| renderer | `src/renderer/main.tsx`, `App.tsx` | 페이지(Auth, Dashboard, Market, TradingRoom, History, Settings) |
+| renderer | `src/renderer/main.tsx`, `App.tsx` | 페이지: `AuthPage`(`/auth`), `HomePage`(`/home`, 홈), `MarketPage`(`/stocks`, 종목), `TradingRoomPage`(`/call`, 콜 화면), `PortfolioPage`(`/portfolio`, 거래 내역 탭은 `HistoryPage`), `SettingsPage`(`/settings`) |
 
 | 찾는 것 | 위치 |
 |---|---|
@@ -102,7 +103,7 @@ backend 와 통신합니다.
 | IPC 채널 이름과 핸들러 | `src/lib/ipcChannels.ts` (`IPC_CHANNELS`), `src/main/ipc/*Handlers.ts` |
 | main 프로세스 상태(토큰, 계좌 유형, 주문 진행 여부) | `src/main/store/mainState.ts` |
 | 화면 상태 | `src/renderer/store/use*Store.ts` (zustand) |
-| 어닝콜 자막·팩트체크·종합 판단 화면 | `src/renderer/pages/TradingRoomPage.tsx`, `components/trading/` |
+| 어닝콜 자막·직전 콜 대조·종합 판단·주문 시트 화면 | `src/renderer/pages/TradingRoomPage.tsx`, `components/call/`, 발화자 프로필은 `components/trading/SpeakerProfileModal.tsx` |
 
 STOMP 메시지는 main 프로세스가 받아 IPC 이벤트(`terminal:transcript:segment-received`,
 `terminal:factcheck:batch-received`, `terminal:evaluation:received` 등)로 renderer 에 넘깁니다. renderer 의
@@ -311,7 +312,7 @@ sequenceDiagram
     M->>K: 잔고 조회
     M-->>R: IPC terminal:trade:executed
     M--)B: POST /api/v1/portfolio/sync
-    Note over M,B: 이후 KIS 체결통보나 체결 내역 화면 진입 시<br/>reconcilePendingTrades 가 PENDING 을 확정
+    Note over M,B: 이후 KIS 체결통보, 거래 내역 탭 진입 · 새로고침,<br/>주문 시트 체결 확인 때 reconcilePendingTrades 가 PENDING 을 확정
     M->>K: 체결 조회 (inquire-ccnl)
     M->>B: POST /api/v1/trades/{tradeId}/callback
 ```
