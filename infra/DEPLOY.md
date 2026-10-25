@@ -876,14 +876,22 @@ npm run postinstall     # electron-rebuild — keytar 를 현재 플랫폼용으
 
 ### 릴리스 올리기
 
+`v0.1.0-rc1` 의 설치 파일은 앱 이름을 Logothea 로 바꾸기 전에 빌드한 `EarningWhisperer.Terminal.Setup.0.1.0.exe` 입니다.
+지금 빌드하면 `Logothea Setup <버전>.exe` 가 나오고, GitHub 는 공백을 점으로 바꿔 `Logothea.Setup.<버전>.exe` 로
+올립니다. 기존 릴리스의 자산을 바꾸면 `docs/install/desktop-app.md` 와 `docs/overview/quick-start.md` 의 파일 이름과
+sha256 도 함께 고칩니다.
+
 ```bash
-# 자산 교체
-gh release delete-asset v0.1.0-rc1 "EarningWhisperer.Terminal.Setup.0.1.0.exe" --yes
-gh release upload     v0.1.0-rc1 "trading-terminal/dist/EarningWhisperer Terminal Setup 0.1.0.exe"
+# 새 릴리스에 설치 파일 올리기 (예: v0.1.0-rc2)
+gh release upload v0.1.0-rc2 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
+
+# 같은 릴리스의 자산 교체
+gh release delete-asset v0.1.0-rc2 "Logothea.Setup.0.1.0.exe" --yes
+gh release upload       v0.1.0-rc2 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
 
 # draft 로 두기 / 게시하기
-gh release edit v0.1.0-rc1 --draft=true
-gh release edit v0.1.0-rc1 --draft=false --prerelease
+gh release edit v0.1.0-rc2 --draft=true
+gh release edit v0.1.0-rc2 --draft=false --prerelease
 ```
 
 **서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Earning-Whisperer/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.

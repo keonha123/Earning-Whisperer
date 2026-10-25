@@ -1,6 +1,6 @@
 # 데스크톱 앱 설치
 
-EarningWhisperer Terminal 을 Windows PC 에 설치하고, 업데이트하고, 제거하는 방법을 설명합니다.
+Logothea 를 Windows PC 에 설치하고, 업데이트하고, 제거하는 방법을 설명합니다.
 설치 전 조건은 [요구사항](requirements.md)을 참고합니다.
 
 ## 지원 플랫폼
@@ -16,6 +16,8 @@ KIS 자격증명 저장, 시연 화면 표시를 확인하는 작업이 남아 �
 ## 설치 파일 받기
 
 GitHub 저장소의 Releases 에서 `v0.1.0-rc1` 을 열고 `EarningWhisperer.Terminal.Setup.0.1.0.exe` 를 내려받습니다.
+`v0.1.0-rc1` 은 앱 이름을 Logothea 로 바꾸기 전에 빌드한 설치 파일이라 파일 이름과 설치되는 앱 이름이 이전 이름
+`EarningWhisperer Terminal` 입니다. 다음 설치 파일부터 `Logothea` 로 나옵니다.
 
 | 항목 | 값 |
 |---|---|
@@ -39,7 +41,7 @@ Get-FileHash .\EarningWhisperer.Terminal.Setup.0.1.0.exe -Algorithm SHA256
 <!-- 스크린샷: SmartScreen 경고 창에서 추가 정보를 펼친 상태 -->
 <!-- 스크린샷: 설치 마법사의 설치 경로 선택 화면 -->
 
-현재 사용자로 설치하면 관리자 권한을 묻지 않고, 모든 사용자로 설치하면 권한 상승을 요구합니다. 앱 이름은 `EarningWhisperer Terminal` 입니다.
+현재 사용자로 설치하면 관리자 권한을 묻지 않고, 모든 사용자로 설치하면 권한 상승을 요구합니다. `v0.1.0-rc1` 의 앱 이름은 `EarningWhisperer Terminal` 입니다.
 
 ## 첫 실행
 
@@ -59,8 +61,8 @@ Get-FileHash .\EarningWhisperer.Terminal.Setup.0.1.0.exe -Algorithm SHA256
 ## 제거
 
 1. 트레이 메뉴의 `종료` 로 앱을 끕니다.
-2. Windows 설정의 설치된 앱 목록에서 `EarningWhisperer Terminal` 을 찾아 제거합니다.
+2. Windows 설정의 설치된 앱 목록에서 `EarningWhisperer Terminal`(다음 설치 파일부터는 `Logothea`)을 찾아 제거합니다.
 
 KIS API 키와 액세스 토큰은 앱 폴더가 아니라 Windows 자격 증명 저장소에 `EarningWhisperer` 이름으로
-저장됩니다. 키까지 지우려면 제거 전에 앱의 `설정` → `KIS 연동` → `API 키` 에서 모의·실전 행의 `삭제` 를
+저장됩니다. 이 이름은 앱 이름을 바꾼 뒤에도 그대로입니다. 키까지 지우려면 제거 전에 앱의 `설정` → `KIS 연동` → `API 키` 에서 모의·실전 행의 `삭제` 를
 누릅니다.

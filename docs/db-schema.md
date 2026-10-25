@@ -1,4 +1,4 @@
-# EarningWhisperer DB Schema
+# Logothea DB Schema
 
 ## ERD 개요
 

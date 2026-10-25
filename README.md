@@ -1,9 +1,12 @@
-# EarningWhisperer
+# Logothea
 
 [![test](https://github.com/keonha123/Earning-Whisperer/actions/workflows/test.yml/badge.svg)](https://github.com/keonha123/Earning-Whisperer/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/keonha123/Earning-Whisperer?include_prereleases)](https://github.com/keonha123/Earning-Whisperer/releases)
 
-미국 기업의 어닝콜을 실시간 자막으로 보여 주고, 경영진 발언을 뉴스 근거와 대조하는 어닝콜 분석 데스크톱 앱입니다.
+미국 기업의 어닝콜을 실시간 자막으로 보여 주고, 경영진 발언을 직전 분기 발언과 대조하는 어닝콜 분석 데스크톱 앱입니다.
+
+Logothea(로고테아)의 이전 이름은 EarningWhisperer 입니다. 저장소 이름, 패키지 이름, 코드 식별자에는 이전 이름이 남아 있습니다.
+이름의 유래와 표기 기준은 [브랜드](docs/design/brand.md)에 있습니다.
 
 ## 소개
 
@@ -11,7 +14,7 @@
 듣는 동안 지난 분기에 한 말과 무엇이 달라졌는지까지 짚기는 더 어렵습니다. 기관은 이 일을 전용 플랫폼과 분석 인력으로
 처리합니다.
 
-EarningWhisperer 는 어닝콜 발언을 문장 단위로 받아 화면에 자막으로 띄우고, 몇 문장씩 묶어 한국어로 번역합니다. 주제가 맞는
+Logothea 는 어닝콜 발언을 문장 단위로 받아 화면에 자막으로 띄우고, 몇 문장씩 묶어 한국어로 번역합니다. 주제가 맞는
 발언에는 직전 분기 콜에서 경영진이 같은 주제로 한 말을 찾아 개선 · 후퇴 같은 변화를 원문과 함께 붙입니다. 콜 내용을
 물으면 질문 시점까지의 발언과 자료를 근거로 답합니다. 콜이 끝나면 발언 전체를 종합해 방향과 근거를 정리하고, 사용자는 같은 화면에서 등록한 KIS 계좌(모의투자
 또는 실전)로 직접 주문할 수 있습니다.

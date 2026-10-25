@@ -1,6 +1,6 @@
 # 빠른 시작
 
-EarningWhisperer Terminal 을 처음 설치한 사용자가 로그인하고 시연용 어닝콜을 한 번 재생해 보기까지의
+Logothea(로고테아)를 처음 설치한 사용자가 로그인하고 시연용 어닝콜을 한 번 재생해 보기까지의
 과정을 설명합니다. 개발 환경 구성은 이 문서에서 다루지 않습니다.
 
 ## 준비물
@@ -15,7 +15,7 @@ EarningWhisperer Terminal 을 처음 설치한 사용자가 로그인하고 시�
 
 ## 1. 설치
 
-GitHub 릴리스 페이지에서 `EarningWhisperer.Terminal.Setup.0.1.0.exe` 를 받아 실행합니다. 코드 서명이 없어
+GitHub 릴리스 페이지에서 `EarningWhisperer.Terminal.Setup.0.1.0.exe` 를 받아 실행합니다(`v0.1.0-rc1` 은 이전 이름으로 빌드되어 있습니다). 코드 서명이 없어
 Windows SmartScreen 경고가 나오며 `추가 정보` → `실행` 을 누르면 설치가 진행됩니다. 절차는
 [데스크톱 앱 설치](../install/desktop-app.md)에 있습니다.
 

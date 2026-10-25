@@ -1,6 +1,6 @@
 # 자주 묻는 질문
 
-EarningWhisperer Terminal 을 설치하거나 시연을 재생하면서 자주 나오는 질문과 답을 모았습니다.
+Logothea 를 설치하거나 시연을 재생하면서 자주 나오는 질문과 답을 모았습니다.
 앱 사용자와 시연을 보는 평가자를 위한 문서입니다.
 
 ## 설치와 접속
@@ -49,7 +49,7 @@ https://api.logothea.com/actuator/health
 
 ### KIS API 키는 어디에 저장되나요?
 
-키는 이 PC 의 Windows 자격 증명 저장소에 저장되며 EarningWhisperer 서버로 보내지 않습니다. 주문도 앱이
+키는 이 PC 의 Windows 자격 증명 저장소에 저장되며 Logothea 서버로 보내지 않습니다. 주문도 앱이
 한국투자증권 서버에 직접 보냅니다. `설정` 화면에서 키를 수정하거나 삭제할 수 있습니다.
 자세한 내용은 [KIS 주문](../features/trading.md)에 있습니다.
 

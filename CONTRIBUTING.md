@@ -1,6 +1,6 @@
 # 기여 안내
 
-EarningWhisperer 에 코드나 문서를 보태려는 팀원과 기여자를 위한 문서입니다. 이슈를 열고 PR 이 머지되기까지의
+Logothea 에 코드나 문서를 보태려는 팀원과 기여자를 위한 문서입니다. 이슈를 열고 PR 이 머지되기까지의
 규칙을 다룹니다. 로컬 실행 방법은 [`docs/developer/setup.md`](docs/developer/setup.md) 에 있습니다.
 
 ## 이슈
