@@ -882,13 +882,16 @@ npm run postinstall     # electron-rebuild — keytar 를 현재 플랫폼용으
 sha256 도 함께 고칩니다.
 
 ```bash
-# 자산 교체 (v0.1.0-rc1 기준)
-gh release delete-asset v0.1.0-rc1 "EarningWhisperer.Terminal.Setup.0.1.0.exe" --yes
-gh release upload     v0.1.0-rc1 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
+# 새 릴리스에 설치 파일 올리기 (예: v0.1.0-rc2)
+gh release upload v0.1.0-rc2 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
+
+# 같은 릴리스의 자산 교체
+gh release delete-asset v0.1.0-rc2 "Logothea.Setup.0.1.0.exe" --yes
+gh release upload       v0.1.0-rc2 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
 
 # draft 로 두기 / 게시하기
-gh release edit v0.1.0-rc1 --draft=true
-gh release edit v0.1.0-rc1 --draft=false --prerelease
+gh release edit v0.1.0-rc2 --draft=true
+gh release edit v0.1.0-rc2 --draft=false --prerelease
 ```
 
 **서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Earning-Whisperer/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.
