@@ -5,13 +5,15 @@ import type { Configuration } from 'electron-builder'
  * `electron-builder.{yml,yaml,json,json5,toml,js,cjs,mjs,ts}` 이름으로만 찾는다.
  * 이전 이름인 `electron-builder.config.ts` 는 그 목록에 없어 **한 번도 읽히지 않았고**,
  * appId·productName·files·nsis 설정이 전부 무시된 채로 패키징되고 있었다.
- * 산출물이 `EarningWhisperer Terminal` 이 아니라 package.json 의 `name` 으로 나오는 것이
+ * 산출물이 productName 이 아니라 package.json 의 `name` 으로 나오는 것이
  * 그 증상이었다.
  */
 
 const config: Configuration = {
+  // appId 는 이전 이름 그대로 둔다. 바꾸면 Windows 가 다른 앱으로 보아 기존 설치가 따로 남는다
+  // (docs/design/brand.md 이전 이름).
   appId: 'com.earningwhisperer.terminal',
-  productName: 'EarningWhisperer Terminal',
+  productName: 'Logothea',
   directories: {
     buildResources: 'resources',
     output: 'dist',

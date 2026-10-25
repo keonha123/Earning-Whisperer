@@ -109,7 +109,7 @@ function buildAuthUrl(provider: OAuthProvider, state: string, codeChallenge: str
 function renderResultHtml(message: string): string {
   // 정적 문자열만 — 사용자 입력값을 렌더링하지 않음 (XSS 방지)
   return `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><title>EarningWhisperer</title>
+<html lang="ko"><head><meta charset="utf-8"><title>Logothea</title>
 <style>
   body{margin:0;background:#0a0c0f;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
        display:flex;align-items:center;justify-content:center;min-height:100vh}

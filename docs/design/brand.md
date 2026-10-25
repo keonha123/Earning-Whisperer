@@ -36,16 +36,24 @@ Logothea 는 그 말에서 나온 이름입니다. 경영진의 말과 숫자를
 ### 이전 이름
 
 이전 이름은 EarningWhisperer 입니다. 저장소 이름, 패키지 이름, 코드 식별자에는 아직 이전 이름이 남아 있습니다.
-화면과 문서에 보이는 이름부터 Logothea 로 바꿉니다. 이름을 바꿀 때 주의할 곳은 아래와 같습니다.
+화면과 설치 파일에 보이는 이름은 Logothea 로 바꿨습니다. 화면에 보이지 않고 바꾸면 사용자 데이터가 끊기는 곳은
+의도적으로 이전 이름을 유지합니다.
+
+| 위치 | 상태 | 이유 |
+|---|---|---|
+| 창 제목, 트레이 툴팁, 로그인 화면, 메뉴 위 브랜드, OAuth 결과 페이지 | Logothea | 화면에 보이는 이름입니다 |
+| `electron-builder.ts` 의 `productName` | Logothea | 설치 파일 이름, 설치 폴더, 시작 메뉴 이름입니다 |
+| `electron-builder.ts` 의 `appId` | 이전 이름 유지 | 바꾸면 Windows 가 다른 앱으로 인식해 기존 설치와 바로가기가 따로 남습니다 |
+| `KEYTAR_SERVICE` | 이전 이름 유지 | 바꾸면 저장한 KIS 키와 모의/실전 설정을 찾지 못합니다 |
+| `package.json` 의 `name` · `description` · `author` | 이전 이름 유지 | 설치 정보에만 남고 화면에는 보이지 않습니다 |
+
+각 위치를 바꿀 때 주의할 점은 아래와 같습니다.
 
 | 위치 | 주의할 점 |
 |---|---|
 | `electron-builder.ts` 의 `productName` | 설치 파일 이름과 설치 경로가 바뀝니다 |
 | `electron-builder.ts` 의 `appId` | 바꾸면 Windows 가 다른 앱으로 인식해 기존 설치와 바로가기가 따로 남습니다 |
 | `KEYTAR_SERVICE` (`index.ts`, `settingsHandlers.ts`, `KisService.ts`, `KisWebSocketService.ts` 와 테스트에 각각 선언) | 자격 증명 저장소의 서비스 이름입니다. KIS 키 · 계좌번호 · HTS ID · 액세스 토큰 · 모의/실전 설정이 모두 이 이름 아래 있습니다. 바꾸면 저장한 값을 찾지 못해 키를 다시 등록해야 하고, 실전으로 설정한 사용자도 기본값인 모의로 돌아갑니다. 선언이 여러 곳이라 한 번에 같이 바꿔야 합니다 |
-| 창 제목(`renderer/index.html` 의 `<title>`), 트레이 툴팁 | 화면에 보이는 이름입니다 |
-| 로그인 화면(`AuthBrandSection`), 메뉴 위 브랜드(`LeftSidebar` 의 이름 · `EW` 모노그램 · `Trading Terminal` 부제) | 화면에 보이는 이름입니다. 모노그램은 로고(#129)가 정해진 뒤 바꿉니다 |
-| OAuth 로그인 뒤 브라우저에 뜨는 결과 페이지(`OAuthService`) | 브라우저 탭 제목에 보이는 이름입니다 |
 | `package.json` 의 `description` · `author` | 화면에는 보이지 않지만 설치 정보에 남습니다 |
 
 ## 브랜드 성격
