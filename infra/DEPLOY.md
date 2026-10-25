@@ -876,10 +876,15 @@ npm run postinstall     # electron-rebuild — keytar 를 현재 플랫폼용으
 
 ### 릴리스 올리기
 
+`v0.1.0-rc1` 의 설치 파일은 앱 이름을 Logothea 로 바꾸기 전에 빌드한 `EarningWhisperer.Terminal.Setup.0.1.0.exe` 입니다.
+지금 빌드하면 `Logothea Setup <버전>.exe` 가 나오고, GitHub 는 공백을 점으로 바꿔 `Logothea.Setup.<버전>.exe` 로
+올립니다. 기존 릴리스의 자산을 바꾸면 `docs/install/desktop-app.md` 와 `docs/overview/quick-start.md` 의 파일 이름과
+sha256 도 함께 고칩니다.
+
 ```bash
-# 자산 교체
+# 자산 교체 (v0.1.0-rc1 기준)
 gh release delete-asset v0.1.0-rc1 "EarningWhisperer.Terminal.Setup.0.1.0.exe" --yes
-gh release upload     v0.1.0-rc1 "trading-terminal/dist/EarningWhisperer Terminal Setup 0.1.0.exe"
+gh release upload     v0.1.0-rc1 "trading-terminal/dist/Logothea Setup 0.1.0.exe"
 
 # draft 로 두기 / 게시하기
 gh release edit v0.1.0-rc1 --draft=true

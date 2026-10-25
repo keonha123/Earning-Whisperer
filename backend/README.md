@@ -1,4 +1,4 @@
-# EarningWhisperer — Backend
+# Logothea — Backend
 
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-6DB33F?logo=springboot&logoColor=white)
 ![Java](https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white)
@@ -156,7 +156,7 @@ com/earningwhisperer/
 
 ### 주문 처리
 
-EarningWhisperer 는 어닝콜 분석 프로그램이고, 주문은 사용자가 Trading Terminal 에서 직접 냅니다. 백엔드는 주문을 지시하지 않고 결과만 기록합니다. 매매 신호로 주문을 내던 경로(룰 엔진, 매매 모드, `/user/queue/signals`)는 #127 에서 제거했습니다.
+Logothea 는 어닝콜 분석 프로그램이고, 주문은 사용자가 Trading Terminal 에서 직접 냅니다. 백엔드는 주문을 지시하지 않고 결과만 기록합니다. 매매 신호로 주문을 내던 경로(룰 엔진, 매매 모드, `/user/queue/signals`)는 #127 에서 제거했습니다.
 
 1. 터미널이 KIS 로 주문을 내고 `POST /api/v1/trades/manual` 로 결과를 기록합니다 (`EXECUTED` / `PENDING` / `FAILED`).
 2. 접수만 된 `PENDING` 주문은 체결되면 `POST /api/v1/trades/{tradeId}/callback` 으로 종결합니다.

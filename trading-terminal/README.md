@@ -1,4 +1,4 @@
-# EarningWhisperer — Trading Terminal
+# Logothea — Trading Terminal
 
 ![Electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
@@ -136,8 +136,8 @@ npm run package
 
 | 플랫폼 | 출력 파일 |
 |--------|---------|
-| Windows | `dist/EarningWhisperer Terminal Setup 0.1.0.exe` |
-| macOS | `dist/EarningWhisperer Terminal-0.1.0.dmg` |
+| Windows | `dist/Logothea Setup 0.1.0.exe` |
+| macOS | `dist/Logothea-0.1.0.dmg` |
 
 빌드 중간 산출물은 `out/`에 생성됩니다.
 

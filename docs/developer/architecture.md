@@ -1,6 +1,6 @@
 # 아키텍처
 
-EarningWhisperer 의 모듈 구성과 모듈 사이의 흐름을 설명합니다. 코드를 처음 읽는 팀원과 설계를 살펴보는
+Logothea 의 모듈 구성과 모듈 사이의 흐름을 설명합니다. 코드를 처음 읽는 팀원과 설계를 살펴보는
 평가자를 위한 문서입니다. 자주 바뀌지 않는 구조만 다룹니다. 요청·응답 필드 같은 계약 상세는
 [`docs/api-spec.md`](../api-spec.md), 설계 결정의 배경은 [`docs/adr/`](../adr/) 에 둡니다.
 
@@ -8,7 +8,7 @@ EarningWhisperer 의 모듈 구성과 모듈 사이의 흐름을 설명합니다
 
 ## 조감도
 
-EarningWhisperer 는 미국 기업의 어닝콜 발언을 문장 단위로 받아 데스크톱 터미널에 자막으로 띄우고, 한국어
+Logothea 는 미국 기업의 어닝콜 발언을 문장 단위로 받아 데스크톱 터미널에 자막으로 띄우고, 한국어
 번역과 직전 분기 콜 발언과의 대조(직전 콜 대조)를 함께 보여 줍니다. 콜이 끝나면 발언 전체를
 놓고 종합 판단(방향, 등급, 답변 회피, 관련 종목 영향, 손절·익절 계획)을 만듭니다. 사용자는 같은 화면에서
 KIS 계좌로 주문합니다. 주문은 서버를 거치지 않고 사용자 PC 에서 KIS 로 나갑니다. 현재 시연에서는 STT 대신
@@ -368,7 +368,8 @@ logothea-assistant 는 시연 서버에서 `earning-whisperer-assistant` systemd
   `openapivts.koreainvestment.com`)는 터미널 main 프로세스의 `KisService`·`KisWebSocketService` 에만 있고 backend
   코드에는 없습니다. backend 는 터미널이 보고한 주문 결과와 잔고만 저장합니다.
 - **KIS 자격증명은 사용자 PC 밖으로 나가지 않습니다.** 앱 키, 시크릿, 계좌번호, KIS 토큰은 `keytar` 로 OS
-  키체인(서비스 이름 `EarningWhisperer`)에 저장하고 backend 로 보내는 요청에는 포함하지 않습니다.
+  키체인(서비스 이름 `EarningWhisperer`)에 저장하고 backend 로 보내는 요청에는 포함하지 않습니다. 서비스 이름은 저장한
+  키를 잃지 않도록 앱 이름을 바꾼 뒤에도 이전 이름을 유지합니다.
 - **renderer 는 Node API 와 네트워크에 직접 접근하지 않습니다.** `BrowserWindow` 는 `nodeIntegration: false`,
   `contextIsolation: true`, `sandbox: true` 로 만듭니다. preload 는 `invoke`·`on`·`platform` 만 노출합니다.
   backend·KIS 호출과 STOMP 연결은 모두 main 프로세스에 있습니다.
