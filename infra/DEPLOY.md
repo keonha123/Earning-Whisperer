@@ -104,8 +104,8 @@ IP(`43.200.26.70`)로 직접 붙는 경로는 2026-09-18 에 닫았습니다. `h
 Node 20 이상이 필요합니다. `node -v` 로 먼저 확인해 주세요.
 
 ```bash
-git clone git@github.com:keonha123/Earning-Whisperer.git
-cd Earning-Whisperer/trading-terminal
+git clone git@github.com:keonha123/Logothea.git
+cd Logothea/trading-terminal
 npm install
 ```
 
@@ -773,7 +773,7 @@ sudo systemctl enable --now cloudflared
 - **서버가 켜져 있지 않으면 터널도 없습니다.** Cloudflare 엣지는 살아 있지만 연결할 곳이 없어 `530`(Argo Tunnel error)이 돌아옵니다. 인스턴스가 꺼져 있을 때의 정상 응답으로 보시면 됩니다.
 - **가용성은 터널 하나에 달려 있습니다.** `cloudflared` 가 죽으면 백엔드가 살아 있어도 외부에서 붙을 수 없습니다. `systemctl status cloudflared` 를 상태 확인 목록에 넣어 두었습니다 ([4장](#4-일상-운영)).
 - **백엔드와 ai-engine 은 평문 HTTP 입니다.** 둘 다 루프백만 바인딩해 서버 밖으로 평문이 나가지 않습니다. 같은 서버에 다른 사용자가 있다면 이 전제가 깨집니다.
-- **STOMP 는 인증된 연결만 받습니다** ([#136](https://github.com/keonha123/Earning-Whisperer/issues/136), 2026-10-01 배포). CONNECT 에 유효한 JWT 가 없으면 거부하고, 연결을 거친 세션인지는 Principal 로 판별합니다. 클라이언트가 서버로 보내는 SEND 프레임은 받지 않습니다 — Spring 이 목적지의 `{userId}` 를 그대로 믿어, 인증만 하면 남에게 위조 매매 신호를 보낼 수 있었습니다. 구독 권한은 "로그인했는가" 까지이고 토픽별 인가는 없습니다.
+- **STOMP 는 인증된 연결만 받습니다** ([#136](https://github.com/keonha123/Logothea/issues/136), 2026-10-01 배포). CONNECT 에 유효한 JWT 가 없으면 거부하고, 연결을 거친 세션인지는 Principal 로 판별합니다. 클라이언트가 서버로 보내는 SEND 프레임은 받지 않습니다 — Spring 이 목적지의 `{userId}` 를 그대로 믿어, 인증만 하면 남에게 위조 매매 신호를 보낼 수 있었습니다. 구독 권한은 "로그인했는가" 까지이고 토픽별 인가는 없습니다.
 - **서버 STOMP heartbeat 가 꺼져 있습니다.** `enableSimpleBroker` 에 `TaskScheduler` 가 없어 죽은 커넥션 탐지가 TCP 에 맡겨져 있습니다.
 - **`ddl-auto: update` 를 쓰고 있습니다.** 운영이라면 `validate` + 마이그레이션 도구가 맞지만 시연 범위에서는 유지했습니다. 엔티티를 고치면 스키마가 자동 변경됩니다.
 - **`DemoReplayService` 가 기동과 함께 `mock-nvda-replay.json` 을 무한 재생합니다.** `/topic/live/demo` 로 브로드캐스트되며 구독자는 미배포 상태인 `frontend` 뿐이라 터미널 시연에는 영향이 없습니다. 현재 시연 경로(`DemoEarningsCallService`)와는 별개입니다.
@@ -819,7 +819,7 @@ sudo systemctl enable --now cloudflared
 인스톨러는 GitHub Releases 에서 내려받아 설치합니다. 설치 후에는 일반 Windows 프로그램과 같습니다 — 시작 메뉴 바로가기가 생기고 설정의 앱 목록에서 제거할 수 있습니다. Node 나 저장소 클론이 필요하지 않습니다.
 
 ```
-https://github.com/keonha123/Earning-Whisperer/releases
+https://github.com/keonha123/Logothea/releases
 ```
 
 **이 저장소는 public 입니다.** 게시한 릴리스는 누구나 받을 수 있고, 설치본에는 시연 서버 주소가 박혀 있습니다. 팀 안에서만 돌릴 것은 draft 로 두면 협업자에게만 보입니다. draft 는 Releases 탭의 목록에 나타나지 않으므로 위 주소로 직접 들어가야 보입니다.
@@ -894,7 +894,7 @@ gh release edit v0.1.0-rc2 --draft=true
 gh release edit v0.1.0-rc2 --draft=false --prerelease
 ```
 
-**서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Earning-Whisperer/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.
+**서버를 배포할 때 인스톨러도 함께 봐야 합니다.** 터미널과 백엔드가 WebSocket 인증 규약을 공유해서, 한쪽만 갱신하면 설치본이 조용히 끊깁니다. 실제로 [#136](https://github.com/keonha123/Logothea/issues/136) 수정 때 이전 설치본은 로그인 15분 뒤 실시간 화면이 멈추는 상태가 되었습니다.
 
 ### 검증 결과
 
